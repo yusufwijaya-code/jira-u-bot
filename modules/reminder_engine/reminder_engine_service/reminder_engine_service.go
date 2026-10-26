@@ -13,4 +13,11 @@ type ReminderEngineService interface {
 	// fall at or before the ticket's entire budget never fires).
 	ApplicableTiers(budgetSeconds int64) []string
 	EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error
+	// NotifyIfEarlyCompletion implements spec AC4.1/AC4.2/AC4.3: a ticket
+	// that left "Code Process" with time to spare (elapsed < budget) gets
+	// a one-off notice showing the unused time and what the deadline would
+	// have been. The Code Review status check (AC4.5) happens in the
+	// poller BEFORE this is called — by the time this method runs, that
+	// decision has already been made.
+	NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64) error
 }

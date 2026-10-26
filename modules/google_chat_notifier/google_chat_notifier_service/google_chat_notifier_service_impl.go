@@ -53,7 +53,13 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	header := fmt.Sprintf("⏰ *%s* — reminder %s", msg.IssueKey, tierLabel(msg.Tier))
 	timeLine := fmt.Sprintf("Sisa: %s", formatDuration(remainingSeconds))
 	deadlineLine := fmt.Sprintf("Harus selesai: %s\n", formatDeadline(msg.Deadline))
-	if msg.IsOverage {
+
+	switch {
+	case msg.IsEarlyCompletion:
+		header = fmt.Sprintf("✅ *%s* — selesai lebih awal (masuk Code Review)", msg.IssueKey)
+		timeLine = fmt.Sprintf("Sisa budget tidak terpakai: %s", formatDuration(remainingSeconds))
+		deadlineLine = fmt.Sprintf("Limit seharusnya: %s\n", formatDeadline(msg.Deadline))
+	case msg.IsOverage:
 		header = fmt.Sprintf("🔴 *%s* — SUDAH LEWAT BUDGET", msg.IssueKey)
 		timeLine = fmt.Sprintf("Overage: %s", formatDuration(remainingSeconds))
 		deadlineLine = "" // already past due — a "must finish by" instant no longer applies

@@ -215,3 +215,32 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 
 	return nil
 }
+
+func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64) error {
+	if elapsedSeconds >= budgetSeconds {
+		return nil
+	}
+
+	remaining := budgetSeconds - elapsedSeconds
+	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
+
+	assigneeName := assigneeEmail
+	if user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail); err == nil && found {
+		assigneeName = user.UserName
+	}
+
+	msg := google_chat_notifier_dto.ReminderMessage{
+		IssueKey:          issueKey,
+		IssueURL:          fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issueKey),
+		IssueSummary:      issueSummary,
+		AssigneeName:      assigneeName,
+		AssigneeEmail:     assigneeEmail,
+		StoryPoints:       float64(budgetSeconds) / 3600,
+		BudgetSeconds:     budgetSeconds,
+		ElapsedSeconds:    elapsedSeconds,
+		IsEarlyCompletion: true,
+		Deadline:          deadline,
+	}
+
+	return e.pickNotifier(assigneeEmail).SendReminder(ctx, msg)
+}

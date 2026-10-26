@@ -195,3 +195,52 @@ func TestSendReminder_PropagatesErrorOnNon2xxResponse(t *testing.T) {
 		t.Fatal("expected error when webhook returns 500 — spec Reliability requires callers to NOT write reminder_log when this errors")
 	}
 }
+
+func TestSendReminder_EarlyCompletionMessageShowsUnusedBudgetAndWouldHaveBeenDeadline(t *testing.T) {
+	var gotBody map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	cfg := &config.AppConfig{GoogleChatWebhookURL: server.URL}
+	svc := NewGoogleChatNotifierService(cfg)
+
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		t.Fatalf("failed to load Asia/Jakarta location: %v", err)
+	}
+	deadline := time.Date(2026, 10, 27, 9, 0, 0, 0, loc) // Tuesday
+
+	msg := google_chat_notifier_dto.ReminderMessage{
+		IssueKey:          "OMS-1",
+		IssueURL:          "https://esb-id.atlassian.net/browse/OMS-1",
+		IssueSummary:      "Early finisher",
+		AssigneeName:      "Teammate",
+		StoryPoints:       3,
+		BudgetSeconds:     10800, // 3h
+		ElapsedSeconds:    5400,  // 1.5h -> remaining 5400s = 1h 30m
+		IsEarlyCompletion: true,
+		Deadline:          deadline,
+	}
+
+	if err := svc.SendReminder(context.Background(), msg); err != nil {
+		t.Fatalf("SendReminder returned error: %v", err)
+	}
+
+	text := gotBody["text"]
+	if !strings.Contains(text, "selesai lebih awal") {
+		t.Errorf("message text %q does not contain the expected early-completion header", text)
+	}
+	if !strings.Contains(text, "Sisa budget tidak terpakai: 0 hari 1 jam 30 menit 0 detik") {
+		t.Errorf("message text %q does not contain the expected unused-budget line", text)
+	}
+	if !strings.Contains(text, "Limit seharusnya: Selasa, 27 Okt 2026 09:00:00 WIB") {
+		t.Errorf("message text %q does not contain the expected would-have-been-deadline line", text)
+	}
+	if strings.Contains(text, "Harus selesai:") {
+		t.Error("early-completion message must not show the tier-reminder 'Harus selesai' line")
+	}
+}

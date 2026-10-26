@@ -473,3 +473,81 @@ func TestEvaluateAndSend_TeammateAssigneeFallsBackToWebhookWhenDMNotifierNil(t *
 		t.Errorf("webhookNotifier.sentMessages = %d, want 1 (OAuth not configured — ALL reminders fall back to webhook, AC2.3)", len(webhookNotifier.sentMessages))
 	}
 }
+
+func TestNotifyIfEarlyCompletion_SendsNoticeWhenElapsedBelowBudget(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
+		"teammate@esb.co.id": {UserName: "Teammate Name", Email: "teammate@esb.co.id"},
+	}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+	)
+
+	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 5000, 10800)
+	if err != nil {
+		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
+	}
+
+	if len(webhookNotifier.sentMessages) != 1 {
+		t.Fatalf("sentMessages = %d, want 1 (AC4.1)", len(webhookNotifier.sentMessages))
+	}
+	msg := webhookNotifier.sentMessages[0]
+	if !msg.IsEarlyCompletion {
+		t.Error("IsEarlyCompletion = false, want true")
+	}
+	if msg.AssigneeName != "Teammate Name" {
+		t.Errorf("AssigneeName = %q, want %q (resolved via registration lookup)", msg.AssigneeName, "Teammate Name")
+	}
+}
+
+func TestNotifyIfEarlyCompletion_SkipsWhenElapsedAtOrAboveBudget(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+	)
+
+	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 10800, 10800)
+	if err != nil {
+		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
+	}
+
+	if len(webhookNotifier.sentMessages) != 0 {
+		t.Errorf("sentMessages = %d, want 0 (AC4.2 — elapsed equals budget, not early)", len(webhookNotifier.sentMessages))
+	}
+}
+
+func TestNotifyIfEarlyCompletion_RoutesSelfToWebhookAndTeammateToDM(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	dmNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+	)
+
+	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "yusuf.wijaya@esb.co.id", "Self ticket", 1000, 10800); err != nil {
+		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
+	}
+	if len(webhookNotifier.sentMessages) != 1 || len(dmNotifier.sentMessages) != 0 {
+		t.Errorf("self assignee must use webhook (spec AC4.3) — webhook=%d dm=%d", len(webhookNotifier.sentMessages), len(dmNotifier.sentMessages))
+	}
+
+	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-2", "teammate@esb.co.id", "Teammate ticket", 1000, 10800); err != nil {
+		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
+	}
+	if len(dmNotifier.sentMessages) != 1 {
+		t.Errorf("teammate assignee must use DM (spec AC4.3) — dm=%d", len(dmNotifier.sentMessages))
+	}
+}

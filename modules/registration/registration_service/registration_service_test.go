@@ -28,6 +28,10 @@ func (f *fakeJiraClientServiceForRegistration) LookupUserByEmail(ctx context.Con
 	return f.found, f.err
 }
 
+func (f *fakeJiraClientServiceForRegistration) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
+	return "", nil
+}
+
 type fakeRegistrationRepositoryForService struct {
 	upsertCalled bool
 	upsertErr    error
