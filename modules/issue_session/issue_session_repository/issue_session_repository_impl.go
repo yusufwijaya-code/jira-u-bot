@@ -16,41 +16,47 @@ func NewIssueSessionRepository(db *sql.DB) IssueSessionRepository {
 	return &issueSessionRepositoryImpl{db: db}
 }
 
-func (r *issueSessionRepositoryImpl) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64) error {
+func (r *issueSessionRepositoryImpl) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
 	const query = `
 		INSERT INTO tr_issuesession (
 			issueKey, projectKey, storyPoints,
 			accumulatedSeconds, currentSessionStartedDate, flagActive,
+			assigneeEmail, issueSummary,
 			createdBy, createdDate
 		)
-		VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, 1, 'poller', CURRENT_TIMESTAMP)
-		ON CONFLICT (issueKey) DO UPDATE SET
+		VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP, 1, ?, ?, 'poller', CURRENT_TIMESTAMP)
+		ON DUPLICATE KEY UPDATE
 			currentSessionStartedDate = CURRENT_TIMESTAMP,
 			flagActive = 1,
-			storyPoints = excluded.storyPoints,
+			storyPoints = VALUES(storyPoints),
+			assigneeEmail = VALUES(assigneeEmail),
+			issueSummary = VALUES(issueSummary),
 			editedBy = 'poller',
 			editedDate = CURRENT_TIMESTAMP
 	`
-	_, err := r.db.ExecContext(ctx, query, issueKey, projectKey, storyPoints)
+	_, err := r.db.ExecContext(ctx, query, issueKey, projectKey, storyPoints, assigneeEmail, issueSummary)
 	return err
 }
 
-func (r *issueSessionRepositoryImpl) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time) error {
+func (r *issueSessionRepositoryImpl) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
 	const query = `
 		INSERT INTO tr_issuesession (
 			issueKey, projectKey, storyPoints,
 			accumulatedSeconds, currentSessionStartedDate, flagActive,
+			assigneeEmail, issueSummary,
 			createdBy, createdDate
 		)
-		VALUES (?, ?, ?, 0, ?, 1, 'poller', CURRENT_TIMESTAMP)
-		ON CONFLICT (issueKey) DO UPDATE SET
-			currentSessionStartedDate = excluded.currentSessionStartedDate,
+		VALUES (?, ?, ?, 0, ?, 1, ?, ?, 'poller', CURRENT_TIMESTAMP)
+		ON DUPLICATE KEY UPDATE
+			currentSessionStartedDate = VALUES(currentSessionStartedDate),
 			flagActive = 1,
-			storyPoints = excluded.storyPoints,
+			storyPoints = VALUES(storyPoints),
+			assigneeEmail = VALUES(assigneeEmail),
+			issueSummary = VALUES(issueSummary),
 			editedBy = 'poller',
 			editedDate = CURRENT_TIMESTAMP
 	`
-	_, err := r.db.ExecContext(ctx, query, issueKey, projectKey, storyPoints, startedAt)
+	_, err := r.db.ExecContext(ctx, query, issueKey, projectKey, storyPoints, startedAt, assigneeEmail, issueSummary)
 	return err
 }
 
@@ -84,7 +90,7 @@ func (r *issueSessionRepositoryImpl) GetActiveSessions(ctx context.Context) ([]i
 	const query = `
 		SELECT issueSessionID, issueKey, projectKey, storyPoints,
 		       accumulatedSeconds, currentSessionStartedDate, flagActive,
-		       lastOverageReminderDate, createdBy, createdDate
+		       lastOverageReminderDate, assigneeEmail, issueSummary, createdBy, createdDate
 		FROM tr_issuesession
 		WHERE flagActive = 1
 	`
@@ -109,7 +115,7 @@ func (r *issueSessionRepositoryImpl) GetSessionByIssueKey(ctx context.Context, i
 	const query = `
 		SELECT issueSessionID, issueKey, projectKey, storyPoints,
 		       accumulatedSeconds, currentSessionStartedDate, flagActive,
-		       lastOverageReminderDate, createdBy, createdDate
+		       lastOverageReminderDate, assigneeEmail, issueSummary, createdBy, createdDate
 		FROM tr_issuesession
 		WHERE issueKey = ?
 	`
@@ -144,11 +150,12 @@ func scanIssueSessionRow(scanner rowScanner) (issue_session_dto.IssueSession, er
 	var s issue_session_dto.IssueSession
 	var currentSessionStartedDate sql.NullTime
 	var lastOverageReminderDate sql.NullTime
+	var assigneeEmail, issueSummary sql.NullString
 
 	err := scanner.Scan(
 		&s.IssueSessionID, &s.IssueKey, &s.ProjectKey, &s.StoryPoints,
 		&s.AccumulatedSeconds, &currentSessionStartedDate, &s.FlagActive,
-		&lastOverageReminderDate, &s.CreatedBy, &s.CreatedDate,
+		&lastOverageReminderDate, &assigneeEmail, &issueSummary, &s.CreatedBy, &s.CreatedDate,
 	)
 	if err != nil {
 		return issue_session_dto.IssueSession{}, err
@@ -162,6 +169,8 @@ func scanIssueSessionRow(scanner rowScanner) (issue_session_dto.IssueSession, er
 		t := lastOverageReminderDate.Time
 		s.LastOverageReminderDate = &t
 	}
+	s.AssigneeEmail = assigneeEmail.String
+	s.IssueSummary = issueSummary.String
 
 	return s, nil
 }

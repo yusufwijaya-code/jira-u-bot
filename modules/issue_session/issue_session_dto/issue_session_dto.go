@@ -11,6 +11,8 @@ type IssueSession struct {
 	CurrentSessionStartedDate *time.Time
 	FlagActive                bool
 	LastOverageReminderDate   *time.Time
+	AssigneeEmail             string
+	IssueSummary              string
 	CreatedBy                 string
 	CreatedDate               time.Time
 }

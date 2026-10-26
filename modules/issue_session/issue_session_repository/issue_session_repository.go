@@ -8,8 +8,8 @@ import (
 )
 
 type IssueSessionRepository interface {
-	OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64) error
-	OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time) error
+	OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64, assigneeEmail, issueSummary string) error
+	OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time, assigneeEmail, issueSummary string) error
 	UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64) error
 	CloseSession(ctx context.Context, issueKey string, additionalSeconds int64) error
 	GetActiveSessions(ctx context.Context) ([]issue_session_dto.IssueSession, error)

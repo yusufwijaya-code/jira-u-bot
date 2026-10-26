@@ -16,12 +16,12 @@ func NewIssueSessionService(repo issue_session_repository.IssueSessionRepository
 	return &issueSessionServiceImpl{repo: repo}
 }
 
-func (s *issueSessionServiceImpl) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64) error {
-	return s.repo.OpenOrResumeSession(ctx, issueKey, projectKey, storyPoints)
+func (s *issueSessionServiceImpl) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
+	return s.repo.OpenOrResumeSession(ctx, issueKey, projectKey, storyPoints, assigneeEmail, issueSummary)
 }
 
-func (s *issueSessionServiceImpl) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time) error {
-	return s.repo.OpenOrResumeSessionAt(ctx, issueKey, projectKey, storyPoints, startedAt)
+func (s *issueSessionServiceImpl) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
+	return s.repo.OpenOrResumeSessionAt(ctx, issueKey, projectKey, storyPoints, startedAt, assigneeEmail, issueSummary)
 }
 
 func (s *issueSessionServiceImpl) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64) error {

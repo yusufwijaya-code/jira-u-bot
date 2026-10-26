@@ -137,7 +137,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if _, alreadyActive := activeByKey[key]; alreadyActive {
 			continue
 		}
-		if err := p.issueSession.OpenOrResumeSession(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue)); err != nil {
+		if err := p.issueSession.OpenOrResumeSession(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), "", ""); err != nil {
 			return fmt.Errorf("poller: OpenOrResumeSession(%s) failed: %w", key, err)
 		}
 	}
@@ -199,7 +199,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 			entryTime = time.Now()
 		}
 
-		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime); err != nil {
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, "", ""); err != nil {
 			return fmt.Errorf("poller: backfill OpenOrResumeSessionAt(%s) failed: %w", issue.Key, err)
 		}
 	}
