@@ -13,17 +13,19 @@ import (
 	"jira-u-bot/modules/issue_session/issue_session_service"
 	"jira-u-bot/modules/jira_client/jira_client_dto"
 	"jira-u-bot/modules/jira_client/jira_client_service"
+	"jira-u-bot/modules/registration/registration_repository"
 	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
 )
 
 const pollInterval = 30 * time.Second
 
 type pollerServiceImpl struct {
-	jiraClient      jira_client_service.JiraClientService
-	issueSession    issue_session_service.IssueSessionService
-	businessHours   business_hours_service.BusinessHoursService
-	reminderEngine  reminder_engine_service.ReminderEngineService
-	holidayCalendar business_hours_dto.HolidayCalendar
+	jiraClient       jira_client_service.JiraClientService
+	issueSession     issue_session_service.IssueSessionService
+	businessHours    business_hours_service.BusinessHoursService
+	reminderEngine   reminder_engine_service.ReminderEngineService
+	registrationRepo registration_repository.RegistrationRepository
+	holidayCalendar  business_hours_dto.HolidayCalendar
 }
 
 func NewPollerService(
@@ -31,15 +33,47 @@ func NewPollerService(
 	issueSession issue_session_service.IssueSessionService,
 	businessHours business_hours_service.BusinessHoursService,
 	reminderEngine reminder_engine_service.ReminderEngineService,
+	registrationRepo registration_repository.RegistrationRepository,
 	holidayCalendar business_hours_dto.HolidayCalendar,
 ) PollerService {
 	return &pollerServiceImpl{
-		jiraClient:      jiraClient,
-		issueSession:    issueSession,
-		businessHours:   businessHours,
-		reminderEngine:  reminderEngine,
-		holidayCalendar: holidayCalendar,
+		jiraClient:       jiraClient,
+		issueSession:     issueSession,
+		businessHours:    businessHours,
+		reminderEngine:   reminderEngine,
+		registrationRepo: registrationRepo,
+		holidayCalendar:  holidayCalendar,
 	}
+}
+
+// isEligible implements the team's decision to scope the bot down from
+// "every CORE/OMS ticket in Code Process" to only tickets assigned to a
+// registered user with a real Story Points budget — an unassigned ticket,
+// an assignee who never used /register, or a ticket with no (or zero) SP
+// carries nothing meaningful to track and must never reach the session/
+// reminder pipeline at all (not even to show up as an instant overage).
+func (p *pollerServiceImpl) isEligible(ctx context.Context, issue jira_client_dto.Issue) bool {
+	if issue.Fields.StoryPoints == nil || *issue.Fields.StoryPoints <= 0 {
+		return false
+	}
+	if issue.Fields.Assignee == nil {
+		return false
+	}
+	_, found, err := p.registrationRepo.FindUserByEmail(ctx, issue.Fields.Assignee.EmailAddress)
+	if err != nil {
+		return false
+	}
+	return found
+}
+
+func (p *pollerServiceImpl) filterEligible(ctx context.Context, issues []jira_client_dto.Issue) []jira_client_dto.Issue {
+	eligible := make([]jira_client_dto.Issue, 0, len(issues))
+	for _, issue := range issues {
+		if p.isEligible(ctx, issue) {
+			eligible = append(eligible, issue)
+		}
+	}
+	return eligible
 }
 
 func (p *pollerServiceImpl) Run(ctx context.Context) {
@@ -67,6 +101,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("poller: SearchCodeProcessIssues failed: %w", err)
 	}
+	issues = p.filterEligible(ctx, issues)
 
 	currentByKey := make(map[string]jira_client_dto.Issue, len(issues))
 	for _, issue := range issues {
@@ -145,6 +180,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("poller: backfill SearchCodeProcessIssues failed: %w", err)
 	}
+	issues = p.filterEligible(ctx, issues)
 
 	for _, issue := range issues {
 		_, found, err := p.issueSession.GetSessionByIssueKey(ctx, issue.Key)

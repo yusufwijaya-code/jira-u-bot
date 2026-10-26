@@ -69,7 +69,7 @@ func main() {
 	)
 
 	pollerSvc := poller_service.NewPollerService(
-		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, holidayCalendar,
+		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, registrationRepo, holidayCalendar,
 	)
 
 	shutdownMgr := shutdown.NewManager()
