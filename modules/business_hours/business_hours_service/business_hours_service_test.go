@@ -172,6 +172,125 @@ func TestElapsedBusinessSeconds_NormalizesUTCInputToJakartaBeforeComputing(t *te
 	}
 }
 
+func TestDeadlineAfterBusinessSeconds_SameDayWithinWorkHours(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	from := time.Date(2026, 10, 26, 9, 0, 0, 0, loc) // Monday 09:00
+	got := svc.DeadlineAfterBusinessSeconds(from, 3600, cal)
+	want := time.Date(2026, 10, 26, 10, 0, 0, 0, loc)
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_SpansLunchBreak(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	from := time.Date(2026, 10, 26, 11, 30, 0, 0, loc) // Monday 11:30
+	got := svc.DeadlineAfterBusinessSeconds(from, 3600, cal)
+	// 11:30-12:00 (30m) before lunch + 13:00-13:30 (30m) after lunch = 1h total.
+	want := time.Date(2026, 10, 26, 13, 30, 0, 0, loc)
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_FromBeforeWorkStartClampsToOpen(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	from := time.Date(2026, 10, 26, 7, 0, 0, 0, loc) // Monday 07:00, before 08:30 open
+	got := svc.DeadlineAfterBusinessSeconds(from, 1800, cal)
+	want := time.Date(2026, 10, 26, 9, 0, 0, 0, loc) // 08:30 open + 30 min
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_FromAfterWorkEndRollsToNextDay(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	from := time.Date(2026, 10, 26, 19, 0, 0, 0, loc) // Monday 19:00, after 17:30 close
+	got := svc.DeadlineAfterBusinessSeconds(from, 1800, cal)
+	want := time.Date(2026, 10, 27, 9, 0, 0, 0, loc) // Tuesday 08:30 open + 30 min
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_SkipsWeekend(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	from := time.Date(2026, 10, 23, 17, 0, 0, 0, loc) // Friday 17:00
+	got := svc.DeadlineAfterBusinessSeconds(from, 3600, cal)
+	// Friday 17:00-17:30 (30m) + Sat/Sun skipped + Monday 08:30 open + 30 min.
+	want := time.Date(2026, 10, 26, 9, 0, 0, 0, loc)
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_SkipsConfiguredHoliday(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{Holidays: map[string]bool{"2026-10-27": true}} // Tuesday is a holiday
+
+	from := time.Date(2026, 10, 26, 17, 0, 0, 0, loc) // Monday 17:00
+	got := svc.DeadlineAfterBusinessSeconds(from, 3600, cal)
+	// Monday 17:00-17:30 (30m) + Tuesday is a holiday, skipped + Wednesday 08:30 open + 30 min.
+	want := time.Date(2026, 10, 28, 9, 0, 0, 0, loc)
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_ZeroOrNegativeRemainingReturnsFrom(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	from := time.Date(2026, 10, 26, 9, 0, 0, 0, loc)
+
+	if got := svc.DeadlineAfterBusinessSeconds(from, 0, cal); !got.Equal(from) {
+		t.Errorf("remainingSeconds=0: got %v, want %v (the from instant, unchanged)", got, from)
+	}
+	if got := svc.DeadlineAfterBusinessSeconds(from, -100, cal); !got.Equal(from) {
+		t.Errorf("remainingSeconds=-100: got %v, want %v (the from instant, unchanged)", got, from)
+	}
+}
+
+func TestDeadlineAfterBusinessSeconds_NormalizesUTCInputToJakarta(t *testing.T) {
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	// 02:00 UTC == 09:00 WIB (Monday). 1 hour of business time should land
+	// at 10:00 WIB == 03:00 UTC the same day.
+	from := time.Date(2026, 10, 26, 2, 0, 0, 0, time.UTC)
+	got := svc.DeadlineAfterBusinessSeconds(from, 3600, cal)
+
+	loc := mustLoadLocation(t)
+	want := time.Date(2026, 10, 26, 10, 0, 0, 0, loc)
+
+	if !got.Equal(want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestLoadHolidayCalendar_ReadsDatesFromJSONFile(t *testing.T) {
 	svc := NewBusinessHoursService()
 

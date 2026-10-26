@@ -145,6 +145,7 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 
 func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
 	remaining := budgetSeconds - elapsedSeconds
+	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
 
 	for _, tier := range e.ApplicableTiers(budgetSeconds) {
 		if remaining > tierDurationSeconds(tier) {
@@ -169,6 +170,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 			ElapsedSeconds: elapsedSeconds,
 			Tier:           tier,
 			IsOverage:      false,
+			Deadline:       deadline,
 		}
 
 		if err := e.notifier.SendReminder(ctx, msg); err != nil {

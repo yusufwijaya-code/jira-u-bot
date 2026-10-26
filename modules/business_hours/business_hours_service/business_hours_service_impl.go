@@ -78,6 +78,74 @@ func businessSecondsInDay(dayStart, dayEnd time.Time, cal business_hours_dto.Hol
 	return seconds
 }
 
+// DeadlineAfterBusinessSeconds walks forward day by day from `from`,
+// consuming business-hours segments until `remainingSeconds` is exhausted,
+// then returns the exact instant that happened. It mirrors
+// ElapsedBusinessSeconds's day/segment walk but runs it in reverse: instead
+// of summing elapsed seconds across a known [start, end) range, it finds the
+// end of the range given a known duration.
+func (s *businessHoursServiceImpl) DeadlineAfterBusinessSeconds(from time.Time, remainingSeconds int64, cal business_hours_dto.HolidayCalendar) time.Time {
+	from = from.In(jakartaLocation)
+	if remainingSeconds <= 0 {
+		return from
+	}
+
+	cursor := from
+	remaining := remainingSeconds
+
+	for {
+		dayEnd := time.Date(cursor.Year(), cursor.Month(), cursor.Day(), 23, 59, 59, 0, cursor.Location())
+		consumed, found, deadline := deadlineWithinDay(cursor, dayEnd, remaining, cal)
+		if found {
+			return deadline
+		}
+		remaining -= consumed
+		cursor = time.Date(cursor.Year(), cursor.Month(), cursor.Day(), 0, 0, 0, 0, cursor.Location()).AddDate(0, 0, 1)
+	}
+}
+
+// deadlineWithinDay consumes as much of `remaining` as this single day's
+// business segments (morning, afternoon) can offer, starting no earlier
+// than dayStart. If `remaining` runs out partway through a segment, found
+// is true and deadline is the exact instant reached; otherwise it returns
+// how many seconds this day contributed so the caller can keep walking.
+func deadlineWithinDay(dayStart, dayEnd time.Time, remaining int64, cal business_hours_dto.HolidayCalendar) (consumed int64, found bool, deadline time.Time) {
+	weekday := dayStart.Weekday()
+	if weekday == time.Saturday || weekday == time.Sunday || cal.IsHoliday(dayStart) {
+		return 0, false, time.Time{}
+	}
+
+	y, m, d := dayStart.Date()
+	loc := dayStart.Location()
+
+	segments := [2][2]time.Time{
+		{time.Date(y, m, d, workStartHour, workStartMinute, 0, 0, loc), time.Date(y, m, d, lunchStartHour, 0, 0, 0, loc)},
+		{time.Date(y, m, d, lunchEndHour, 0, 0, 0, loc), time.Date(y, m, d, workEndHour, workEndMinute, 0, 0, loc)},
+	}
+
+	for _, seg := range segments {
+		segStart, segEnd := seg[0], seg[1]
+		if dayStart.After(segStart) {
+			segStart = dayStart
+		}
+		if dayEnd.Before(segEnd) {
+			segEnd = dayEnd
+		}
+		if !segEnd.After(segStart) {
+			continue
+		}
+
+		available := int64(segEnd.Sub(segStart).Seconds())
+		if remaining <= available {
+			return consumed, true, segStart.Add(time.Duration(remaining) * time.Second)
+		}
+		consumed += available
+		remaining -= available
+	}
+
+	return consumed, false, time.Time{}
+}
+
 // overlapSeconds returns the length, in seconds, of the intersection of
 // [aStart, aEnd) and [bStart, bEnd). Returns 0 if they don't overlap.
 func overlapSeconds(aStart, aEnd, bStart, bEnd time.Time) int64 {
