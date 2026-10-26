@@ -1,8 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"jira-u-bot/base/helpers/shutdown"
 	"jira-u-bot/config"
@@ -77,8 +83,31 @@ func main() {
 	registrationHandler := registration_handler.NewRegistrationHandler(registrationService)
 	router := SetupRouter(registrationHandler)
 
+	srv := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+	}
+
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
+	go func() {
+		<-sigCtx.Done()
+		log.Println("jira-u-bot: shutdown signal received, stopping poller and http server")
+		shutdownMgr.Shutdown()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("jira-u-bot: http server shutdown error: %v", err)
+		}
+	}()
+
 	log.Printf("jira-u-bot listening on :%s", cfg.Port)
-	if err := router.Run(":" + cfg.Port); err != nil {
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server exited with error: %v", err)
 	}
+
+	shutdownMgr.Wait()
+	log.Println("jira-u-bot: shutdown complete")
 }
