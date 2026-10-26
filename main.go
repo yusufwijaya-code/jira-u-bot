@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -26,8 +27,15 @@ import (
 	"jira-u-bot/modules/reminder_log/reminder_log_repository"
 	"jira-u-bot/modules/reminder_log/reminder_log_service"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/go-sql-driver/mysql"
 )
+
+func mysqlDSN(cfg config.AppConfig) string {
+	return fmt.Sprintf(
+		"%s:%s@(%s:%s)/%s?parseTime=true&loc=Asia%%2FJakarta&multiStatements=true",
+		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost, cfg.MySQLPort, cfg.MySQLDatabase,
+	)
+}
 
 func main() {
 	var cfg config.AppConfig
@@ -35,11 +43,17 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	db, err := sql.Open("sqlite", cfg.SQLitePath)
+	db, err := sql.Open("mysql", mysqlDSN(cfg))
 	if err != nil {
-		log.Fatalf("failed to open sqlite database at %s: %v", cfg.SQLitePath, err)
+		log.Fatalf("failed to open mysql connection: %v", err)
 	}
 	defer db.Close()
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(60 * time.Minute)
+	db.SetConnMaxIdleTime(10 * time.Minute)
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to ping mysql at %s:%s: %v", cfg.MySQLHost, cfg.MySQLPort, err)
+	}
 
 	if err := migrations.Apply(db); err != nil {
 		log.Fatalf("failed to apply migrations: %v", err)

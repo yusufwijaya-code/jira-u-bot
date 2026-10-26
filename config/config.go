@@ -12,7 +12,11 @@ type AppConfig struct {
 	JiraEmail            string
 	JiraAPIToken         string
 	GoogleChatWebhookURL string
-	SQLitePath           string
+	MySQLHost            string
+	MySQLPort            string
+	MySQLUser            string
+	MySQLPassword        string
+	MySQLDatabase        string
 	HolidayCalendarPath  string
 	Port                 string
 }
@@ -30,12 +34,20 @@ func LoadConfig(cfg *AppConfig) error {
 	}
 	v.AutomaticEnv()
 	v.SetDefault("PORT", "8080")
+	v.SetDefault("MYSQL_HOST", "localhost")
+	v.SetDefault("MYSQL_PORT", "3308")
+	v.SetDefault("MYSQL_USER", "root")
+	v.SetDefault("MYSQL_DATABASE", "jira_db")
 
 	cfg.JiraBaseURL = v.GetString("JIRA_BASE_URL")
 	cfg.JiraEmail = v.GetString("JIRA_EMAIL")
 	cfg.JiraAPIToken = v.GetString("JIRA_API_TOKEN")
 	cfg.GoogleChatWebhookURL = v.GetString("GOOGLE_CHAT_WEBHOOK_URL")
-	cfg.SQLitePath = v.GetString("SQLITE_PATH")
+	cfg.MySQLHost = v.GetString("MYSQL_HOST")
+	cfg.MySQLPort = v.GetString("MYSQL_PORT")
+	cfg.MySQLUser = v.GetString("MYSQL_USER")
+	cfg.MySQLPassword = v.GetString("MYSQL_PASSWORD")
+	cfg.MySQLDatabase = v.GetString("MYSQL_DATABASE")
 	cfg.HolidayCalendarPath = v.GetString("HOLIDAY_CALENDAR_PATH")
 	cfg.Port = v.GetString("PORT")
 
