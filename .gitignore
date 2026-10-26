@@ -3,5 +3,6 @@
 *.db
 *.db-journal
 .env
+/data/
 /tmp/
 /design

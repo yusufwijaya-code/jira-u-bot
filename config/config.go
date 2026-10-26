@@ -8,17 +8,20 @@ import (
 )
 
 type AppConfig struct {
-	JiraBaseURL          string
-	JiraEmail            string
-	JiraAPIToken         string
-	GoogleChatWebhookURL string
-	MySQLHost            string
-	MySQLPort            string
-	MySQLUser            string
-	MySQLPassword        string
-	MySQLDatabase        string
-	HolidayCalendarPath  string
-	Port                 string
+	JiraBaseURL             string
+	JiraEmail               string
+	JiraAPIToken            string
+	GoogleChatWebhookURL    string
+	MySQLHost               string
+	MySQLPort               string
+	MySQLUser               string
+	MySQLPassword           string
+	MySQLDatabase           string
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	GoogleOAuthTokenPath    string
+	HolidayCalendarPath     string
+	Port                    string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -38,6 +41,7 @@ func LoadConfig(cfg *AppConfig) error {
 	v.SetDefault("MYSQL_PORT", "3308")
 	v.SetDefault("MYSQL_USER", "root")
 	v.SetDefault("MYSQL_DATABASE", "jira_db")
+	v.SetDefault("GOOGLE_OAUTH_TOKEN_PATH", "./data/chat_oauth_token.json")
 
 	cfg.JiraBaseURL = v.GetString("JIRA_BASE_URL")
 	cfg.JiraEmail = v.GetString("JIRA_EMAIL")
@@ -48,6 +52,9 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.MySQLUser = v.GetString("MYSQL_USER")
 	cfg.MySQLPassword = v.GetString("MYSQL_PASSWORD")
 	cfg.MySQLDatabase = v.GetString("MYSQL_DATABASE")
+	cfg.GoogleOAuthClientID = v.GetString("GOOGLE_OAUTH_CLIENT_ID")
+	cfg.GoogleOAuthClientSecret = v.GetString("GOOGLE_OAUTH_CLIENT_SECRET")
+	cfg.GoogleOAuthTokenPath = v.GetString("GOOGLE_OAUTH_TOKEN_PATH")
 	cfg.HolidayCalendarPath = v.GetString("HOLIDAY_CALENDAR_PATH")
 	cfg.Port = v.GetString("PORT")
 
