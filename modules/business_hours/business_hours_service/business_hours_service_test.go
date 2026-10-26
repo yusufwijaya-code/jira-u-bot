@@ -154,6 +154,24 @@ func TestElapsedBusinessSeconds_EndBeforeStartReturnsZero(t *testing.T) {
 	}
 }
 
+func TestElapsedBusinessSeconds_NormalizesUTCInputToJakartaBeforeComputing(t *testing.T) {
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	// 2026-10-26 is a Monday. 09:00 WIB == 02:00 UTC. A naive UTC-located
+	// calculation would see 02:00-02:05 UTC, entirely before the 08:30 UTC
+	// work-day window, and wrongly compute 0 elapsed seconds.
+	start := time.Date(2026, 10, 26, 2, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 26, 2, 5, 0, 0, time.UTC)
+
+	got := svc.ElapsedBusinessSeconds(start, end, cal)
+	want := int64(300)
+
+	if got != want {
+		t.Errorf("got %d seconds, want %d — UTC-located input (matching what the sqlite driver returns for CURRENT_TIMESTAMP) must be normalized to Asia/Jakarta before the business-hours window is computed", got, want)
+	}
+}
+
 func TestLoadHolidayCalendar_ReadsDatesFromJSONFile(t *testing.T) {
 	svc := NewBusinessHoursService()
 

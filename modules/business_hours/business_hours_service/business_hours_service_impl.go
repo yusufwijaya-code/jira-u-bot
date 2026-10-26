@@ -29,6 +29,9 @@ func NewBusinessHoursService() BusinessHoursService {
 // call on every 30-second poll cycle (spec Component Poller, Business Logic
 // point 5) without caching.
 func (s *businessHoursServiceImpl) ElapsedBusinessSeconds(start, end time.Time, cal business_hours_dto.HolidayCalendar) int64 {
+	start = start.In(jakartaLocation)
+	end = end.In(jakartaLocation)
+
 	if !end.After(start) {
 		return 0
 	}
