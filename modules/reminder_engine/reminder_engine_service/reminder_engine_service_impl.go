@@ -37,7 +37,9 @@ type reminderEngineServiceImpl struct {
 	reminderLog      reminder_log_service.ReminderLogService
 	issueSession     issue_session_service.IssueSessionService
 	registrationRepo registration_repository.RegistrationRepository
-	notifier         google_chat_notifier_service.GoogleChatNotifierService
+	webhookNotifier  google_chat_notifier_service.GoogleChatNotifierService
+	dmNotifier       google_chat_notifier_service.GoogleChatNotifierService
+	selfEmail        string
 }
 
 func NewReminderEngineService(
@@ -47,7 +49,9 @@ func NewReminderEngineService(
 	reminderLog reminder_log_service.ReminderLogService,
 	issueSession issue_session_service.IssueSessionService,
 	registrationRepo registration_repository.RegistrationRepository,
-	notifier google_chat_notifier_service.GoogleChatNotifierService,
+	webhookNotifier google_chat_notifier_service.GoogleChatNotifierService,
+	dmNotifier google_chat_notifier_service.GoogleChatNotifierService,
+	selfEmail string,
 ) ReminderEngineService {
 	return &reminderEngineServiceImpl{
 		jiraBaseURL:      jiraBaseURL,
@@ -56,8 +60,23 @@ func NewReminderEngineService(
 		reminderLog:      reminderLog,
 		issueSession:     issueSession,
 		registrationRepo: registrationRepo,
-		notifier:         notifier,
+		webhookNotifier:  webhookNotifier,
+		dmNotifier:       dmNotifier,
+		selfEmail:        selfEmail,
 	}
+}
+
+// pickNotifier implements spec AC2.1/AC2.2/AC2.3: the assignee's own
+// tickets always stay on the existing webhook (unchanged v1 behavior);
+// everyone else's tickets go to a personal DM — UNLESS OAuth was never
+// configured (dmNotifier is nil, decided once at startup in main.go), in
+// which case every reminder falls back to the webhook, matching pre-this-
+// enhancement behavior exactly.
+func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_chat_notifier_service.GoogleChatNotifierService {
+	if assigneeEmail == e.selfEmail || e.dmNotifier == nil {
+		return e.webhookNotifier
+	}
+	return e.dmNotifier
 }
 
 func (e *reminderEngineServiceImpl) ApplicableTiers(budgetSeconds int64) []string {
@@ -118,11 +137,17 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 		return nil
 	}
 
+	var assigneeEmail string
+	if issue.Fields.Assignee != nil {
+		assigneeEmail = issue.Fields.Assignee.EmailAddress
+	}
+
 	msg := google_chat_notifier_dto.ReminderMessage{
 		IssueKey:       issue.Key,
 		IssueURL:       issueURL,
 		IssueSummary:   issue.Fields.Summary,
 		AssigneeName:   assigneeName,
+		AssigneeEmail:  assigneeEmail,
 		StoryPoints:    session.StoryPoints,
 		BudgetSeconds:  budgetSeconds,
 		ElapsedSeconds: elapsedSeconds,
@@ -133,8 +158,11 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 	// Order matters: only record the send (log + timestamp) AFTER the
 	// notifier confirms success, so a failed POST can be retried on the
 	// next poll cycle instead of being silently marked as sent (spec
-	// Reliability, Component Poller).
-	if err := e.notifier.SendReminder(ctx, msg); err != nil {
+	// Reliability, Component Poller). This pre-existing mechanism is
+	// exactly what satisfies spec AC2.5 for the DM path too — pickNotifier
+	// only changes WHICH notifier gets called, not this retry contract, so
+	// no new test is needed here beyond the ones v1 already had for it.
+	if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
 		return err
 	}
 	if err := e.reminderLog.LogReminderSent(ctx, issue.Key, reminder_log_dto.TierOverage); err != nil {
@@ -146,6 +174,11 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
 	remaining := budgetSeconds - elapsedSeconds
 	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
+
+	var assigneeEmail string
+	if issue.Fields.Assignee != nil {
+		assigneeEmail = issue.Fields.Assignee.EmailAddress
+	}
 
 	for _, tier := range e.ApplicableTiers(budgetSeconds) {
 		if remaining > tierDurationSeconds(tier) {
@@ -165,6 +198,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 			IssueURL:       issueURL,
 			IssueSummary:   issue.Fields.Summary,
 			AssigneeName:   assigneeName,
+			AssigneeEmail:  assigneeEmail,
 			StoryPoints:    storyPoints,
 			BudgetSeconds:  budgetSeconds,
 			ElapsedSeconds: elapsedSeconds,
@@ -173,7 +207,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 			Deadline:       deadline,
 		}
 
-		if err := e.notifier.SendReminder(ctx, msg); err != nil {
+		if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
 			return err
 		}
 		return e.reminderLog.LogReminderSent(ctx, issue.Key, tier)

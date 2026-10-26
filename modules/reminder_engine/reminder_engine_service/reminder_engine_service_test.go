@@ -37,10 +37,10 @@ type fakeIssueSessionService struct {
 	updateOverageCalls []string
 }
 
-func (f *fakeIssueSessionService) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64) error {
+func (f *fakeIssueSessionService) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary string) error {
 	return nil
 }
-func (f *fakeIssueSessionService) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time) error {
+func (f *fakeIssueSessionService) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
 	return nil
 }
 func (f *fakeIssueSessionService) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64) error {
@@ -64,7 +64,7 @@ type fakeRegistrationRepository struct {
 	users map[string]registration_dto.User
 }
 
-func (f *fakeRegistrationRepository) UpsertUser(ctx context.Context, name, email, googleChatUserID string) error {
+func (f *fakeRegistrationRepository) UpsertUser(ctx context.Context, name, email string) error {
 	return nil
 }
 func (f *fakeRegistrationRepository) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
@@ -73,6 +73,9 @@ func (f *fakeRegistrationRepository) FindUserByEmail(ctx context.Context, email 
 		return nil, false, nil
 	}
 	return &u, true, nil
+}
+func (f *fakeRegistrationRepository) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
+	return nil
 }
 
 type fakeGoogleChatNotifierService struct {
@@ -95,6 +98,8 @@ func newTestEngine(reminderLog *fakeReminderLogService, issueSession *fakeIssueS
 		issueSession,
 		registrationRepo,
 		notifier,
+		nil,
+		"",
 	)
 }
 
@@ -383,5 +388,88 @@ func TestEvaluateAndSend_UnassignedTicketUsesPlaceholderWithoutError(t *testing.
 	}
 	if notifier.sentMessages[0].AssigneeName != "(unassigned)" {
 		t.Errorf("AssigneeName = %q, want %q for a ticket with no assignee", notifier.sentMessages[0].AssigneeName, "(unassigned)")
+	}
+}
+
+func TestEvaluateAndSend_SelfAssigneeAlwaysUsesWebhookNotifier(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	dmNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+	)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000, // forces overage so exactly one message is sent
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("yusuf.wijaya@esb.co.id", "Yusuf Wijaya"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(webhookNotifier.sentMessages) != 1 {
+		t.Errorf("webhookNotifier.sentMessages = %d, want 1 (self assignee must always use the webhook, AC2.1)", len(webhookNotifier.sentMessages))
+	}
+	if len(dmNotifier.sentMessages) != 0 {
+		t.Errorf("dmNotifier.sentMessages = %d, want 0", len(dmNotifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_TeammateAssigneeUsesDMNotifierWhenConfigured(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	dmNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+	)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000,
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("teammate@esb.co.id", "Teammate"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(dmNotifier.sentMessages) != 1 {
+		t.Errorf("dmNotifier.sentMessages = %d, want 1 (non-self assignee with OAuth configured must use DM, AC2.2)", len(dmNotifier.sentMessages))
+	}
+	if len(webhookNotifier.sentMessages) != 0 {
+		t.Errorf("webhookNotifier.sentMessages = %d, want 0", len(webhookNotifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_TeammateAssigneeFallsBackToWebhookWhenDMNotifierNil(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+	)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000,
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("teammate@esb.co.id", "Teammate"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(webhookNotifier.sentMessages) != 1 {
+		t.Errorf("webhookNotifier.sentMessages = %d, want 1 (OAuth not configured — ALL reminders fall back to webhook, AC2.3)", len(webhookNotifier.sentMessages))
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"jira-u-bot/base/helpers/shutdown"
 	"jira-u-bot/config"
 	"jira-u-bot/migrations"
+	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
 	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
 	"jira-u-bot/modules/business_hours/business_hours_service"
 	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
@@ -98,9 +99,19 @@ func main() {
 
 	notifierSvc := google_chat_notifier_service.NewGoogleChatNotifierService(&cfg)
 
+	chatOAuthSvc, err := chat_oauth_service.NewChatOAuthService(&cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize chat oauth service: %v", err)
+	}
+
+	var dmNotifierSvc google_chat_notifier_service.GoogleChatNotifierService
+	if chatOAuthSvc != nil {
+		dmNotifierSvc = chat_dm_notifier_service.NewChatDMNotifierService(chatOAuthSvc, registrationRepo)
+	}
+
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
 		cfg.JiraBaseURL, holidayCalendar, businessHoursSvc, reminderLogSvc,
-		issueSessionSvc, registrationRepo, notifierSvc,
+		issueSessionSvc, registrationRepo, notifierSvc, dmNotifierSvc, cfg.JiraEmail,
 	)
 
 	pollerSvc := poller_service.NewPollerService(
