@@ -10,9 +10,6 @@
         input[type=text], input[type=email] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
         button { margin-top: 24px; padding: 10px 20px; cursor: pointer; }
         .error { color: #b91c1c; margin-top: 12px; }
-        .hint { font-weight: 400; font-size: 0.85rem; color: #555; margin-top: 4px; }
-        .hint ol { margin: 4px 0 0 0; padding-left: 20px; }
-        .hint code { background: #f1f1f1; padding: 1px 4px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -25,22 +22,6 @@
 
         <label for="email">Email Jira (esb.co.id)</label>
         <input type="email" id="email" name="email" required>
-
-        <label for="googleChatUserId">
-            Google Chat User ID (opsional)
-            <div class="hint">
-                Isi ini supaya reminder benar-benar nge-tag kamu di Chat, bukan cuma nulis nama. Cara dapetnya:
-                <ol>
-                    <li>Buka Google Chat di browser, masuk ke space ini</li>
-                    <li>Klik kanan halaman → <strong>Inspect</strong> (atau <code>F12</code>)</li>
-                    <li>Di tab Elements, <code>Ctrl+F</code> cari <code>data-member-id</code></li>
-                    <li>Cari elemen yang mewakili nama kamu sendiri</li>
-                    <li>Copy angka setelah <code>users/</code>, contoh: <code>users/123456789012345678901</code> → isi <code>123456789012345678901</code></li>
-                </ol>
-                Belum nemu / malas cari? Kosongkan saja — reminder tetap jalan, cuma nama kamu tampil sebagai teks biasa.
-            </div>
-        </label>
-        <input type="text" id="googleChatUserId" name="googleChatUserId" pattern="[0-9]*" placeholder="contoh: 123456789012345678901">
 
         <button type="submit">Daftar</button>
     </form>

@@ -14,7 +14,6 @@ import (
 )
 
 var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
-var googleChatUserIDPattern = regexp.MustCompile(`^[0-9]+$`)
 
 type formData struct {
 	Error string
@@ -52,7 +51,6 @@ func (h *registrationHandlerImpl) ShowForm(c *gin.Context) {
 func (h *registrationHandlerImpl) Submit(c *gin.Context) {
 	name := strings.TrimSpace(c.PostForm("name"))
 	email := strings.ToLower(strings.TrimSpace(c.PostForm("email")))
-	googleChatUserID := strings.TrimSpace(c.PostForm("googleChatUserId"))
 
 	if name == "" || email == "" {
 		h.renderFormError(c, http.StatusBadRequest, "Nama dan email wajib diisi")
@@ -60,13 +58,6 @@ func (h *registrationHandlerImpl) Submit(c *gin.Context) {
 	}
 	if !emailPattern.MatchString(email) {
 		h.renderFormError(c, http.StatusBadRequest, "Format email tidak valid")
-		return
-	}
-	// Optional field — only validated when the registrant actually supplies
-	// one, since a malformed value would silently break the <users/ID>
-	// mention tag in reminder messages later.
-	if googleChatUserID != "" && !googleChatUserIDPattern.MatchString(googleChatUserID) {
-		h.renderFormError(c, http.StatusBadRequest, "Google Chat User ID harus berupa angka saja")
 		return
 	}
 

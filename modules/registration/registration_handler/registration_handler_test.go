@@ -46,15 +46,9 @@ func TestShowForm_RendersFormWithNameAndEmailFields(t *testing.T) {
 
 func submitForm(t *testing.T, handler RegistrationHandler, name, email string) *httptest.ResponseRecorder {
 	t.Helper()
-	return submitFormWithChatID(t, handler, name, email, "")
-}
-
-func submitFormWithChatID(t *testing.T, handler RegistrationHandler, name, email, googleChatUserID string) *httptest.ResponseRecorder {
-	t.Helper()
 	form := url.Values{}
 	form.Set("name", name)
 	form.Set("email", email)
-	form.Set("googleChatUserId", googleChatUserID)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
