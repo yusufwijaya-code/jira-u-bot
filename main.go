@@ -13,6 +13,7 @@ import (
 	"jira-u-bot/modules/issue_session/issue_session_service"
 	"jira-u-bot/modules/jira_client/jira_client_service"
 	"jira-u-bot/modules/poller/poller_service"
+	"jira-u-bot/modules/registration/registration_handler"
 	"jira-u-bot/modules/registration/registration_repository"
 	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
 	"jira-u-bot/modules/reminder_log/reminder_log_repository"
@@ -71,7 +72,8 @@ func main() {
 		pollerSvc.Run(shutdownMgr.Context())
 	}()
 
-	router := SetupRouter(db)
+	registrationHandler := registration_handler.NewRegistrationHandler()
+	router := SetupRouter(registrationHandler)
 
 	log.Printf("jira-u-bot listening on :%s", cfg.Port)
 	if err := router.Run(":" + cfg.Port); err != nil {
