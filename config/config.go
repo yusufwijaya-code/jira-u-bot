@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"sync"
 
 	"github.com/spf13/viper"
@@ -18,6 +19,15 @@ type AppConfig struct {
 
 func LoadConfig(cfg *AppConfig) error {
 	v := viper.New()
+	v.SetConfigFile(".env")
+	v.SetConfigType("env")
+	// .env is optional — production deploys may set real OS env vars instead
+	// (systemd/docker) with no .env file on disk at all.
+	if _, statErr := os.Stat(".env"); statErr == nil {
+		if err := v.ReadInConfig(); err != nil {
+			return err
+		}
+	}
 	v.AutomaticEnv()
 	v.SetDefault("PORT", "8080")
 
