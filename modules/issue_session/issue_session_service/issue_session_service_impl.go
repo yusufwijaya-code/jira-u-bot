@@ -24,8 +24,8 @@ func (s *issueSessionServiceImpl) OpenOrResumeSessionAt(ctx context.Context, iss
 	return s.repo.OpenOrResumeSessionAt(ctx, issueKey, projectKey, storyPoints, startedAt, assigneeEmail, issueSummary)
 }
 
-func (s *issueSessionServiceImpl) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64) error {
-	return s.repo.UpdateStoryPoints(ctx, issueKey, storyPoints)
+func (s *issueSessionServiceImpl) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
+	return s.repo.UpdateStoryPoints(ctx, issueKey, storyPoints, assigneeEmail, issueSummary)
 }
 
 func (s *issueSessionServiceImpl) CloseSession(ctx context.Context, issueKey string, additionalSeconds int64) error {

@@ -24,7 +24,7 @@ func (f *fakeIssueSessionRepository) OpenOrResumeSessionAt(ctx context.Context, 
 	return f.err
 }
 
-func (f *fakeIssueSessionRepository) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64) error {
+func (f *fakeIssueSessionRepository) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
 	return f.err
 }
 

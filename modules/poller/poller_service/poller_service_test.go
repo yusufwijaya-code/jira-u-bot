@@ -2,6 +2,7 @@ package poller_service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ type fakeJiraClientService struct {
 	changelogEntryTime time.Time
 	changelogFound     bool
 	changelogErr       error
+	issueStatus        string
+	issueStatusErr     error
 }
 
 func (f *fakeJiraClientService) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -32,6 +35,10 @@ func (f *fakeJiraClientService) GetLatestCodeProcessEntryTime(ctx context.Contex
 
 func (f *fakeJiraClientService) LookupUserByEmail(ctx context.Context, email string) (bool, error) {
 	return false, nil
+}
+
+func (f *fakeJiraClientService) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
+	return f.issueStatus, f.issueStatusErr
 }
 
 type fakeIssueSessionServiceForPoller struct {
@@ -50,29 +57,33 @@ func newFakeIssueSessionServiceForPoller() *fakeIssueSessionServiceForPoller {
 	}
 }
 
-func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64) error {
+func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary string) error {
 	f.openCalls = append(f.openCalls, issueKey)
 	now := time.Now()
 	f.sessions[issueKey] = &issue_session_dto.IssueSession{
 		IssueKey: issueKey, ProjectKey: projectKey, StoryPoints: sp,
 		CurrentSessionStartedDate: &now, FlagActive: true,
+		AssigneeEmail: assigneeEmail, IssueSummary: issueSummary,
 	}
 	return nil
 }
 
-func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time) error {
+func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
 	f.openAtCalls = append(f.openAtCalls, issueKey)
 	f.sessions[issueKey] = &issue_session_dto.IssueSession{
 		IssueKey: issueKey, ProjectKey: projectKey, StoryPoints: sp,
 		CurrentSessionStartedDate: &startedAt, FlagActive: true,
+		AssigneeEmail: assigneeEmail, IssueSummary: issueSummary,
 	}
 	return nil
 }
 
-func (f *fakeIssueSessionServiceForPoller) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64) error {
+func (f *fakeIssueSessionServiceForPoller) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary string) error {
 	f.updateSPCalls[issueKey] = sp
 	if s, ok := f.sessions[issueKey]; ok {
 		s.StoryPoints = sp
+		s.AssigneeEmail = assigneeEmail
+		s.IssueSummary = issueSummary
 	}
 	return nil
 }
@@ -110,7 +121,9 @@ func (f *fakeIssueSessionServiceForPoller) UpdateLastOverageReminder(ctx context
 }
 
 type fakeReminderEngineService struct {
-	evaluateCalls []string
+	evaluateCalls              []string
+	notifyEarlyCompletionCalls []string
+	notifyEarlyCompletionErr   error
 }
 
 func (f *fakeReminderEngineService) ApplicableTiers(budgetSeconds int64) []string { return nil }
@@ -118,6 +131,11 @@ func (f *fakeReminderEngineService) ApplicableTiers(budgetSeconds int64) []strin
 func (f *fakeReminderEngineService) EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error {
 	f.evaluateCalls = append(f.evaluateCalls, issue.Key)
 	return nil
+}
+
+func (f *fakeReminderEngineService) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64) error {
+	f.notifyEarlyCompletionCalls = append(f.notifyEarlyCompletionCalls, issueKey)
+	return f.notifyEarlyCompletionErr
 }
 
 // fakeRegistrationRepositoryForPoller backs the poller's eligibility filter
@@ -136,7 +154,7 @@ func newFakeRegistrationRepositoryForPoller(registeredEmails ...string) *fakeReg
 	return &fakeRegistrationRepositoryForPoller{registeredEmails: m}
 }
 
-func (f *fakeRegistrationRepositoryForPoller) UpsertUser(ctx context.Context, name, email, googleChatUserID string) error {
+func (f *fakeRegistrationRepositoryForPoller) UpsertUser(ctx context.Context, name, email string) error {
 	return nil
 }
 
@@ -145,6 +163,10 @@ func (f *fakeRegistrationRepositoryForPoller) FindUserByEmail(ctx context.Contex
 		return nil, false, nil
 	}
 	return &registration_dto.User{Email: email}, true, nil
+}
+
+func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
+	return nil
 }
 
 // --- helper ---
@@ -461,5 +483,125 @@ func TestBackfillActiveSessions_SkipsIneligibleIssue(t *testing.T) {
 
 	if len(issueSession.openAtCalls) != 0 {
 		t.Errorf("openAtCalls = %v, want none — unregistered assignee must not be backfilled either", issueSession.openAtCalls)
+	}
+}
+
+func TestPollOnce_ExitToCodeReviewWithRemainingBudgetTriggersEarlyCompletion(t *testing.T) {
+	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "Code Review"} // ticket left Code Process entirely
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-10 * time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller()
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(reminderEngine.notifyEarlyCompletionCalls) != 1 || reminderEngine.notifyEarlyCompletionCalls[0] != "OMS-1" {
+		t.Errorf("notifyEarlyCompletionCalls = %v, want [OMS-1] (AC4.1)", reminderEngine.notifyEarlyCompletionCalls)
+	}
+}
+
+func TestPollOnce_ExitToOtherStatusSkipsEarlyCompletion(t *testing.T) {
+	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "Done"}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-10 * time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller()
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
+		t.Errorf("notifyEarlyCompletionCalls = %v, want none — destination status is Done, not Code Review (AC4.5)", reminderEngine.notifyEarlyCompletionCalls)
+	}
+}
+
+func TestPollOnce_GetIssueStatusErrorSkipsEarlyCompletionAndContinuesCycle(t *testing.T) {
+	jiraClient := &fakeJiraClientService{
+		issues:         []jira_client_dto.Issue{assignedIssue("OMS-2", "other@esb.co.id", 2)},
+		issueStatusErr: errors.New("jira api timeout"),
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-10 * time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("other@esb.co.id")
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v, want nil — a GetIssueStatus failure must be logged and skipped, not fail the whole cycle (AC4.4)", err)
+	}
+
+	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
+		t.Errorf("notifyEarlyCompletionCalls = %v, want none when GetIssueStatus failed", reminderEngine.notifyEarlyCompletionCalls)
+	}
+	// OMS-2 is still active and eligible this cycle — confirms the cycle
+	// kept processing other tickets after OMS-1's early-completion check failed.
+	if len(reminderEngine.evaluateCalls) != 1 || reminderEngine.evaluateCalls[0] != "OMS-2" {
+		t.Errorf("evaluateCalls = %v, want [OMS-2] — cycle must continue past the GetIssueStatus error", reminderEngine.evaluateCalls)
+	}
+}
+
+func TestPollOnce_NotifyIfEarlyCompletionErrorIsLoggedNotPropagated(t *testing.T) {
+	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "Code Review"}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-10 * time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+	reminderEngine := &fakeReminderEngineService{notifyEarlyCompletionErr: errors.New("send failed")}
+	registrationRepo := newFakeRegistrationRepositoryForPoller()
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v, want nil — NotifyIfEarlyCompletion failures are best-effort (AC4.4)", err)
+	}
+}
+
+func TestPollOnce_SteadyStateRefreshesAssigneeEmailAndIssueSummary(t *testing.T) {
+	jiraClient := &fakeJiraClientService{
+		issues: []jira_client_dto.Issue{
+			{Key: "OMS-1", Fields: jira_client_dto.IssueFields{
+				StoryPoints: storyPointsPtr(3),
+				Assignee:    &jira_client_dto.Assignee{EmailAddress: "reassigned@esb.co.id", DisplayName: "Reassigned"},
+				Summary:     "Updated summary",
+			}},
+		},
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now()
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "original@esb.co.id", IssueSummary: "Original summary",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("reassigned@esb.co.id")
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if issueSession.sessions["OMS-1"].AssigneeEmail != "reassigned@esb.co.id" {
+		t.Errorf("AssigneeEmail = %q, want refreshed value %q", issueSession.sessions["OMS-1"].AssigneeEmail, "reassigned@esb.co.id")
+	}
+	if issueSession.sessions["OMS-1"].IssueSummary != "Updated summary" {
+		t.Errorf("IssueSummary = %q, want refreshed value %q", issueSession.sessions["OMS-1"].IssueSummary, "Updated summary")
 	}
 }

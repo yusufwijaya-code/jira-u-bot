@@ -60,15 +60,17 @@ func (r *issueSessionRepositoryImpl) OpenOrResumeSessionAt(ctx context.Context, 
 	return err
 }
 
-func (r *issueSessionRepositoryImpl) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64) error {
+func (r *issueSessionRepositoryImpl) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
 	const query = `
 		UPDATE tr_issuesession
 		SET storyPoints = ?,
+		    assigneeEmail = ?,
+		    issueSummary = ?,
 		    editedBy = 'poller',
 		    editedDate = CURRENT_TIMESTAMP
 		WHERE issueKey = ?
 	`
-	_, err := r.db.ExecContext(ctx, query, storyPoints, issueKey)
+	_, err := r.db.ExecContext(ctx, query, storyPoints, assigneeEmail, issueSummary, issueKey)
 	return err
 }
 

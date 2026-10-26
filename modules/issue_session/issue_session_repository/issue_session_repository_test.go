@@ -133,3 +133,34 @@ func TestCloseSession_PreservesAssigneeEmailAndIssueSummary(t *testing.T) {
 		t.Errorf("IssueSummary = %q, want %q to still be readable after close", session.IssueSummary, "Closing test")
 	}
 }
+
+func TestUpdateStoryPoints_AlsoRefreshesAssigneeEmailAndIssueSummary(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewIssueSessionRepository(db)
+	ctx := context.Background()
+	cleanupSession(t, repo, "TESTMYSQL-5")
+
+	if err := repo.OpenOrResumeSession(ctx, "TESTMYSQL-5", "TESTMYSQL", 3, "original@esb.co.id", "Original summary"); err != nil {
+		t.Fatalf("OpenOrResumeSession returned error: %v", err)
+	}
+	if err := repo.UpdateStoryPoints(ctx, "TESTMYSQL-5", 5, "reassigned@esb.co.id", "Updated summary"); err != nil {
+		t.Fatalf("UpdateStoryPoints returned error: %v", err)
+	}
+
+	session, found, err := repo.GetSessionByIssueKey(ctx, "TESTMYSQL-5")
+	if err != nil {
+		t.Fatalf("GetSessionByIssueKey returned error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected session to be found")
+	}
+	if session.StoryPoints != 5 {
+		t.Errorf("StoryPoints = %v, want 5", session.StoryPoints)
+	}
+	if session.AssigneeEmail != "reassigned@esb.co.id" {
+		t.Errorf("AssigneeEmail = %q, want updated value %q (steady-state must keep this fresh too)", session.AssigneeEmail, "reassigned@esb.co.id")
+	}
+	if session.IssueSummary != "Updated summary" {
+		t.Errorf("IssueSummary = %q, want updated value %q", session.IssueSummary, "Updated summary")
+	}
+}

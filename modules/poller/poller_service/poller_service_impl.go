@@ -127,8 +127,27 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if session.CurrentSessionStartedDate != nil {
 			additionalSeconds = p.businessHours.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), p.holidayCalendar)
 		}
+		totalElapsed := session.AccumulatedSeconds + additionalSeconds
+		budgetSeconds := int64(session.StoryPoints * 3600)
+
 		if err := p.issueSession.CloseSession(ctx, key, additionalSeconds); err != nil {
 			return fmt.Errorf("poller: CloseSession(%s) failed: %w", key, err)
+		}
+
+		// Early-completion notice (spec AC4.1/AC4.4/AC4.5) is best-effort:
+		// the session above is already closed by the time we get here, so
+		// there is no natural retry hook if either step below fails — log
+		// and move on to the next ticket rather than failing the cycle.
+		status, err := p.jiraClient.GetIssueStatus(ctx, key)
+		if err != nil {
+			log.Printf("poller: GetIssueStatus(%s) failed, skipping early-completion notice: %v", key, err)
+			continue
+		}
+		if status != jira_client_dto.StatusCodeReview {
+			continue
+		}
+		if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds); err != nil {
+			log.Printf("poller: NotifyIfEarlyCompletion(%s) failed: %v", key, err)
 		}
 	}
 
@@ -137,18 +156,19 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if _, alreadyActive := activeByKey[key]; alreadyActive {
 			continue
 		}
-		if err := p.issueSession.OpenOrResumeSession(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), "", ""); err != nil {
+		if err := p.issueSession.OpenOrResumeSession(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
 			return fmt.Errorf("poller: OpenOrResumeSession(%s) failed: %w", key, err)
 		}
 	}
 
-	// Steady-state: was already active — refresh SP only (spec Note C3),
-	// NEVER call OpenOrResumeSession here (it would reset currentSessionStartedDate).
+	// Steady-state: was already active — refresh SP/assignee/summary (spec
+	// Note C3, and spec Business Logic for Early Completion Notice), NEVER
+	// call OpenOrResumeSession here (it would reset currentSessionStartedDate).
 	for key, issue := range currentByKey {
 		if _, wasAlreadyActive := activeByKey[key]; !wasAlreadyActive {
 			continue
 		}
-		if err := p.issueSession.UpdateStoryPoints(ctx, key, storyPointsOf(issue)); err != nil {
+		if err := p.issueSession.UpdateStoryPoints(ctx, key, storyPointsOf(issue), assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
 			return fmt.Errorf("poller: UpdateStoryPoints(%s) failed: %w", key, err)
 		}
 	}
@@ -199,7 +219,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 			entryTime = time.Now()
 		}
 
-		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, "", ""); err != nil {
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
 			return fmt.Errorf("poller: backfill OpenOrResumeSessionAt(%s) failed: %w", issue.Key, err)
 		}
 	}
@@ -212,6 +232,13 @@ func storyPointsOf(issue jira_client_dto.Issue) float64 {
 		return 0
 	}
 	return *issue.Fields.StoryPoints
+}
+
+func assigneeEmailOf(issue jira_client_dto.Issue) string {
+	if issue.Fields.Assignee == nil {
+		return ""
+	}
+	return issue.Fields.Assignee.EmailAddress
 }
 
 func projectKeyFromIssueKey(issueKey string) string {
