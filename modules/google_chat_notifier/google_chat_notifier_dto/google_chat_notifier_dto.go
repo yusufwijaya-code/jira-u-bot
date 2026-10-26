@@ -12,6 +12,15 @@ type ReminderMessage struct {
 	ElapsedSeconds int64
 	Tier           string
 	IsOverage      bool
+	// AssigneeEmail is the join key chat_dm_notifier_service uses to
+	// resolve/cache a DM target — unused by the webhook notifier, which
+	// always posts to the one shared space regardless of assignee.
+	AssigneeEmail string
+	// IsEarlyCompletion flags a Chapter 6 "finished early" notice — a
+	// third message shape alongside tier and overage, reusing the exact
+	// same routing (reminder_engine_service.pickNotifier) and formatting
+	// (BuildMessageText) pipeline as both of those.
+	IsEarlyCompletion bool
 	// Deadline is the real clock time the ticket must be finished by,
 	// projected forward through business hours from the moment the
 	// reminder is evaluated. Zero-value (unset) for overage messages —

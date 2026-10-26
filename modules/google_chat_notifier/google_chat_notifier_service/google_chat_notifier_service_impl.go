@@ -34,7 +34,7 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 		return nil // no webhook configured — skip, do not fail the poll cycle
 	}
 
-	payload := chatPayload{Text: buildMessageText(msg)}
+	payload := chatPayload{Text: BuildMessageText(msg)}
 
 	_, err = curl_helper.CurlRequest[struct{}](
 		ctx, s.cfg.GoogleChatWebhookURL, nil, payload, http.MethodPost, 10000, false,
@@ -45,7 +45,7 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 	return nil
 }
 
-func buildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
+func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	budgetHours := float64(msg.BudgetSeconds) / 3600
 	elapsedHours := float64(msg.ElapsedSeconds) / 3600
 	remainingSeconds := msg.BudgetSeconds - msg.ElapsedSeconds
