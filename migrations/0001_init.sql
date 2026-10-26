@@ -1,4 +1,4 @@
-CREATE TABLE ms_user (
+CREATE TABLE IF NOT EXISTS ms_user (
   userID INTEGER PRIMARY KEY AUTOINCREMENT,
   userName TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE ms_user (
   UNIQUE (email)
 );
 
-CREATE TABLE tr_issuesession (
+CREATE TABLE IF NOT EXISTS tr_issuesession (
   issueSessionID INTEGER PRIMARY KEY AUTOINCREMENT,
   issueKey TEXT NOT NULL,
   projectKey TEXT NOT NULL,
@@ -26,12 +26,12 @@ CREATE TABLE tr_issuesession (
   UNIQUE (issueKey)
 );
 
-CREATE TABLE tr_reminderlog (
+CREATE TABLE IF NOT EXISTS tr_reminderlog (
   reminderLogID INTEGER PRIMARY KEY AUTOINCREMENT,
   issueKey TEXT NOT NULL,
   tier TEXT NOT NULL,
   sentDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_tr_reminderlog_issuekey_tier
+CREATE INDEX IF NOT EXISTS idx_tr_reminderlog_issuekey_tier
   ON tr_reminderlog (issueKey, tier);

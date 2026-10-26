@@ -48,3 +48,22 @@ func TestApply_EnforcesUniqueEmailOnMsUser(t *testing.T) {
 		t.Fatal("expected UNIQUE constraint violation on duplicate email, got nil error")
 	}
 }
+
+func TestApply_IsIdempotentAcrossRepeatedCalls(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite database: %v", err)
+	}
+	defer db.Close()
+
+	if err := Apply(db); err != nil {
+		t.Fatalf("first Apply() returned error: %v", err)
+	}
+
+	// main.go calls Apply(db) on every process start against the same
+	// on-disk file — a second call (simulating a restart) must not fail
+	// with "table already exists".
+	if err := Apply(db); err != nil {
+		t.Fatalf("second Apply() returned error: %v — migrations must be idempotent across restarts", err)
+	}
+}
