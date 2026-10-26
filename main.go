@@ -105,8 +105,10 @@ func main() {
 	}
 
 	var dmNotifierSvc google_chat_notifier_service.GoogleChatNotifierService
+	var chatDMNotifierSvc chat_dm_notifier_service.ChatDMNotifierService
 	if chatOAuthSvc != nil {
-		dmNotifierSvc = chat_dm_notifier_service.NewChatDMNotifierService(chatOAuthSvc, registrationRepo)
+		chatDMNotifierSvc = chat_dm_notifier_service.NewChatDMNotifierService(chatOAuthSvc, registrationRepo)
+		dmNotifierSvc = chatDMNotifierSvc
 	}
 
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
@@ -125,7 +127,7 @@ func main() {
 		pollerSvc.Run(shutdownMgr.Context())
 	}()
 
-	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo)
+	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo, chatDMNotifierSvc, cfg.JiraEmail)
 	registrationHandler := registration_handler.NewRegistrationHandler(registrationService)
 	router := SetupRouter(registrationHandler)
 

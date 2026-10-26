@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
 	"jira-u-bot/modules/jira_client/jira_client_dto"
 	"jira-u-bot/modules/registration/registration_dto"
 )
@@ -48,7 +49,7 @@ func (f *fakeRegistrationRepositoryForService) UpdateGoogleChatDMSpaceID(ctx con
 func TestRegister_UpsertsWhenJiraAccountFound(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
 	repo := &fakeRegistrationRepositoryForService{}
-	svc := NewRegistrationService(jiraClient, repo)
+	svc := NewRegistrationService(jiraClient, repo, nil, "")
 
 	if err := svc.Register(context.Background(), "Anwar", "anwar@esb.co.id"); err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -61,7 +62,7 @@ func TestRegister_UpsertsWhenJiraAccountFound(t *testing.T) {
 func TestRegister_RejectsWhenJiraAccountNotFound(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForRegistration{found: false}
 	repo := &fakeRegistrationRepositoryForService{}
-	svc := NewRegistrationService(jiraClient, repo)
+	svc := NewRegistrationService(jiraClient, repo, nil, "")
 
 	err := svc.Register(context.Background(), "Ghost", "ghost@esb.co.id")
 	if !errors.Is(err, ErrJiraAccountNotFound) {
@@ -75,7 +76,7 @@ func TestRegister_RejectsWhenJiraAccountNotFound(t *testing.T) {
 func TestRegister_RejectsWhenJiraLookupFails(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForRegistration{err: errors.New("jira api timeout")}
 	repo := &fakeRegistrationRepositoryForService{}
-	svc := NewRegistrationService(jiraClient, repo)
+	svc := NewRegistrationService(jiraClient, repo, nil, "")
 
 	err := svc.Register(context.Background(), "Anwar", "anwar@esb.co.id")
 	if !errors.Is(err, ErrJiraLookupUnavailable) {
@@ -83,5 +84,75 @@ func TestRegister_RejectsWhenJiraLookupFails(t *testing.T) {
 	}
 	if repo.upsertCalled {
 		t.Error("UpsertUser must NOT be called when the Jira lookup itself fails (spec Note C5 — availability trade-off)")
+	}
+}
+
+type fakeChatDMNotifierServiceForRegistration struct {
+	sentPlainTextCalls []string
+	sentToEmails       []string
+	err                error
+}
+
+func (f *fakeChatDMNotifierServiceForRegistration) SendReminder(ctx context.Context, msg google_chat_notifier_dto.ReminderMessage) error {
+	return nil
+}
+
+func (f *fakeChatDMNotifierServiceForRegistration) SendPlainTextDM(ctx context.Context, email, text string) error {
+	f.sentPlainTextCalls = append(f.sentPlainTextCalls, text)
+	f.sentToEmails = append(f.sentToEmails, email)
+	return f.err
+}
+
+func TestRegister_SendsThankYouDMForNonSelfRegistration(t *testing.T) {
+	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
+	repo := &fakeRegistrationRepositoryForService{}
+	dmNotifier := &fakeChatDMNotifierServiceForRegistration{}
+	svc := NewRegistrationService(jiraClient, repo, dmNotifier, "yusuf.wijaya@esb.co.id")
+
+	if err := svc.Register(context.Background(), "Teammate", "teammate@esb.co.id"); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	if len(dmNotifier.sentToEmails) != 1 || dmNotifier.sentToEmails[0] != "teammate@esb.co.id" {
+		t.Errorf("sentToEmails = %v, want [teammate@esb.co.id] (spec AC3.1)", dmNotifier.sentToEmails)
+	}
+}
+
+func TestRegister_SkipsThankYouDMForSelfRegistration(t *testing.T) {
+	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
+	repo := &fakeRegistrationRepositoryForService{}
+	dmNotifier := &fakeChatDMNotifierServiceForRegistration{}
+	svc := NewRegistrationService(jiraClient, repo, dmNotifier, "yusuf.wijaya@esb.co.id")
+
+	if err := svc.Register(context.Background(), "Yusuf Wijaya", "yusuf.wijaya@esb.co.id"); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	if len(dmNotifier.sentToEmails) != 0 {
+		t.Errorf("sentToEmails = %v, want none (spec AC3.2 — self-registration never gets a DM)", dmNotifier.sentToEmails)
+	}
+}
+
+func TestRegister_SkipsThankYouDMWhenDMNotifierNil(t *testing.T) {
+	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
+	repo := &fakeRegistrationRepositoryForService{}
+	svc := NewRegistrationService(jiraClient, repo, nil, "yusuf.wijaya@esb.co.id")
+
+	if err := svc.Register(context.Background(), "Teammate", "teammate@esb.co.id"); err != nil {
+		t.Fatalf("Register returned error: %v, want nil — OAuth not configured must not break registration (spec AC3.2)", err)
+	}
+}
+
+func TestRegister_SucceedsEvenWhenThankYouDMFails(t *testing.T) {
+	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
+	repo := &fakeRegistrationRepositoryForService{}
+	dmNotifier := &fakeChatDMNotifierServiceForRegistration{err: errors.New("network error")}
+	svc := NewRegistrationService(jiraClient, repo, dmNotifier, "yusuf.wijaya@esb.co.id")
+
+	if err := svc.Register(context.Background(), "Teammate", "teammate@esb.co.id"); err != nil {
+		t.Fatalf("Register returned error: %v, want nil — thank-you DM is best-effort, its failure must not fail registration", err)
+	}
+	if !repo.upsertCalled {
+		t.Error("expected UpsertUser to have been called — registration itself must still succeed")
 	}
 }
