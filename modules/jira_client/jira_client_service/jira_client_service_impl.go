@@ -35,7 +35,7 @@ func (s *jiraClientServiceImpl) SearchCodeProcessIssues(ctx context.Context) ([]
 	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID)
 	params.Set("maxResults", "100")
 
-	reqURL := fmt.Sprintf("%s/rest/api/3/search?%s", s.cfg.JiraBaseURL, params.Encode())
+	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
 
 	result, err := curl_helper.CurlRequest[jira_client_dto.SearchResponse](
 		ctx, reqURL, s.authHeaders(), nil, http.MethodGet, 10000, true,

@@ -21,8 +21,8 @@ func newTestConfig(baseURL string) *config.AppConfig {
 
 func TestSearchCodeProcessIssues_ParsesIssueList(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rest/api/3/search" {
-			t.Errorf("path = %s, want /rest/api/3/search", r.URL.Path)
+		if r.URL.Path != "/rest/api/3/search/jql" {
+			t.Errorf("path = %s, want /rest/api/3/search/jql", r.URL.Path)
 		}
 		jql := r.URL.Query().Get("jql")
 		if jql != `project in (CORE, OMS) AND status = "Code Process"` {
