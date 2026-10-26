@@ -15,12 +15,12 @@ type fakeIssueSessionRepository struct {
 	err                 error
 }
 
-func (f *fakeIssueSessionRepository) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64) error {
+func (f *fakeIssueSessionRepository) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
 	f.openOrResumeCalled = true
 	return f.err
 }
 
-func (f *fakeIssueSessionRepository) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time) error {
+func (f *fakeIssueSessionRepository) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
 	return f.err
 }
 
@@ -52,7 +52,7 @@ func TestOpenOrResumeSession_DelegatesToRepository(t *testing.T) {
 	repo := &fakeIssueSessionRepository{}
 	svc := NewIssueSessionService(repo)
 
-	if err := svc.OpenOrResumeSession(context.Background(), "OMS-1", "OMS", 3); err != nil {
+	if err := svc.OpenOrResumeSession(context.Background(), "OMS-1", "OMS", 3, "dev@esb.co.id", "Test ticket"); err != nil {
 		t.Fatalf("OpenOrResumeSession returned error: %v", err)
 	}
 	if !repo.openOrResumeCalled {

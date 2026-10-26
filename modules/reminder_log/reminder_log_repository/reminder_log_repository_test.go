@@ -10,8 +10,9 @@ import (
 func TestHasTierBeenSent_FalseWhenNoRowExists(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewReminderLogRepository(db)
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-1") })
 
-	got, err := repo.HasTierBeenSent(context.Background(), "OMS-1", "1h")
+	got, err := repo.HasTierBeenSent(context.Background(), "TESTMYSQL-RL-1", "1h")
 	if err != nil {
 		t.Fatalf("HasTierBeenSent returned error: %v", err)
 	}
@@ -24,12 +25,13 @@ func TestLogReminderSent_ThenHasTierBeenSentIsTrue(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewReminderLogRepository(db)
 	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-2") })
 
-	if err := repo.LogReminderSent(ctx, "OMS-1", "1h"); err != nil {
+	if err := repo.LogReminderSent(ctx, "TESTMYSQL-RL-2", "1h"); err != nil {
 		t.Fatalf("LogReminderSent returned error: %v", err)
 	}
 
-	got, err := repo.HasTierBeenSent(ctx, "OMS-1", "1h")
+	got, err := repo.HasTierBeenSent(ctx, "TESTMYSQL-RL-2", "1h")
 	if err != nil {
 		t.Fatalf("HasTierBeenSent returned error: %v", err)
 	}
@@ -42,16 +44,17 @@ func TestLogReminderSent_AllowsMultipleOverageEntriesForSameIssue(t *testing.T) 
 	db := testutil.OpenTestDB(t)
 	repo := NewReminderLogRepository(db)
 	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-3") })
 
-	if err := repo.LogReminderSent(ctx, "OMS-1", "overage"); err != nil {
+	if err := repo.LogReminderSent(ctx, "TESTMYSQL-RL-3", "overage"); err != nil {
 		t.Fatalf("first LogReminderSent returned error: %v", err)
 	}
-	if err := repo.LogReminderSent(ctx, "OMS-1", "overage"); err != nil {
+	if err := repo.LogReminderSent(ctx, "TESTMYSQL-RL-3", "overage"); err != nil {
 		t.Fatalf("second LogReminderSent returned error: %v", err)
 	}
 
 	var count int
-	err := db.QueryRow(`SELECT COUNT(*) FROM tr_reminderlog WHERE issueKey = ? AND tier = ?`, "OMS-1", "overage").Scan(&count)
+	err := db.QueryRow(`SELECT COUNT(*) FROM tr_reminderlog WHERE issueKey = ? AND tier = ?`, "TESTMYSQL-RL-3", "overage").Scan(&count)
 	if err != nil {
 		t.Fatalf("count query returned error: %v", err)
 	}
@@ -64,12 +67,13 @@ func TestHasTierBeenSent_DifferentTiersAreIndependent(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewReminderLogRepository(db)
 	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-4") })
 
-	if err := repo.LogReminderSent(ctx, "OMS-1", "1h"); err != nil {
+	if err := repo.LogReminderSent(ctx, "TESTMYSQL-RL-4", "1h"); err != nil {
 		t.Fatalf("LogReminderSent returned error: %v", err)
 	}
 
-	got, err := repo.HasTierBeenSent(ctx, "OMS-1", "30m")
+	got, err := repo.HasTierBeenSent(ctx, "TESTMYSQL-RL-4", "30m")
 	if err != nil {
 		t.Fatalf("HasTierBeenSent returned error: %v", err)
 	}
