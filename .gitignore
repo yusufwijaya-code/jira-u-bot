@@ -1,0 +1,6 @@
+/jira-u-bot
+/jira-u-bot.exe
+*.db
+*.db-journal
+.env
+/tmp/
