@@ -8,3 +8,8 @@ const StatusCodeProcess = "Code Process"
 // StoryPointFieldID is the Jira custom field ID for "Story point estimate",
 // verified against the real esb-id.atlassian.net site during spec research.
 const StoryPointFieldID = "customfield_10016"
+
+// StatusCodeReview is the destination status Early Completion Notice
+// checks for (spec AC4.1/AC4.5) — a ticket leaving "Code Process" to any
+// OTHER status never triggers this notice.
+const StatusCodeReview = "Code Review"

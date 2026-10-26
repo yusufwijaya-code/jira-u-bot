@@ -207,3 +207,37 @@ func TestLookupUserByEmail_PropagatesHTTPErrorOnFailure(t *testing.T) {
 		t.Fatal("expected error to propagate when Jira API returns 500 (spec: hard-block registration treats lookup failure as rejection, Note C5)")
 	}
 }
+
+func TestGetIssueStatus_ReturnsCurrentStatusName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/issue/OMS-1" {
+			t.Errorf("path = %s, want /rest/api/3/issue/OMS-1", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"fields": map[string]any{"status": map[string]any{"name": "Code Review"}},
+		})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+	status, err := svc.GetIssueStatus(context.Background(), "OMS-1")
+	if err != nil {
+		t.Fatalf("GetIssueStatus returned error: %v", err)
+	}
+	if status != "Code Review" {
+		t.Errorf("status = %q, want %q", status, "Code Review")
+	}
+}
+
+func TestGetIssueStatus_PropagatesErrorOnFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+	_, err := svc.GetIssueStatus(context.Background(), "OMS-1")
+	if err == nil {
+		t.Fatal("expected error to propagate when Jira API returns 500")
+	}
+}

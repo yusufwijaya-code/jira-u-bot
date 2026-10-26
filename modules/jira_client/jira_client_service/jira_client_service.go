@@ -15,4 +15,9 @@ type JiraClientService interface {
 	// (spec Business Logic point 7); steady-state polling never calls this.
 	GetLatestCodeProcessEntryTime(ctx context.Context, issueKey string) (time.Time, bool, error)
 	LookupUserByEmail(ctx context.Context, email string) (bool, error)
+	// GetIssueStatus fetches issueKey's CURRENT status directly — used only
+	// at poller exit-event time (spec Business Logic point 2), since by
+	// then the ticket no longer appears in any "status = Code Process" JQL
+	// result and its new status can't be learned any other way.
+	GetIssueStatus(ctx context.Context, issueKey string) (string, error)
 }

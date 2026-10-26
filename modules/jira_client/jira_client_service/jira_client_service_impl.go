@@ -97,6 +97,20 @@ func (s *jiraClientServiceImpl) LookupUserByEmail(ctx context.Context, email str
 	return false, nil
 }
 
+func (s *jiraClientServiceImpl) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
+	params := url.Values{}
+	params.Set("fields", "status")
+	reqURL := fmt.Sprintf("%s/rest/api/3/issue/%s?%s", s.cfg.JiraBaseURL, issueKey, params.Encode())
+
+	result, err := curl_helper.CurlRequest[jira_client_dto.Issue](
+		ctx, reqURL, s.authHeaders(), nil, http.MethodGet, 10000, true,
+	)
+	if err != nil {
+		return "", fmt.Errorf("jira_client: GetIssueStatus(%s) failed: %w", issueKey, err)
+	}
+	return result.Fields.Status.Name, nil
+}
+
 func basicAuthHeader(username, password string) string {
 	raw := username + ":" + password
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(raw))
