@@ -13,14 +13,12 @@ import (
 )
 
 type fakeRegistrationServiceForHandler struct {
-	err                 error
-	registerCalled      bool
-	gotGoogleChatUserID string
+	err            error
+	registerCalled bool
 }
 
-func (f *fakeRegistrationServiceForHandler) Register(ctx context.Context, name, email, googleChatUserID string) error {
+func (f *fakeRegistrationServiceForHandler) Register(ctx context.Context, name, email string) error {
 	f.registerCalled = true
-	f.gotGoogleChatUserID = googleChatUserID
 	return f.err
 }
 
@@ -78,51 +76,6 @@ func TestSubmit_ValidRegistrationRendersSuccessPage(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "Anwar") {
 		t.Error("success page should mention the registrant's name")
-	}
-}
-
-func TestSubmit_GoogleChatUserIDIsOptional(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	fakeSvc := &fakeRegistrationServiceForHandler{}
-	handler := NewRegistrationHandler(fakeSvc)
-
-	w := submitFormWithChatID(t, handler, "Anwar", "anwar@esb.co.id", "")
-
-	if w.Code != 200 {
-		t.Fatalf("status = %d, want 200 — empty Google Chat User ID must not block registration", w.Code)
-	}
-	if !fakeSvc.registerCalled {
-		t.Error("expected Register to be called")
-	}
-}
-
-func TestSubmit_ValidGoogleChatUserIDIsPassedThrough(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	fakeSvc := &fakeRegistrationServiceForHandler{}
-	handler := NewRegistrationHandler(fakeSvc)
-
-	w := submitFormWithChatID(t, handler, "Anwar", "anwar@esb.co.id", "123456789012345678901")
-
-	if w.Code != 200 {
-		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
-	}
-	if fakeSvc.gotGoogleChatUserID != "123456789012345678901" {
-		t.Errorf("Register received googleChatUserID = %q, want %q", fakeSvc.gotGoogleChatUserID, "123456789012345678901")
-	}
-}
-
-func TestSubmit_NonNumericGoogleChatUserIDReturns400(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	fakeSvc := &fakeRegistrationServiceForHandler{}
-	handler := NewRegistrationHandler(fakeSvc)
-
-	w := submitFormWithChatID(t, handler, "Anwar", "anwar@esb.co.id", "not-a-valid-id")
-
-	if w.Code != 400 {
-		t.Errorf("status = %d, want 400", w.Code)
-	}
-	if fakeSvc.registerCalled {
-		t.Error("Register must not be called when the Google Chat User ID fails format validation")
 	}
 }
 

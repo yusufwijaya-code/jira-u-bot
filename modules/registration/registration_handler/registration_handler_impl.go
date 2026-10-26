@@ -70,7 +70,7 @@ func (h *registrationHandlerImpl) Submit(c *gin.Context) {
 		return
 	}
 
-	err := h.registrationService.Register(c.Request.Context(), name, email, googleChatUserID)
+	err := h.registrationService.Register(c.Request.Context(), name, email)
 	switch {
 	case err == nil:
 		c.Header("Content-Type", "text/html; charset=utf-8")

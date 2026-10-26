@@ -9,9 +9,8 @@ type User struct {
 	FlagActive  bool
 	CreatedBy   string
 	CreatedDate time.Time
-	// GoogleChatUserID is the numeric Google Workspace user ID (the part
-	// after "users/" in a mention tag like <users/123...>), self-reported
-	// by the registrant — empty when they haven't supplied one. Used to
-	// @mention them in reminders instead of just printing their name.
-	GoogleChatUserID string
+	// GoogleChatDMSpaceID caches the Google Chat DM space resource name
+	// (from spaces:setup) so chat_dm_notifier doesn't need to re-resolve it
+	// on every send — empty until the first successful DM to this user.
+	GoogleChatDMSpaceID string
 }
