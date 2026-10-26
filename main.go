@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"jira-u-bot/config"
+	"jira-u-bot/migrations"
 
 	_ "modernc.org/sqlite"
 )
@@ -20,6 +21,10 @@ func main() {
 		log.Fatalf("failed to open sqlite database at %s: %v", cfg.SQLitePath, err)
 	}
 	defer db.Close()
+
+	if err := migrations.Apply(db); err != nil {
+		log.Fatalf("failed to apply migrations: %v", err)
+	}
 
 	router := SetupRouter(db)
 
