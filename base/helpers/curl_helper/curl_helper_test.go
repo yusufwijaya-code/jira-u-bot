@@ -97,6 +97,14 @@ func TestCurlRequest_TimeoutReturnsError(t *testing.T) {
 	}
 }
 
+func TestRedactURL_StripsQueryStringAndUserinfo(t *testing.T) {
+	got := redactURL("https://user:pass@chat.googleapis.com/v1/spaces/x/messages?key=secret&token=secret2")
+	want := "https://chat.googleapis.com/v1/spaces/x/messages"
+	if got != want {
+		t.Errorf("redactURL = %q, want %q", got, want)
+	}
+}
+
 func TestCurlRequest_ReturnJSONFalseSkipsDecoding(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

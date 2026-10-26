@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -42,7 +43,7 @@ func CurlRequest[T any](ctx context.Context, url string, headers map[string]stri
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("curl_helper: request to %s failed: %w", url, err)
+		return nil, fmt.Errorf("curl_helper: request to %s failed: %w", redactURL(url), err)
 	}
 	defer resp.Body.Close()
 
@@ -75,4 +76,18 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("curl_helper: unexpected status %d: %s", e.StatusCode, e.Body)
+}
+
+// redactURL strips userinfo and the query string before a URL is ever
+// embedded in an error message — several callers (e.g. the Google Chat
+// webhook) carry secrets in the query string, and errors routinely end up
+// in logs.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "[unparseable URL redacted]"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	return u.String()
 }
