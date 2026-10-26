@@ -9,11 +9,13 @@
         label { display: block; margin-top: 16px; font-weight: 600; }
         input[type=text], input[type=email] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
         button { margin-top: 24px; padding: 10px 20px; cursor: pointer; }
+        .error { color: #b91c1c; margin-top: 12px; }
     </style>
 </head>
 <body>
     <h1>Registrasi Jira U Bot</h1>
     <p>Daftar supaya reminder Code Process kamu dipersonalisasi dengan nama kamu.</p>
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
     <form method="POST" action="/register">
         <label for="name">Nama</label>
         <input type="text" id="name" name="name" required>
