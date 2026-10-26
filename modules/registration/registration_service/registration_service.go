@@ -11,5 +11,5 @@ var (
 )
 
 type RegistrationService interface {
-	Register(ctx context.Context, name, email string) error
+	Register(ctx context.Context, name, email, googleChatUserID string) error
 }

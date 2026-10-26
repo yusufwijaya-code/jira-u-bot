@@ -7,6 +7,6 @@ import (
 )
 
 type RegistrationRepository interface {
-	UpsertUser(ctx context.Context, name, email string) error
+	UpsertUser(ctx context.Context, name, email, googleChatUserID string) error
 	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
 }

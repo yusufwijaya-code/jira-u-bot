@@ -49,6 +49,53 @@ func TestApply_EnforcesUniqueEmailOnMsUser(t *testing.T) {
 	}
 }
 
+func TestApply_AddsGoogleChatUserIDColumnToMsUser(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite database: %v", err)
+	}
+	defer db.Close()
+
+	if err := Apply(db); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+
+	exists, err := columnExists(db, "ms_user", "googleChatUserID")
+	if err != nil {
+		t.Fatalf("columnExists returned error: %v", err)
+	}
+	if !exists {
+		t.Error("expected ms_user.googleChatUserID column to exist after Apply")
+	}
+}
+
+func TestApply_AddsColumnToDatabaseThatPredatesTheMigration(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite database: %v", err)
+	}
+	defer db.Close()
+
+	// Simulate a real production database created before googleChatUserID
+	// existed — exactly the state the user's actual data/jira-u-bot.db is
+	// in right now.
+	if _, err := db.Exec(initSQL); err != nil {
+		t.Fatalf("failed to apply the pre-0002 schema: %v", err)
+	}
+
+	if err := Apply(db); err != nil {
+		t.Fatalf("Apply returned error against a pre-existing database: %v", err)
+	}
+
+	exists, err := columnExists(db, "ms_user", "googleChatUserID")
+	if err != nil {
+		t.Fatalf("columnExists returned error: %v", err)
+	}
+	if !exists {
+		t.Error("expected ms_user.googleChatUserID column to be added by Apply even on an already-migrated-to-0001 database")
+	}
+}
+
 func TestApply_IsIdempotentAcrossRepeatedCalls(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

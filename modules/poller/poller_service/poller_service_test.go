@@ -136,7 +136,7 @@ func newFakeRegistrationRepositoryForPoller(registeredEmails ...string) *fakeReg
 	return &fakeRegistrationRepositoryForPoller{registeredEmails: m}
 }
 
-func (f *fakeRegistrationRepositoryForPoller) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepositoryForPoller) UpsertUser(ctx context.Context, name, email, googleChatUserID string) error {
 	return nil
 }
 

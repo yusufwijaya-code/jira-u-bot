@@ -28,12 +28,14 @@ func (f *fakeJiraClientServiceForRegistration) LookupUserByEmail(ctx context.Con
 }
 
 type fakeRegistrationRepositoryForService struct {
-	upsertCalled bool
-	upsertErr    error
+	upsertCalled        bool
+	upsertErr           error
+	gotGoogleChatUserID string
 }
 
-func (f *fakeRegistrationRepositoryForService) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepositoryForService) UpsertUser(ctx context.Context, name, email, googleChatUserID string) error {
 	f.upsertCalled = true
+	f.gotGoogleChatUserID = googleChatUserID
 	return f.upsertErr
 }
 
@@ -46,11 +48,14 @@ func TestRegister_UpsertsWhenJiraAccountFound(t *testing.T) {
 	repo := &fakeRegistrationRepositoryForService{}
 	svc := NewRegistrationService(jiraClient, repo)
 
-	if err := svc.Register(context.Background(), "Anwar", "anwar@esb.co.id"); err != nil {
+	if err := svc.Register(context.Background(), "Anwar", "anwar@esb.co.id", "123456789"); err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
 	if !repo.upsertCalled {
 		t.Error("expected UpsertUser to be called")
+	}
+	if repo.gotGoogleChatUserID != "123456789" {
+		t.Errorf("UpsertUser received googleChatUserID = %q, want %q", repo.gotGoogleChatUserID, "123456789")
 	}
 }
 
@@ -59,7 +64,7 @@ func TestRegister_RejectsWhenJiraAccountNotFound(t *testing.T) {
 	repo := &fakeRegistrationRepositoryForService{}
 	svc := NewRegistrationService(jiraClient, repo)
 
-	err := svc.Register(context.Background(), "Ghost", "ghost@esb.co.id")
+	err := svc.Register(context.Background(), "Ghost", "ghost@esb.co.id", "")
 	if !errors.Is(err, ErrJiraAccountNotFound) {
 		t.Errorf("err = %v, want ErrJiraAccountNotFound", err)
 	}
@@ -73,7 +78,7 @@ func TestRegister_RejectsWhenJiraLookupFails(t *testing.T) {
 	repo := &fakeRegistrationRepositoryForService{}
 	svc := NewRegistrationService(jiraClient, repo)
 
-	err := svc.Register(context.Background(), "Anwar", "anwar@esb.co.id")
+	err := svc.Register(context.Background(), "Anwar", "anwar@esb.co.id", "")
 	if !errors.Is(err, ErrJiraLookupUnavailable) {
 		t.Errorf("err = %v, want ErrJiraLookupUnavailable", err)
 	}

@@ -64,7 +64,7 @@ type fakeRegistrationRepository struct {
 	users map[string]registration_dto.User
 }
 
-func (f *fakeRegistrationRepository) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepository) UpsertUser(ctx context.Context, name, email, googleChatUserID string) error {
 	return nil
 }
 func (f *fakeRegistrationRepository) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
