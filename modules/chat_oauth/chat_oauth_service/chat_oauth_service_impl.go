@@ -3,7 +3,10 @@ package chat_oauth_service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"golang.org/x/oauth2"
@@ -97,4 +100,54 @@ func saveToken(path string, tok *oauth2.Token) error {
 		return err
 	}
 	return os.WriteFile(path, b, 0600)
+}
+
+// RunSetupFlow runs the one-time interactive OAuth consent flow: it opens a
+// local loopback listener, prints a URL for the operator to open and
+// authorize in a browser, exchanges the resulting code for a token, and
+// saves it to cfg.GoogleOAuthTokenPath. Only ever invoked via the
+// `--setup-oauth` CLI flag (main.go) — never during normal service startup.
+func RunSetupFlow(cfg *config.AppConfig) error {
+	oauthConfig := &oauth2.Config{
+		ClientID:     cfg.GoogleOAuthClientID,
+		ClientSecret: cfg.GoogleOAuthClientSecret,
+		Endpoint:     google.Endpoint,
+		Scopes:       oauthScopes,
+		RedirectURL:  "http://localhost:8089/",
+	}
+
+	codeCh := make(chan string)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		fmt.Fprintln(w, "Authorization complete — you can close this tab and return to the terminal.")
+		go func() { codeCh <- code }()
+	})
+	srv := &http.Server{Addr: "localhost:8089", Handler: mux}
+	go srv.ListenAndServe()
+
+	authURL := oauthConfig.AuthCodeURL("state-token", oauth2.AccessTypeOffline, oauth2.ApprovalForce)
+	fmt.Println("Open this URL in your browser, log in with the Google account you want reminders sent from, then click Allow:")
+	fmt.Println()
+	fmt.Println(authURL)
+	fmt.Println()
+	fmt.Println("Waiting for you to finish logging in...")
+
+	code := <-codeCh
+	srv.Shutdown(context.Background())
+
+	tok, err := oauthConfig.Exchange(context.Background(), code)
+	if err != nil {
+		return fmt.Errorf("token exchange failed: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfg.GoogleOAuthTokenPath), 0700); err != nil {
+		return fmt.Errorf("failed to create token directory: %w", err)
+	}
+	if err := saveToken(cfg.GoogleOAuthTokenPath, tok); err != nil {
+		return fmt.Errorf("failed to save token: %w", err)
+	}
+
+	fmt.Println("Success! Token saved to", cfg.GoogleOAuthTokenPath)
+	return nil
 }

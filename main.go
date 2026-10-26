@@ -14,6 +14,7 @@ import (
 	"jira-u-bot/base/helpers/shutdown"
 	"jira-u-bot/config"
 	"jira-u-bot/migrations"
+	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
 	"jira-u-bot/modules/business_hours/business_hours_service"
 	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
 	"jira-u-bot/modules/issue_session/issue_session_repository"
@@ -30,6 +31,15 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+func shouldRunSetupMode(args []string) bool {
+	for _, a := range args[1:] {
+		if a == "--setup-oauth" {
+			return true
+		}
+	}
+	return false
+}
+
 func mysqlDSN(cfg config.AppConfig) string {
 	return fmt.Sprintf(
 		"%s:%s@(%s:%s)/%s?parseTime=true&loc=Asia%%2FJakarta&multiStatements=true",
@@ -38,6 +48,17 @@ func mysqlDSN(cfg config.AppConfig) string {
 }
 
 func main() {
+	if shouldRunSetupMode(os.Args) {
+		var cfg config.AppConfig
+		if err := config.LoadConfig(&cfg); err != nil {
+			log.Fatalf("failed to load config: %v", err)
+		}
+		if err := chat_oauth_service.RunSetupFlow(&cfg); err != nil {
+			log.Fatalf("oauth setup failed: %v", err)
+		}
+		return
+	}
+
 	var cfg config.AppConfig
 	if err := config.LoadConfig(&cfg); err != nil {
 		log.Fatalf("failed to load config: %v", err)
