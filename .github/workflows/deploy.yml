@@ -35,5 +35,5 @@ jobs:
 
       - name: Health check
         run: |
-          curl -sf https://labcup.tech/ping -o /dev/null
+          curl -sf --retry 5 --retry-delay 3 --retry-all-errors https://labcup.tech/ping -o /dev/null
           echo "jira-u-bot OK"
