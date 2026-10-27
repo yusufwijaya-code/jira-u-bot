@@ -90,6 +90,17 @@ func (e *reminderEngineServiceImpl) ApplicableTiers(budgetSeconds int64) []strin
 	return tiers
 }
 
+// codeProcessStartedAt defensively unwraps the session's current-session
+// start time — nil is only a theoretical state for a session this function
+// is actively evaluating (see the nil-check already in EvaluateAndSend
+// below), but there is no sane display fallback besides the zero value.
+func codeProcessStartedAt(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
+}
+
 func tierDurationSeconds(tier string) int64 {
 	for _, td := range tierDurations {
 		if td.Tier == tier {
@@ -112,7 +123,7 @@ func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue j
 	if elapsedSeconds > budgetSeconds {
 		return e.sendOverageIfDue(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 	}
-	return e.sendTierIfDue(ctx, issue, session.StoryPoints, session.AssigneeEmail, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
+	return e.sendTierIfDue(ctx, issue, session.StoryPoints, session.AssigneeEmail, elapsedSeconds, budgetSeconds, assigneeName, issueURL, codeProcessStartedAt(session.CurrentSessionStartedDate))
 }
 
 // resolveAssigneeDisplayName implements spec AC3.3: an unregistered assignee
@@ -144,16 +155,17 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 	assigneeEmail := session.AssigneeEmail
 
 	msg := google_chat_notifier_dto.ReminderMessage{
-		IssueKey:       issue.Key,
-		IssueURL:       issueURL,
-		IssueSummary:   issue.Fields.Summary,
-		AssigneeName:   assigneeName,
-		AssigneeEmail:  assigneeEmail,
-		StoryPoints:    session.StoryPoints,
-		BudgetSeconds:  budgetSeconds,
-		ElapsedSeconds: elapsedSeconds,
-		Tier:           reminder_log_dto.TierOverage,
-		IsOverage:      true,
+		IssueKey:             issue.Key,
+		IssueURL:             issueURL,
+		IssueSummary:         issue.Fields.Summary,
+		AssigneeName:         assigneeName,
+		AssigneeEmail:        assigneeEmail,
+		StoryPoints:          session.StoryPoints,
+		BudgetSeconds:        budgetSeconds,
+		ElapsedSeconds:       elapsedSeconds,
+		Tier:                 reminder_log_dto.TierOverage,
+		IsOverage:            true,
+		CodeProcessStartedAt: codeProcessStartedAt(session.CurrentSessionStartedDate),
 	}
 
 	// Order matters: only record the send (log + timestamp) AFTER the
@@ -172,7 +184,7 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 	return e.issueSession.UpdateLastOverageReminder(ctx, issue.Key)
 }
 
-func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, assigneeEmail string, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, assigneeEmail string, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string, startedAt time.Time) error {
 	remaining := budgetSeconds - elapsedSeconds
 	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
 
@@ -190,17 +202,18 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 		}
 
 		msg := google_chat_notifier_dto.ReminderMessage{
-			IssueKey:       issue.Key,
-			IssueURL:       issueURL,
-			IssueSummary:   issue.Fields.Summary,
-			AssigneeName:   assigneeName,
-			AssigneeEmail:  assigneeEmail,
-			StoryPoints:    storyPoints,
-			BudgetSeconds:  budgetSeconds,
-			ElapsedSeconds: elapsedSeconds,
-			Tier:           tier,
-			IsOverage:      false,
-			Deadline:       deadline,
+			IssueKey:             issue.Key,
+			IssueURL:             issueURL,
+			IssueSummary:         issue.Fields.Summary,
+			AssigneeName:         assigneeName,
+			AssigneeEmail:        assigneeEmail,
+			StoryPoints:          storyPoints,
+			BudgetSeconds:        budgetSeconds,
+			ElapsedSeconds:       elapsedSeconds,
+			Tier:                 tier,
+			IsOverage:            false,
+			Deadline:             deadline,
+			CodeProcessStartedAt: startedAt,
 		}
 
 		if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
@@ -212,7 +225,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 	return nil
 }
 
-func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64) error {
+func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {
 	if elapsedSeconds >= budgetSeconds {
 		return nil
 	}
@@ -226,16 +239,18 @@ func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context,
 	}
 
 	msg := google_chat_notifier_dto.ReminderMessage{
-		IssueKey:          issueKey,
-		IssueURL:          fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issueKey),
-		IssueSummary:      issueSummary,
-		AssigneeName:      assigneeName,
-		AssigneeEmail:     assigneeEmail,
-		StoryPoints:       float64(budgetSeconds) / 3600,
-		BudgetSeconds:     budgetSeconds,
-		ElapsedSeconds:    elapsedSeconds,
-		IsEarlyCompletion: true,
-		Deadline:          deadline,
+		IssueKey:             issueKey,
+		IssueURL:             fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issueKey),
+		IssueSummary:         issueSummary,
+		AssigneeName:         assigneeName,
+		AssigneeEmail:        assigneeEmail,
+		StoryPoints:          float64(budgetSeconds) / 3600,
+		BudgetSeconds:        budgetSeconds,
+		ElapsedSeconds:       elapsedSeconds,
+		IsEarlyCompletion:    true,
+		Deadline:             deadline,
+		CodeProcessStartedAt: codeProcessStartedAt,
+		CodeReviewEnteredAt:  codeReviewEnteredAt,
 	}
 
 	return e.pickNotifier(assigneeEmail).SendReminder(ctx, msg)

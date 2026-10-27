@@ -493,7 +493,10 @@ func TestNotifyIfEarlyCompletion_SendsNoticeWhenElapsedBelowBudget(t *testing.T)
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
 	)
 
-	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 5000, 10800)
+	startedAt := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
+	enteredCodeReviewAt := time.Date(2026, 10, 27, 9, 23, 20, 0, time.UTC)
+
+	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 5000, 10800, startedAt, enteredCodeReviewAt)
 	if err != nil {
 		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
 	}
@@ -508,6 +511,12 @@ func TestNotifyIfEarlyCompletion_SendsNoticeWhenElapsedBelowBudget(t *testing.T)
 	if msg.AssigneeName != "Teammate Name" {
 		t.Errorf("AssigneeName = %q, want %q (resolved via registration lookup)", msg.AssigneeName, "Teammate Name")
 	}
+	if !msg.CodeProcessStartedAt.Equal(startedAt) {
+		t.Errorf("CodeProcessStartedAt = %v, want %v", msg.CodeProcessStartedAt, startedAt)
+	}
+	if !msg.CodeReviewEnteredAt.Equal(enteredCodeReviewAt) {
+		t.Errorf("CodeReviewEnteredAt = %v, want %v", msg.CodeReviewEnteredAt, enteredCodeReviewAt)
+	}
 }
 
 func TestNotifyIfEarlyCompletion_SkipsWhenElapsedAtOrAboveBudget(t *testing.T) {
@@ -521,7 +530,7 @@ func TestNotifyIfEarlyCompletion_SkipsWhenElapsedAtOrAboveBudget(t *testing.T) {
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
 	)
 
-	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 10800, 10800)
+	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 10800, 10800, time.Time{}, time.Time{})
 	if err != nil {
 		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
 	}
@@ -543,14 +552,14 @@ func TestNotifyIfEarlyCompletion_RoutesSelfToWebhookAndTeammateToDM(t *testing.T
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
 	)
 
-	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "yusuf.wijaya@esb.co.id", "Self ticket", 1000, 10800); err != nil {
+	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "yusuf.wijaya@esb.co.id", "Self ticket", 1000, 10800, time.Time{}, time.Time{}); err != nil {
 		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
 	}
 	if len(webhookNotifier.sentMessages) != 1 || len(dmNotifier.sentMessages) != 0 {
 		t.Errorf("self assignee must use webhook (spec AC4.3) — webhook=%d dm=%d", len(webhookNotifier.sentMessages), len(dmNotifier.sentMessages))
 	}
 
-	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-2", "teammate@esb.co.id", "Teammate ticket", 1000, 10800); err != nil {
+	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-2", "teammate@esb.co.id", "Teammate ticket", 1000, 10800, time.Time{}, time.Time{}); err != nil {
 		t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
 	}
 	if len(dmNotifier.sentMessages) != 1 {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"jira-u-bot/base/helpers/curl_helper"
@@ -45,31 +46,73 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 	return nil
 }
 
+// messageFooter is appended to every reminder/overage/early-completion
+// message — plain URLs (no <url|label> masking) and this footer are the
+// only requirements shared across all three shapes.
+const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
+
+func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
+	switch {
+	case msg.IsEarlyCompletion:
+		return fmt.Sprintf("✅ *%s* — Selesai Lebih Awal", msg.IssueKey)
+	case msg.IsOverage:
+		return fmt.Sprintf("🔴 *%s* — SUDAH LEWAT BUDGET", msg.IssueKey)
+	default:
+		return fmt.Sprintf("⏰ *%s* — Reminder %s", msg.IssueKey, tierLabel(msg.Tier))
+	}
+}
+
+// BuildMessageText renders a plain, non-masked URL on its own line instead
+// of the Hangouts-style "<url|label>" hyperlink syntax: that syntax is only
+// parsed when a Chat app posts a message (the webhook/space path), not when
+// a message is sent via the Chat API under a user's own OAuth token (the DM
+// path) — using it produced one rendering in the shared space and a
+// mangled, line-break-less wall of text in DMs. A bare URL auto-linkifies
+// identically in both paths.
 func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	budgetHours := float64(msg.BudgetSeconds) / 3600
 	elapsedHours := float64(msg.ElapsedSeconds) / 3600
 	remainingSeconds := msg.BudgetSeconds - msg.ElapsedSeconds
 
-	header := fmt.Sprintf("⏰ *%s* — reminder %s", msg.IssueKey, tierLabel(msg.Tier))
-	timeLine := fmt.Sprintf("Sisa: %s", formatDuration(remainingSeconds))
-	deadlineLine := fmt.Sprintf("Harus selesai: %s\n", formatDeadline(msg.Deadline))
+	lines := []string{
+		messageHeader(msg),
+		msg.IssueURL,
+		msg.IssueSummary,
+		"",
+		fmt.Sprintf("*Assignee:* %s", msg.AssigneeName),
+		fmt.Sprintf("*Masuk Code Process:* %s", formatDeadline(msg.CodeProcessStartedAt)),
+	}
+	if msg.IsEarlyCompletion {
+		lines = append(lines, fmt.Sprintf("*Pindah ke Code Review:* %s", formatDeadline(msg.CodeReviewEnteredAt)))
+	}
+	lines = append(lines,
+		fmt.Sprintf("*Story Point:* %.1f SP (budget %.1f jam, dihitung dari %.1f SP × 1 jam/SP)", msg.StoryPoints, budgetHours, msg.StoryPoints),
+		fmt.Sprintf("*Waktu berjalan:* %.1f jam", elapsedHours),
+	)
 
 	switch {
 	case msg.IsEarlyCompletion:
-		header = fmt.Sprintf("✅ *%s* — selesai lebih awal (masuk Code Review)", msg.IssueKey)
-		timeLine = fmt.Sprintf("Sisa budget tidak terpakai: %s", formatDuration(remainingSeconds))
-		deadlineLine = fmt.Sprintf("Limit seharusnya: %s\n", formatDeadline(msg.Deadline))
+		lines = append(lines,
+			fmt.Sprintf("*Sisa budget tidak terpakai:* %s", formatDuration(remainingSeconds)),
+			fmt.Sprintf("*Limit seharusnya selesai:* %s", formatDeadline(msg.Deadline)),
+			"",
+			"Mantap, kerja bagus! 👏",
+		)
 	case msg.IsOverage:
-		header = fmt.Sprintf("🔴 *%s* — SUDAH LEWAT BUDGET", msg.IssueKey)
-		timeLine = fmt.Sprintf("Overage: %s", formatDuration(remainingSeconds))
-		deadlineLine = "" // already past due — a "must finish by" instant no longer applies
+		lines = append(lines,
+			fmt.Sprintf("*Lewat budget selama:* %s", formatDuration(remainingSeconds)),
+			"",
+			"Segera selesaikan atau koordinasikan ke lead ya 🙏",
+		)
+	default:
+		lines = append(lines,
+			fmt.Sprintf("*Sisa waktu:* %s", formatDuration(remainingSeconds)),
+			fmt.Sprintf("*Harus Selesai Pass:* %s", formatDeadline(msg.Deadline)),
+		)
 	}
 
-	return fmt.Sprintf(
-		"%s\n<%s|%s> — %s\nAssignee: %s\nSP: %.1f (budget %.1f jam) | Elapsed: %.1f jam\n%s%s",
-		header, msg.IssueURL, msg.IssueKey, msg.IssueSummary, msg.AssigneeName,
-		msg.StoryPoints, budgetHours, elapsedHours, deadlineLine, timeLine,
-	)
+	lines = append(lines, "", messageFooter)
+	return strings.Join(lines, "\n")
 }
 
 // formatDuration renders a second count as "D hari H jam M menit S detik" —

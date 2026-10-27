@@ -126,11 +126,11 @@ func TestSendReminder_TierMessageShowsDeadlineAndDHMSBreakdown(t *testing.T) {
 	}
 
 	text := gotBody["text"]
-	if !strings.Contains(text, "Harus selesai: Senin, 26 Okt 2026 15:12:00 WIB") {
-		t.Errorf("message text %q does not contain the expected absolute deadline line", text)
+	if !strings.Contains(text, "*Harus Selesai Pass:* Senin, 26 Okt 2026 15:12:00 WIB") {
+		t.Errorf("message text %q does not contain the expected bold absolute deadline line", text)
 	}
-	if !strings.Contains(text, "Sisa: 0 hari 0 jam 54 menit 0 detik") {
-		t.Errorf("message text %q does not contain the expected D/H/M/S remaining breakdown", text)
+	if !strings.Contains(text, "*Sisa waktu:* 0 hari 0 jam 54 menit 0 detik") {
+		t.Errorf("message text %q does not contain the expected bold D/H/M/S remaining breakdown", text)
 	}
 }
 
@@ -163,11 +163,11 @@ func TestSendReminder_OverageMessageOmitsDeadlineButShowsDHMSBreakdown(t *testin
 	}
 
 	text := gotBody["text"]
-	if strings.Contains(text, "Harus selesai:") {
+	if strings.Contains(text, "Harus Selesai Pass:") {
 		t.Errorf("overage message text %q must not show an absolute deadline — it has already passed", text)
 	}
-	if !strings.Contains(text, "Overage: 0 hari 1 jam 21 menit 0 detik") {
-		t.Errorf("message text %q does not contain the expected D/H/M/S overage breakdown", text)
+	if !strings.Contains(text, "*Lewat budget selama:* 0 hari 1 jam 21 menit 0 detik") {
+		t.Errorf("message text %q does not contain the expected bold D/H/M/S overage breakdown", text)
 	}
 }
 
@@ -231,16 +231,99 @@ func TestSendReminder_EarlyCompletionMessageShowsUnusedBudgetAndWouldHaveBeenDea
 	}
 
 	text := gotBody["text"]
-	if !strings.Contains(text, "selesai lebih awal") {
+	if !strings.Contains(text, "Selesai Lebih Awal") {
 		t.Errorf("message text %q does not contain the expected early-completion header", text)
 	}
-	if !strings.Contains(text, "Sisa budget tidak terpakai: 0 hari 1 jam 30 menit 0 detik") {
+	if !strings.Contains(text, "*Sisa budget tidak terpakai:* 0 hari 1 jam 30 menit 0 detik") {
 		t.Errorf("message text %q does not contain the expected unused-budget line", text)
 	}
-	if !strings.Contains(text, "Limit seharusnya: Selasa, 27 Okt 2026 09:00:00 WIB") {
+	if !strings.Contains(text, "*Limit seharusnya selesai:* Selasa, 27 Okt 2026 09:00:00 WIB") {
 		t.Errorf("message text %q does not contain the expected would-have-been-deadline line", text)
 	}
-	if strings.Contains(text, "Harus selesai:") {
-		t.Error("early-completion message must not show the tier-reminder 'Harus selesai' line")
+	if strings.Contains(text, "Harus Selesai Pass:") {
+		t.Error("early-completion message must not show the tier-reminder 'Harus Selesai Pass' line")
+	}
+}
+
+func TestBuildMessageText_UsesPlainURLNotMaskedHyperlink(t *testing.T) {
+	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
+		IssueKey:     "OMS-1",
+		IssueURL:     "https://esb-id.atlassian.net/browse/OMS-1",
+		IssueSummary: "Book Integration",
+		AssigneeName: "Anwar",
+		Tier:         "30m",
+	})
+
+	if !strings.Contains(text, "https://esb-id.atlassian.net/browse/OMS-1") {
+		t.Errorf("message text %q does not contain the plain issue URL", text)
+	}
+	if strings.Contains(text, "<https://esb-id.atlassian.net/browse/OMS-1|") {
+		t.Error("message text must not use the <url|label> masked-hyperlink syntax — it renders as literal text instead of a link when sent via the DM (user-OAuth) path, unlike the webhook path")
+	}
+}
+
+func TestBuildMessageText_IncludesBoldCodeProcessStartedAt(t *testing.T) {
+	startedAt := time.Date(2026, 10, 27, 9, 50, 47, 0, time.FixedZone("WIB", 7*3600))
+	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
+		IssueKey:             "OMS-1",
+		AssigneeName:         "Anwar",
+		Tier:                 "30m",
+		CodeProcessStartedAt: startedAt,
+	})
+
+	if !strings.Contains(text, "*Masuk Code Process:* Selasa, 27 Okt 2026 09:50:47 WIB") {
+		t.Errorf("message text %q does not contain the expected bold Code Process start line", text)
+	}
+}
+
+func TestBuildMessageText_EarlyCompletionIncludesCodeReviewEnteredAt(t *testing.T) {
+	enteredAt := time.Date(2026, 10, 27, 11, 0, 0, 0, time.FixedZone("WIB", 7*3600))
+	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
+		IssueKey:            "OMS-1",
+		AssigneeName:        "Anwar",
+		IsEarlyCompletion:   true,
+		CodeReviewEnteredAt: enteredAt,
+	})
+
+	if !strings.Contains(text, "*Pindah ke Code Review:* Selasa, 27 Okt 2026 11:00:00 WIB") {
+		t.Errorf("message text %q does not contain the expected bold Code Review transition line", text)
+	}
+}
+
+func TestBuildMessageText_TierAndOverageOmitCodeReviewEnteredAt(t *testing.T) {
+	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
+		{IssueKey: "OMS-1", Tier: "30m"},
+		{IssueKey: "OMS-1", IsOverage: true},
+	} {
+		if text := BuildMessageText(msg); strings.Contains(text, "Pindah ke Code Review") {
+			t.Errorf("message text %q must not show 'Pindah ke Code Review' — ticket hasn't left Code Process yet", text)
+		}
+	}
+}
+
+func TestBuildMessageText_IncludesStoryPointCalculationExplanation(t *testing.T) {
+	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
+		IssueKey:      "OMS-1",
+		AssigneeName:  "Anwar",
+		Tier:          "30m",
+		StoryPoints:   3,
+		BudgetSeconds: 10800,
+	})
+
+	if !strings.Contains(text, "*Story Point:* 3.0 SP (budget 3.0 jam, dihitung dari 3.0 SP × 1 jam/SP)") {
+		t.Errorf("message text %q does not explain how the budget was calculated from story points", text)
+	}
+}
+
+func TestBuildMessageText_EndsWithOKRHashtagFooter(t *testing.T) {
+	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
+		{IssueKey: "OMS-1", Tier: "30m"},
+		{IssueKey: "OMS-1", IsOverage: true},
+		{IssueKey: "OMS-1", IsEarlyCompletion: true},
+	} {
+		text := BuildMessageText(msg)
+		if !strings.HasSuffix(text, "#BersamaSayaMenempuhOKRyangPassss") {
+			t.Errorf("message text %q does not end with the OKR hashtag footer", text)
+		}
 	}
 }

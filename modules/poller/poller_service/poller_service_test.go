@@ -133,7 +133,7 @@ func (f *fakeReminderEngineService) EvaluateAndSend(ctx context.Context, issue j
 	return nil
 }
 
-func (f *fakeReminderEngineService) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64) error {
+func (f *fakeReminderEngineService) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {
 	f.notifyEarlyCompletionCalls = append(f.notifyEarlyCompletionCalls, issueKey)
 	return f.notifyEarlyCompletionErr
 }

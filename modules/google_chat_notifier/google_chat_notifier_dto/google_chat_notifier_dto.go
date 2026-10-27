@@ -27,4 +27,14 @@ type ReminderMessage struct {
 	// the deadline has already passed, so "must finish by" no longer
 	// applies there.
 	Deadline time.Time
+	// CodeProcessStartedAt is when the ticket's current Code Process
+	// session began (issue_session_dto.IssueSession.CurrentSessionStartedDate)
+	// — shown on every message so the recipient can see the calculation's
+	// starting point, not just its elapsed/remaining output.
+	CodeProcessStartedAt time.Time
+	// CodeReviewEnteredAt is when the ticket left Code Process for Code
+	// Review — only set for IsEarlyCompletion messages, where it's the
+	// counterpart to CodeProcessStartedAt (how long the ticket actually
+	// spent in Code Process vs. its budget).
+	CodeReviewEnteredAt time.Time
 }

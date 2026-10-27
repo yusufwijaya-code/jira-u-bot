@@ -52,7 +52,18 @@ func (s *registrationServiceImpl) sendThankYouDM(ctx context.Context, email stri
 	if email == s.selfEmail || s.dmNotifier == nil {
 		return
 	}
-	const text = "Terima kasih sudah mendaftar! Reminder Code Process kamu sekarang akan masuk ke DM ini."
+	const text = `🎉 Halo! Registrasi kamu di Jira U Bot berhasil.
+
+🤖 Mulai sekarang, setiap tiket Code Process yang kamu pegang bakal dipantau otomatis, dan reminder-nya masuk langsung ke DM ini.
+
+Manfaatnya buat kamu:
+⏰ Diingetin sebelum budget waktu habis (T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-1 menit)
+🔴 Dapet notif kalau sudah lewat budget, biar bisa segera eskalasi
+🎉 Dapet apresiasi kalau selesai lebih awal dari budget
+
+Fokus ngerjain tiketnya aja, biar Jira U Bot yang ingetin waktunya 💪
+
+#BersamaSayaMenempuhOKRyangPassss`
 	if err := s.dmNotifier.SendPlainTextDM(ctx, email, text); err != nil {
 		log.Printf("registration_service: thank-you DM to %s failed: %v", email, err)
 	}

@@ -163,7 +163,16 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if status != jira_client_dto.StatusCodeReview {
 			continue
 		}
-		if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds); err != nil {
+		var startedAt time.Time
+		if session.CurrentSessionStartedDate != nil {
+			startedAt = *session.CurrentSessionStartedDate
+		}
+		// codeReviewEnteredAt is "now": GetIssueStatus above just confirmed the
+		// ticket is in Code Review this cycle, so the moment this poll runs is
+		// the closest we track to when it actually left Code Process — there is
+		// no separate changelog lookup for the Code Review transition the way
+		// GetLatestCodeProcessEntryTime exists for entering Code Process.
+		if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt, time.Now()); err != nil {
 			log.Printf("poller: NotifyIfEarlyCompletion(%s) failed: %v", key, err)
 		}
 	}

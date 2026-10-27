@@ -2,6 +2,7 @@ package reminder_engine_service
 
 import (
 	"context"
+	"time"
 
 	"jira-u-bot/modules/issue_session/issue_session_dto"
 	"jira-u-bot/modules/jira_client/jira_client_dto"
@@ -18,6 +19,8 @@ type ReminderEngineService interface {
 	// a one-off notice showing the unused time and what the deadline would
 	// have been. The Code Review status check (AC4.5) happens in the
 	// poller BEFORE this is called — by the time this method runs, that
-	// decision has already been made.
-	NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64) error
+	// decision has already been made. codeProcessStartedAt/codeReviewEnteredAt
+	// let the message show both ends of the ticket's time in Code Process,
+	// not just the elapsed/remaining totals.
+	NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error
 }
