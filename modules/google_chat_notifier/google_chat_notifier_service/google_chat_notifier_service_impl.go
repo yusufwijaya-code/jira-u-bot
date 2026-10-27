@@ -51,6 +51,12 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 // only requirements shared across all three shapes.
 const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
 
+// helpHint advertises the interactive bot's slash commands on every
+// outbound message — this function is shared by both the webhook/space
+// path and the DM path, so adding it here covers both without touching
+// either notifier separately.
+const helpHint = "💡 Ketik */help* ke bot ini buat lihat command lain"
+
 func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
 	case msg.IsEarlyCompletion:
@@ -80,10 +86,10 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 		msg.IssueSummary,
 		"",
 		fmt.Sprintf("*Assignee:* %s", msg.AssigneeName),
-		fmt.Sprintf("*Masuk Code Process:* %s", formatDeadline(msg.CodeProcessStartedAt)),
+		fmt.Sprintf("*Masuk Code Process:* %s", FormatDeadline(msg.CodeProcessStartedAt)),
 	}
 	if msg.IsEarlyCompletion {
-		lines = append(lines, fmt.Sprintf("*Pindah ke Code Review:* %s", formatDeadline(msg.CodeReviewEnteredAt)))
+		lines = append(lines, fmt.Sprintf("*Pindah ke Code Review:* %s", FormatDeadline(msg.CodeReviewEnteredAt)))
 	}
 	lines = append(lines,
 		fmt.Sprintf("*Story Point:* %.1f SP (budget %.1f jam, dihitung dari %.1f SP × 1 jam/SP)", msg.StoryPoints, budgetHours, msg.StoryPoints),
@@ -93,32 +99,32 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
 	case msg.IsEarlyCompletion:
 		lines = append(lines,
-			fmt.Sprintf("*Sisa budget tidak terpakai:* %s", formatDuration(remainingSeconds)),
-			fmt.Sprintf("*Limit seharusnya selesai:* %s", formatDeadline(msg.Deadline)),
+			fmt.Sprintf("*Sisa budget tidak terpakai:* %s", FormatDuration(remainingSeconds)),
+			fmt.Sprintf("*Limit seharusnya selesai:* %s", FormatDeadline(msg.Deadline)),
 			"",
 			"Mantap, kerja bagus! 👏",
 		)
 	case msg.IsOverage:
 		lines = append(lines,
-			fmt.Sprintf("*Lewat budget selama:* %s", formatDuration(remainingSeconds)),
+			fmt.Sprintf("*Lewat budget selama:* %s", FormatDuration(remainingSeconds)),
 			"",
 			"Segera selesaikan atau koordinasikan ke lead ya 🙏",
 		)
 	default:
 		lines = append(lines,
-			fmt.Sprintf("*Sisa waktu:* %s", formatDuration(remainingSeconds)),
-			fmt.Sprintf("*Harus Selesai Pass:* %s", formatDeadline(msg.Deadline)),
+			fmt.Sprintf("*Sisa waktu:* %s", FormatDuration(remainingSeconds)),
+			fmt.Sprintf("*Harus Selesai Pass:* %s", FormatDeadline(msg.Deadline)),
 		)
 	}
 
-	lines = append(lines, "", messageFooter)
+	lines = append(lines, "", helpHint, "", messageFooter)
 	return strings.Join(lines, "\n")
 }
 
-// formatDuration renders a second count as "D hari H jam M menit S detik" —
+// FormatDuration renders a second count as "D hari H jam M menit S detik" —
 // used for both the pre-deadline countdown and the overage amount, so both
 // read in the same unit instead of a vague decimal-hours figure.
-func formatDuration(totalSeconds int64) string {
+func FormatDuration(totalSeconds int64) string {
 	if totalSeconds < 0 {
 		totalSeconds = -totalSeconds
 	}
@@ -140,11 +146,11 @@ var indonesianMonths = map[time.Month]string{
 	time.September: "Sep", time.October: "Okt", time.November: "Nov", time.December: "Des",
 }
 
-// formatDeadline renders an absolute instant as "Senin, 26 Okt 2026
+// FormatDeadline renders an absolute instant as "Senin, 26 Okt 2026
 // 15:12:00 WIB" — Go's time package has no Indonesian locale, so day/month
 // names are looked up from a small fixed table instead of pulling in an
 // i18n dependency for this one line.
-func formatDeadline(t time.Time) string {
+func FormatDeadline(t time.Time) string {
 	return fmt.Sprintf("%s, %02d %s %d %02d:%02d:%02d WIB",
 		indonesianWeekdays[t.Weekday()], t.Day(), indonesianMonths[t.Month()], t.Year(),
 		t.Hour(), t.Minute(), t.Second())
@@ -160,6 +166,8 @@ func tierLabel(tier string) string {
 		return "T-30 menit"
 	case "15m":
 		return "T-15 menit"
+	case "5m":
+		return "T-5 menit"
 	case "1m":
 		return "T-1 menit"
 	default:

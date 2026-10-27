@@ -27,6 +27,7 @@ var tierDurations = []struct {
 	{reminder_log_dto.Tier1h, 1 * time.Hour},
 	{reminder_log_dto.Tier30m, 30 * time.Minute},
 	{reminder_log_dto.Tier15m, 15 * time.Minute},
+	{reminder_log_dto.Tier5m, 5 * time.Minute},
 	{reminder_log_dto.Tier1m, 1 * time.Minute},
 }
 
@@ -111,10 +112,7 @@ func tierDurationSeconds(tier string) int64 {
 }
 
 func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error {
-	elapsedSeconds := session.AccumulatedSeconds
-	if session.CurrentSessionStartedDate != nil {
-		elapsedSeconds += e.businessHours.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), e.holidayCalendar)
-	}
+	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, e.businessHours, e.holidayCalendar)
 
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	assigneeName := e.resolveAssigneeDisplayName(ctx, issue.Fields.Assignee)

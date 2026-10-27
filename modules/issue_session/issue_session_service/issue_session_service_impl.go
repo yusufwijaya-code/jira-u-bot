@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"jira-u-bot/modules/business_hours/business_hours_dto"
+	"jira-u-bot/modules/business_hours/business_hours_service"
 	"jira-u-bot/modules/issue_session/issue_session_dto"
 	"jira-u-bot/modules/issue_session/issue_session_repository"
 )
@@ -42,4 +44,18 @@ func (s *issueSessionServiceImpl) GetSessionByIssueKey(ctx context.Context, issu
 
 func (s *issueSessionServiceImpl) UpdateLastOverageReminder(ctx context.Context, issueKey string) error {
 	return s.repo.UpdateLastOverageReminder(ctx, issueKey)
+}
+
+// CalculateElapsedSeconds returns a session's total elapsed time: its
+// accumulated seconds from past Code Process periods, plus live business-hours
+// elapsed since CurrentSessionStartedDate if a session is currently active.
+// Shared by reminder_engine_service (tier/overage math) and
+// chat_interactive_service (on-demand query commands) so both always report
+// the exact same number for the same ticket.
+func CalculateElapsedSeconds(session issue_session_dto.IssueSession, bh business_hours_service.BusinessHoursService, cal business_hours_dto.HolidayCalendar) int64 {
+	elapsedSeconds := session.AccumulatedSeconds
+	if session.CurrentSessionStartedDate != nil {
+		elapsedSeconds += bh.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), cal)
+	}
+	return elapsedSeconds
 }
