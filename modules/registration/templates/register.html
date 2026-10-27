@@ -1,29 +1,270 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <title>Registrasi - Jira U Bot</title>
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 420px; margin: 60px auto; padding: 0 16px; }
-        h1 { font-size: 1.25rem; }
-        label { display: block; margin-top: 16px; font-weight: 600; }
-        input[type=text], input[type=email] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
-        button { margin-top: 24px; padding: 10px 20px; cursor: pointer; }
-        .error { color: #b91c1c; margin-top: 12px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registrasi - Jira U Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=REM:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --esb-blue: #1286e1;
+        --esb-blue-dark: #0e65a9;
+        --esb-blue-darker: #094371;
+        --esb-blue-light: #eaf5ff;
+        --esb-orange: #eb7300;
+        --esb-text: #333333;
+        --esb-text-muted: #6c6c6c;
+        --esb-border: #e6e6e6;
+        --esb-error: #b91c1c;
+        --esb-error-bg: #fdecec;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        font-family: 'REM', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color: var(--esb-text);
+        background: radial-gradient(circle at top left, var(--esb-blue-light), #ffffff 55%);
+    }
+
+    .card {
+        width: 100%;
+        max-width: 440px;
+        background: #ffffff;
+        border-radius: 24px;
+        padding: 40px 36px;
+        box-shadow: 0 20px 45px -15px rgba(9, 67, 113, 0.18);
+        border: 1px solid var(--esb-border);
+        opacity: 0;
+        transform: translateY(12px);
+        animation: card-in 0.5s ease forwards;
+    }
+
+    @keyframes card-in {
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .logo {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 24px;
+    }
+
+    .logo svg { height: 32px; width: auto; }
+
+    h1 {
+        font-size: 1.4rem;
+        font-weight: 700;
+        text-align: center;
+        margin: 0 0 8px;
+        color: var(--esb-blue-darker);
+    }
+
+    .subtitle {
+        text-align: center;
+        color: var(--esb-text-muted);
+        font-size: 0.9rem;
+        margin: 0 0 28px;
+        line-height: 1.5;
+    }
+
+    .alert {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        background: var(--esb-error-bg);
+        color: var(--esb-error);
+        border: 1px solid #f3c6c6;
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 0.85rem;
+        margin-bottom: 20px;
+        line-height: 1.4;
+    }
+
+    .field { margin-bottom: 20px; }
+
+    label {
+        display: block;
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--esb-text);
+    }
+
+    input[type=text], input[type=email] {
+        width: 100%;
+        padding: 12px 14px;
+        font-size: 0.95rem;
+        font-family: inherit;
+        border: 1.5px solid var(--esb-border);
+        border-radius: 12px;
+        outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        background: #fafafa;
+    }
+
+    input[type=text]:focus, input[type=email]:focus {
+        border-color: var(--esb-blue);
+        box-shadow: 0 0 0 4px rgba(18, 134, 225, 0.12);
+        background: #ffffff;
+    }
+
+    input.invalid {
+        border-color: var(--esb-error);
+    }
+
+    .field-hint {
+        font-size: 0.78rem;
+        color: var(--esb-error);
+        margin-top: 6px;
+        min-height: 1em;
+    }
+
+    button[type=submit] {
+        width: 100%;
+        margin-top: 8px;
+        padding: 13px 20px;
+        font-family: inherit;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #ffffff;
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        background: linear-gradient(to right, #148ae1, #00cfab);
+        transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    button[type=submit]:hover { filter: brightness(1.05); }
+    button[type=submit]:active { transform: scale(0.98); }
+
+    button[type=submit]:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        filter: none;
+    }
+
+    .footer-note {
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--esb-text-muted);
+        margin-top: 24px;
+    }
+</style>
 </head>
 <body>
-    <h1>Registrasi Jira U Bot</h1>
-    <p>Daftar supaya reminder Code Process kamu dipersonalisasi dengan nama kamu.</p>
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-    <form method="POST" action="/register">
-        <label for="name">Nama</label>
-        <input type="text" id="name" name="name" required>
+    <div class="card">
+        <div class="logo">
+            <svg viewBox="0 0 74 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clip-path="url(#clip0_reg)">
+                    <path d="M20.5291 32.001H11.2625C10.9285 32.001 10.5977 31.9334 10.2892 31.8023C9.98059 31.6712 9.70023 31.479 9.46406 31.2367C9.22789 30.9944 9.04055 30.7068 8.91274 30.3902C8.78493 30.0737 8.71912 29.7344 8.71912 29.3917C8.71912 29.0491 8.78493 28.7098 8.91274 28.3932C9.04055 28.0767 9.22789 27.789 9.46406 27.5467C9.70023 27.3045 9.98059 27.1123 10.2892 26.9812C10.5977 26.85 10.9285 26.7826 11.2625 26.7826H20.5918C22.2019 26.7942 23.7547 26.1702 24.9287 25.0398C26.1028 23.9095 26.8081 22.3592 26.8989 20.71C26.9303 19.8606 26.7944 19.0133 26.4994 18.2189C26.2045 17.4245 25.7564 16.6993 25.182 16.0866C24.6077 15.4739 23.9188 14.9862 23.1566 14.6528C22.3943 14.3194 21.5744 14.1471 20.7458 14.1461H8.72482V8.92773H20.7572C22.2564 8.92965 23.7401 9.23875 25.1212 9.8369C26.5023 10.4351 27.753 11.3102 28.8 12.411C29.847 13.5118 30.6691 14.816 31.2181 16.2472C31.7671 17.6783 32.0318 19.2076 31.9969 20.7452C31.8844 23.7797 30.6263 26.6505 28.4885 28.7509C26.3506 30.8513 23.5006 32.0168 20.5405 32.001H20.5291Z" fill="url(#esb-g1)"/>
+                    <path d="M20.6546 23.0907H6.96849C5.11922 23.0845 3.34769 22.3269 2.04166 20.9838C0.735625 19.6407 0.00149854 17.8214 0 15.9242V7.14892C0.00151018 5.25027 0.737384 3.42989 2.04604 2.08734C3.3547 0.744795 5.12918 -0.0101695 6.9799 -0.0117188H20.666C21.3405 -0.0117188 21.9874 0.263231 22.4644 0.752549C22.9414 1.24187 23.2093 1.90552 23.2093 2.59752C23.2093 3.28952 22.9414 3.95317 22.4644 4.44249C21.9874 4.93181 21.3405 5.20668 20.666 5.20668H6.9799C6.47779 5.20668 5.99623 5.41132 5.64118 5.77556C5.28613 6.13981 5.08666 6.6338 5.08666 7.14892V15.9242C5.08666 16.4393 5.28613 16.9334 5.64118 17.2976C5.99623 17.6619 6.47779 17.8665 6.9799 17.8665H20.666C21.3204 17.8983 21.9378 18.1874 22.39 18.6738C22.8422 19.1602 23.0945 19.8065 23.0945 20.4786C23.0945 21.1508 22.8422 21.7971 22.39 22.2835C21.9378 22.7699 21.3204 23.0589 20.666 23.0907H20.6546Z" fill="url(#esb-g2)"/>
+                </g>
+                <path d="M39.1343 10.2224H45.295C45.6757 10.2224 46.0408 10.0712 46.31 9.80197C46.5792 9.53278 46.7304 9.16768 46.7304 8.78698C46.7304 8.40629 46.5792 8.04118 46.31 7.77199C46.0408 7.50279 45.6757 7.35156 45.295 7.35156H39.1343C38.1599 7.35234 37.2257 7.73976 36.5367 8.42876C35.8477 9.11776 35.4603 10.052 35.4595 11.0264V20.9607C35.4583 21.4443 35.5525 21.9233 35.7366 22.3704C35.9207 22.8176 36.1911 23.224 36.5324 23.5665C36.8737 23.9091 37.2792 24.181 37.7256 24.3667C38.1721 24.5524 38.6508 24.6483 39.1343 24.6489H45.295C45.6679 24.6369 46.0215 24.4804 46.2811 24.2123C46.5407 23.9443 46.6858 23.5858 46.6858 23.2127C46.6858 22.8396 46.5407 22.4811 46.2811 22.2131C46.0215 21.9451 45.6679 21.7885 45.295 21.7765H39.1343C38.9212 21.7762 38.7169 21.6913 38.5662 21.5406C38.4155 21.3899 38.3307 21.1857 38.3303 20.9725V17.4319H43.92C44.293 17.42 44.6466 17.2634 44.9062 16.9954C45.1658 16.7274 45.3109 16.3689 45.3109 15.9958C45.3109 15.6227 45.1658 15.2642 44.9062 14.9962C44.6466 14.7281 44.293 14.5716 43.92 14.5596H38.3303V11.0264C38.3307 10.8133 38.4155 10.609 38.5662 10.4583C38.7169 10.3076 38.9212 10.2228 39.1343 10.2224Z" fill="#333333"/>
+                <path d="M54.8006 14.3322H52.9931C52.4618 14.3179 51.9572 14.0968 51.5865 13.7159C51.2158 13.3351 51.0083 12.8247 51.0083 12.2932C51.0083 11.7618 51.2158 11.2513 51.5865 10.8705C51.9572 10.4897 52.4618 10.2686 52.9931 10.2543H57.7854C58.1702 10.2543 58.5393 10.1014 58.8114 9.8293C59.0835 9.55719 59.2364 9.18812 59.2364 8.8033C59.2364 8.41847 59.0835 8.0494 58.8114 7.77729C58.5393 7.50518 58.1702 7.3523 57.7854 7.3523H52.9931C52.3371 7.34095 51.6853 7.46036 51.0759 7.70357C50.4665 7.94678 49.9116 8.30891 49.4437 8.76885C48.9757 9.22878 48.604 9.7773 48.3503 10.3824C48.0966 10.9875 47.9659 11.6371 47.9659 12.2932C47.9659 12.9494 48.0966 13.5989 48.3503 14.204C48.604 14.8092 48.9757 15.3577 49.4437 15.8176C49.9116 16.2775 50.4665 16.6397 51.0759 16.8829C51.6853 17.1261 52.3371 17.2455 52.9931 17.2341H54.8006C55.3411 17.2349 55.8593 17.4501 56.2414 17.8325C56.6235 18.2149 56.8384 18.7332 56.8387 19.2738V19.7087C56.8384 20.2491 56.6235 20.7673 56.2413 21.1495C55.8592 21.5316 55.341 21.7465 54.8006 21.7469H50.0098C49.6249 21.7469 49.2559 21.8997 48.9838 22.1719C48.7116 22.444 48.5588 22.813 48.5588 23.1979C48.5588 23.5827 48.7116 23.9518 48.9838 24.2239C49.2559 24.496 49.6249 24.6489 50.0098 24.6489H54.8035C56.1134 24.6477 57.3692 24.1268 58.2954 23.2006C59.2217 22.2744 59.7425 21.0185 59.7437 19.7087V19.2738C59.7425 17.9638 59.2217 16.7078 58.2955 15.7814C57.3694 14.8549 56.1135 14.3337 54.8035 14.3322" fill="#333333"/>
+                <path d="M72.9579 17.9317C72.7635 17.4223 72.4823 16.9505 72.1266 16.5373C71.7745 16.1341 71.3491 15.8012 70.873 15.5564C70.7665 15.5013 70.6572 15.4519 70.5456 15.4082C70.9572 15.1587 71.3293 14.849 71.6495 14.4895C72.2422 13.8138 72.5385 12.941 72.5385 11.8919C72.5546 11.1979 72.4112 10.5095 72.1192 9.87966C71.8462 9.31717 71.4447 8.82682 70.9471 8.44825C70.4289 8.06844 69.8445 7.78854 69.2238 7.62289C68.5388 7.43837 67.832 7.34716 67.1226 7.35173H64.8747C63.8418 7.35173 62.8512 7.76195 62.1207 8.4922C61.3901 9.22245 60.9795 10.2129 60.9791 11.2459V20.7589C60.9803 21.7912 61.3913 22.7808 62.1218 23.5102C62.8523 24.2395 63.8425 24.649 64.8747 24.6486H67.053C67.8543 24.6544 68.6525 24.5472 69.4238 24.33C70.1316 24.1327 70.7988 23.8117 71.3946 23.3817C71.9631 22.9674 72.4307 22.4299 72.7623 21.8095C73.107 21.1402 73.2801 20.3959 73.2661 19.6432C73.2704 19.0585 73.1659 18.4781 72.9579 17.9317ZM69.738 20.6493C69.5373 20.943 69.2748 21.1893 68.9689 21.3709C68.6596 21.5524 68.3196 21.6755 67.9658 21.734C67.6184 21.7961 67.2665 21.8293 66.9137 21.8332H65.4482C65.0835 21.8332 64.7337 21.6884 64.4759 21.4305C64.218 21.1726 64.0731 20.8228 64.0731 20.4581V11.5393C64.0729 11.3586 64.1083 11.1797 64.1774 11.0128C64.2464 10.8459 64.3477 10.6942 64.4754 10.5665C64.6032 10.4388 64.7548 10.3375 64.9217 10.2684C65.0887 10.1994 65.2676 10.164 65.4482 10.1642H67.1448C67.908 10.1642 68.4622 10.3553 68.7926 10.7346C69.1373 11.1227 69.323 11.6264 69.3127 12.1453C69.3237 12.4682 69.2566 12.7889 69.1171 13.0803C68.992 13.3252 68.8101 13.5366 68.5866 13.6967C68.3314 13.8881 68.0393 14.0243 67.7287 14.0968C67.3404 14.1513 66.9487 14.178 66.5566 14.1768C66.1821 14.1782 65.8234 14.3283 65.5596 14.5941C65.2957 14.8599 65.1482 15.2196 65.1496 15.5942C65.151 15.9687 65.3011 16.3273 65.5669 16.5912C65.8327 16.855 66.1924 17.0025 66.567 17.0011C67.0559 17.0011 67.5064 17.0145 67.5953 17.0248C68.1915 17.0721 68.7634 17.2816 69.249 17.6309C69.7765 18.0354 70.0314 18.64 70.0314 19.4802C70.0314 19.9751 69.9336 20.3692 69.735 20.6493" fill="#333333"/>
+                <defs>
+                    <linearGradient id="esb-g1" x1="9.53426" y1="19.9844" x2="31.8891" y2="19.9844" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#0A51B0"/>
+                        <stop offset="0.26" stop-color="#0A5DBD"/>
+                        <stop offset="0.72" stop-color="#097CDE"/>
+                        <stop offset="1" stop-color="#0892F5"/>
+                    </linearGradient>
+                    <linearGradient id="esb-g2" x1="-0.0261855" y1="11.3871" x2="22.4445" y2="11.3871" gradientUnits="userSpaceOnUse">
+                        <stop stop-color="#FF4F1B"/>
+                        <stop offset="0.21" stop-color="#FE5B1C"/>
+                        <stop offset="0.6" stop-color="#FC7C20"/>
+                        <stop offset="1" stop-color="#FAA425"/>
+                    </linearGradient>
+                    <clipPath id="clip0_reg">
+                        <rect width="32" height="32" fill="white"/>
+                    </clipPath>
+                </defs>
+            </svg>
+        </div>
 
-        <label for="email">Email Jira (esb.co.id)</label>
-        <input type="email" id="email" name="email" required>
+        <h1>Registrasi Jira U Bot</h1>
+        <p class="subtitle">Daftar supaya reminder Code Process kamu dipersonalisasi dengan nama kamu.</p>
 
-        <button type="submit">Daftar</button>
-    </form>
+        {{if .Error}}
+        <div class="alert" role="alert">
+            <span>⚠️</span>
+            <span>{{.Error}}</span>
+        </div>
+        {{end}}
+
+        <form method="POST" action="/esb-jira-notif/register" id="register-form" novalidate>
+            <div class="field">
+                <label for="name">Nama</label>
+                <input type="text" id="name" name="name" required autocomplete="name">
+                <div class="field-hint" id="name-hint"></div>
+            </div>
+
+            <div class="field">
+                <label for="email">Email Jira (esb.co.id)</label>
+                <input type="email" id="email" name="email" required autocomplete="email" placeholder="nama@esb.co.id">
+                <div class="field-hint" id="email-hint"></div>
+            </div>
+
+            <button type="submit" id="submit-btn">Daftar</button>
+        </form>
+
+        <p class="footer-note">ESB &middot; Jira Notification Bot</p>
+    </div>
+
+    <script>
+        (function () {
+            var form = document.getElementById('register-form');
+            var nameInput = document.getElementById('name');
+            var emailInput = document.getElementById('email');
+            var emailHint = document.getElementById('email-hint');
+            var nameHint = document.getElementById('name-hint');
+            var submitBtn = document.getElementById('submit-btn');
+            var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+            function validateEmail() {
+                var value = emailInput.value.trim();
+                var valid = value === '' || emailPattern.test(value);
+                emailInput.classList.toggle('invalid', !valid);
+                emailHint.textContent = valid ? '' : 'Format email tidak valid';
+                return valid && value !== '';
+            }
+
+            function validateName() {
+                var valid = nameInput.value.trim() !== '';
+                nameInput.classList.toggle('invalid', !valid);
+                return valid;
+            }
+
+            emailInput.addEventListener('blur', validateEmail);
+            emailInput.addEventListener('input', function () {
+                if (emailInput.classList.contains('invalid')) validateEmail();
+            });
+            nameInput.addEventListener('blur', validateName);
+            nameInput.addEventListener('input', function () {
+                if (nameInput.classList.contains('invalid')) validateName();
+            });
+
+            form.addEventListener('submit', function (e) {
+                var nameOk = validateName();
+                var emailOk = validateEmail();
+                if (!nameOk || !emailOk) {
+                    e.preventDefault();
+                    return;
+                }
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Memproses...';
+            });
+        })();
+    </script>
 </body>
 </html>
