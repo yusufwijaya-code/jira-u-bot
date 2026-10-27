@@ -18,6 +18,18 @@ import (
 
 const registerURL = "https://labcup.tech/jira-notif/register"
 
+// Command IDs assigned when registering each slash command in the Google
+// Chat API Configuration tab (GCP Console) — the numeric "Command ID" field
+// there, NOT the command name. These exact numbers must be used when
+// configuring the app, or the event's appCommandId won't match any case
+// below and every command will silently fall through to help.
+const (
+	CommandIDMyTickets = 1
+	CommandIDBudget    = 2
+	CommandIDOverdue   = 3
+	CommandIDTeam      = 4
+)
+
 type chatInteractiveServiceImpl struct {
 	registrationRepo registration_repository.RegistrationRepository
 	issueSessionRepo issue_session_repository.IssueSessionRepository
@@ -50,13 +62,13 @@ func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, event cha
 	}
 
 	switch event.AppCommandPayload.AppCommandMetadata.AppCommandID {
-	case "mytickets":
+	case CommandIDMyTickets:
 		return s.handleMyTickets(ctx, event.User.Email)
-	case "budget":
+	case CommandIDBudget:
 		return s.handleBudget(ctx, event.AppCommandPayload.ArgumentText)
-	case "overdue":
+	case CommandIDOverdue:
 		return s.handleOverdue(ctx)
-	case "team":
+	case CommandIDTeam:
 		return s.handleTeam(ctx)
 	default:
 		return s.handleHelp()

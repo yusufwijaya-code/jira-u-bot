@@ -84,7 +84,7 @@ func TestRouteCommand_UnregisteredUserGetsInviteToRegister(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "ghost@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "mytickets"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDMyTickets},
 		},
 	}
 
@@ -101,7 +101,7 @@ func TestRouteCommand_UnknownCommandFallsBackToHelp(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "not-a-real-command"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: 999},
 		},
 	}
 
@@ -147,7 +147,7 @@ func TestRouteCommand_MyTicketsListsActiveTicketsForInvoker(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "mytickets"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDMyTickets},
 		},
 	}
 
@@ -172,7 +172,7 @@ func TestRouteCommand_MyTicketsNoActiveTicketsIsFriendly(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "mytickets"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDMyTickets},
 		},
 	}
 
@@ -201,7 +201,7 @@ func TestRouteCommand_BudgetFoundTicketShowsDetail(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "budget"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDBudget},
 			ArgumentText:       "CORE-99",
 		},
 	}
@@ -224,7 +224,7 @@ func TestRouteCommand_BudgetTicketNotFound(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "budget"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDBudget},
 			ArgumentText:       "CORE-404",
 		},
 	}
@@ -247,7 +247,7 @@ func TestRouteCommand_BudgetWithoutArgumentShowsUsage(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "budget"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDBudget},
 			ArgumentText:       "",
 		},
 	}
@@ -281,7 +281,7 @@ func TestRouteCommand_OverdueListsOnlyOverBudgetTickets(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "overdue"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDOverdue},
 		},
 	}
 
@@ -312,7 +312,7 @@ func TestRouteCommand_OverdueNoneIsPositiveMessage(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "overdue"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDOverdue},
 		},
 	}
 
@@ -344,7 +344,7 @@ func TestRouteCommand_TeamGroupsTicketsByAssignee(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "team"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDTeam},
 		},
 	}
 
@@ -369,7 +369,7 @@ func TestRouteCommand_TeamNoActivityMessage(t *testing.T) {
 	event := chat_interactive_dto.ChatEvent{
 		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
 		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
-			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "team"},
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: CommandIDTeam},
 		},
 	}
 

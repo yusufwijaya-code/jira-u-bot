@@ -21,5 +21,10 @@ type AppCommandPayload struct {
 }
 
 type AppCommandMetadata struct {
-	AppCommandID string `json:"appCommandId"`
+	// AppCommandID is a number from 1 to 1000 assigned when the slash
+	// command is registered in the Google Chat API Configuration tab — NOT
+	// the command name string (confirmed against Google's docs: "Command ID:
+	// a number... your Chat app uses to recognize the command"). The IDs
+	// this app expects are the CommandID* constants in chat_interactive_service.
+	AppCommandID int `json:"appCommandId"`
 }

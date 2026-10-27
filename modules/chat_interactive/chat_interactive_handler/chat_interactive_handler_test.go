@@ -23,7 +23,7 @@ func TestHandleEvent_DecodesBodyAndReturnsTextJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := NewChatInteractiveHandler(&fakeChatInteractiveService{response: "⏰ hello from the bot"})
 
-	body := `{"user":{"email":"dev@esb.co.id"},"appCommandPayload":{"appCommandMetadata":{"appCommandId":"mytickets"}}}`
+	body := `{"user":{"email":"dev@esb.co.id"},"appCommandPayload":{"appCommandMetadata":{"appCommandId":1}}}`
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/jira-notif/chat-events", strings.NewReader(body))
