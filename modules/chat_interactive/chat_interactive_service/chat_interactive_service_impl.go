@@ -3,11 +3,15 @@ package chat_interactive_service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"jira-u-bot/modules/business_hours/business_hours_dto"
 	"jira-u-bot/modules/business_hours/business_hours_service"
 	"jira-u-bot/modules/chat_interactive/chat_interactive_dto"
+	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
+	"jira-u-bot/modules/issue_session/issue_session_dto"
 	"jira-u-bot/modules/issue_session/issue_session_repository"
+	"jira-u-bot/modules/issue_session/issue_session_service"
 	"jira-u-bot/modules/registration/registration_repository"
 )
 
@@ -67,11 +71,47 @@ func (s *chatInteractiveServiceImpl) handleHelp() string {
 }
 
 func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {
-	return "" // replaced in Task 6
+	sessions, err := s.issueSessionRepo.FindActiveByAssigneeEmail(ctx, email)
+	if err != nil || len(sessions) == 0 {
+		return "Nggak ada tiket aktif saat ini 👍"
+	}
+
+	lines := []string{"⏰ Tiket kamu yang aktif:", ""}
+	for _, session := range sessions {
+		lines = append(lines, s.formatTicketLine(session))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *chatInteractiveServiceImpl) handleBudget(ctx context.Context, issueKey string) string {
-	return "" // replaced in Task 6
+	issueKey = strings.TrimSpace(issueKey)
+	if issueKey == "" {
+		return "Pakai gini: */budget <issueKey>* — contoh: /budget CORE-10765"
+	}
+
+	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)
+	if err != nil || !found || !session.FlagActive {
+		return fmt.Sprintf("Tiket %s tidak ditemukan atau belum/tidak lagi di-track 🤔", issueKey)
+	}
+
+	return "📊 " + s.formatTicketLine(*session)
+}
+
+// formatTicketLine renders one ticket's SP/elapsed/remaining in the same
+// bold-label style as reminder messages (Tech Spec: response text must
+// match the existing reminder visual style).
+func (s *chatInteractiveServiceImpl) formatTicketLine(session issue_session_dto.IssueSession) string {
+	budgetSeconds := int64(session.StoryPoints * 3600)
+	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
+	remainingSeconds := budgetSeconds - elapsedSeconds
+
+	return fmt.Sprintf(
+		"*%s* — %s\n*Story Point:* %.1f SP (budget %.1f jam)\n*Waktu berjalan:* %.1f jam\n*Sisa waktu:* %s",
+		session.IssueKey, session.IssueSummary,
+		session.StoryPoints, float64(budgetSeconds)/3600,
+		float64(elapsedSeconds)/3600,
+		google_chat_notifier_service.FormatDuration(remainingSeconds),
+	)
 }
 
 func (s *chatInteractiveServiceImpl) handleOverdue(ctx context.Context) string {

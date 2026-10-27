@@ -126,3 +126,135 @@ func TestRouteCommand_BareMentionFallsBackToHelp(t *testing.T) {
 		t.Errorf("RouteCommand() = %q, want help text for a bare mention (AC7.1)", got)
 	}
 }
+
+func TestRouteCommand_MyTicketsListsActiveTicketsForInvoker(t *testing.T) {
+	started := time.Now().Add(-30 * time.Minute)
+	repo := &fakeIssueSessionRepoForChat{
+		byAssignee: map[string][]issue_session_dto.IssueSession{
+			"dev@esb.co.id": {
+				{IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 600, CurrentSessionStartedDate: &started, IssueSummary: "Fix bug"},
+			},
+		},
+		byKey: map[string]issue_session_dto.IssueSession{},
+	}
+	svc := NewChatInteractiveService(
+		&fakeRegistrationRepoForChat{users: map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}},
+		repo,
+		business_hours_service.NewBusinessHoursService(),
+		business_hours_dto.HolidayCalendar{},
+	)
+
+	event := chat_interactive_dto.ChatEvent{
+		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
+		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "mytickets"},
+		},
+	}
+
+	got := svc.RouteCommand(context.Background(), event)
+
+	if !strings.Contains(got, "OMS-1") {
+		t.Errorf("RouteCommand() = %q, want it to mention OMS-1 (AC3.1)", got)
+	}
+	if !strings.Contains(got, "Fix bug") {
+		t.Errorf("RouteCommand() = %q, want it to mention the issue summary (AC3.1)", got)
+	}
+}
+
+func TestRouteCommand_MyTicketsNoActiveTicketsIsFriendly(t *testing.T) {
+	svc := NewChatInteractiveService(
+		&fakeRegistrationRepoForChat{users: map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}},
+		&fakeIssueSessionRepoForChat{byAssignee: map[string][]issue_session_dto.IssueSession{}, byKey: map[string]issue_session_dto.IssueSession{}},
+		business_hours_service.NewBusinessHoursService(),
+		business_hours_dto.HolidayCalendar{},
+	)
+
+	event := chat_interactive_dto.ChatEvent{
+		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
+		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "mytickets"},
+		},
+	}
+
+	got := svc.RouteCommand(context.Background(), event)
+
+	if strings.Contains(got, "error") || got == "" {
+		t.Errorf("RouteCommand() = %q, want a friendly no-tickets message, not empty/error (AC3.2)", got)
+	}
+}
+
+func TestRouteCommand_BudgetFoundTicketShowsDetail(t *testing.T) {
+	started := time.Now().Add(-15 * time.Minute)
+	repo := &fakeIssueSessionRepoForChat{
+		byAssignee: map[string][]issue_session_dto.IssueSession{},
+		byKey: map[string]issue_session_dto.IssueSession{
+			"CORE-99": {IssueKey: "CORE-99", StoryPoints: 2, AccumulatedSeconds: 1800, CurrentSessionStartedDate: &started, IssueSummary: "Audit screen", FlagActive: true},
+		},
+	}
+	svc := NewChatInteractiveService(
+		&fakeRegistrationRepoForChat{users: map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}},
+		repo,
+		business_hours_service.NewBusinessHoursService(),
+		business_hours_dto.HolidayCalendar{},
+	)
+
+	event := chat_interactive_dto.ChatEvent{
+		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
+		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "budget"},
+			ArgumentText:       "CORE-99",
+		},
+	}
+
+	got := svc.RouteCommand(context.Background(), event)
+
+	if !strings.Contains(got, "CORE-99") || !strings.Contains(got, "Audit screen") {
+		t.Errorf("RouteCommand() = %q, want ticket detail for CORE-99 (AC4.1)", got)
+	}
+}
+
+func TestRouteCommand_BudgetTicketNotFound(t *testing.T) {
+	svc := NewChatInteractiveService(
+		&fakeRegistrationRepoForChat{users: map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}},
+		&fakeIssueSessionRepoForChat{byAssignee: map[string][]issue_session_dto.IssueSession{}, byKey: map[string]issue_session_dto.IssueSession{}},
+		business_hours_service.NewBusinessHoursService(),
+		business_hours_dto.HolidayCalendar{},
+	)
+
+	event := chat_interactive_dto.ChatEvent{
+		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
+		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "budget"},
+			ArgumentText:       "CORE-404",
+		},
+	}
+
+	got := svc.RouteCommand(context.Background(), event)
+
+	if !strings.Contains(got, "tidak ditemukan") {
+		t.Errorf("RouteCommand() = %q, want a not-found message (AC4.2)", got)
+	}
+}
+
+func TestRouteCommand_BudgetWithoutArgumentShowsUsage(t *testing.T) {
+	svc := NewChatInteractiveService(
+		&fakeRegistrationRepoForChat{users: map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}},
+		&fakeIssueSessionRepoForChat{byAssignee: map[string][]issue_session_dto.IssueSession{}, byKey: map[string]issue_session_dto.IssueSession{}},
+		business_hours_service.NewBusinessHoursService(),
+		business_hours_dto.HolidayCalendar{},
+	)
+
+	event := chat_interactive_dto.ChatEvent{
+		User: chat_interactive_dto.ChatEventUser{Email: "dev@esb.co.id"},
+		AppCommandPayload: &chat_interactive_dto.AppCommandPayload{
+			AppCommandMetadata: chat_interactive_dto.AppCommandMetadata{AppCommandID: "budget"},
+			ArgumentText:       "",
+		},
+	}
+
+	got := svc.RouteCommand(context.Background(), event)
+
+	if !strings.Contains(got, "/budget") {
+		t.Errorf("RouteCommand() = %q, want usage instructions mentioning /budget (AC4.3)", got)
+	}
+}
