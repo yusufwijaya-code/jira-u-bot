@@ -14,6 +14,7 @@ const (
 	Tier1h      = "1h"
 	Tier30m     = "30m"
 	Tier15m     = "15m"
+	Tier5m      = "5m"
 	Tier1m      = "1m"
 	TierOverage = "overage"
 )

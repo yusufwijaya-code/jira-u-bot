@@ -127,7 +127,7 @@ func TestApplicableTiers_SkipsTiersNotShorterThanBudget(t *testing.T) {
 
 	got := engine.ApplicableTiers(3600) // SP = 1, budget = exactly 1 hour
 
-	want := []string{"30m", "15m", "1m"}
+	want := []string{"30m", "15m", "5m", "1m"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ApplicableTiers(3600) = %v, want %v (2h and 1h must be skipped — budget must be STRICTLY greater than tier duration, spec AC2.2)", got, want)
 	}
@@ -138,7 +138,7 @@ func TestApplicableTiers_AllTiersApplyForLargeBudget(t *testing.T) {
 
 	got := engine.ApplicableTiers(10800) // SP = 3, budget = 3 hours
 
-	want := []string{"2h", "1h", "30m", "15m", "1m"}
+	want := []string{"2h", "1h", "30m", "15m", "5m", "1m"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ApplicableTiers(10800) = %v, want %v", got, want)
 	}

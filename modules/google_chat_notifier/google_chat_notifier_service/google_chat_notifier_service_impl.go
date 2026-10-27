@@ -166,6 +166,8 @@ func tierLabel(tier string) string {
 		return "T-30 menit"
 	case "15m":
 		return "T-15 menit"
+	case "5m":
+		return "T-5 menit"
 	case "1m":
 		return "T-1 menit"
 	default:

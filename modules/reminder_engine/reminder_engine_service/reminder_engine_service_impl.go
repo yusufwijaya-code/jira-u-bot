@@ -27,6 +27,7 @@ var tierDurations = []struct {
 	{reminder_log_dto.Tier1h, 1 * time.Hour},
 	{reminder_log_dto.Tier30m, 30 * time.Minute},
 	{reminder_log_dto.Tier15m, 15 * time.Minute},
+	{reminder_log_dto.Tier5m, 5 * time.Minute},
 	{reminder_log_dto.Tier1m, 1 * time.Minute},
 }
 
