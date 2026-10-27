@@ -7,6 +7,7 @@ import (
 )
 
 func Router(r *gin.Engine, handler registration_handler.RegistrationHandler) {
-	r.GET("/register", handler.ShowForm)
-	r.POST("/register", handler.Submit)
+	group := r.Group("/esb-jira-notif")
+	group.GET("/register", handler.ShowForm)
+	group.POST("/register", handler.Submit)
 }
