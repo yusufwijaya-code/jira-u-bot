@@ -209,8 +209,8 @@ func TestPollOnce_OpensNewSessionForNewlySeenIssue(t *testing.T) {
 		t.Fatalf("pollOnce returned error: %v", err)
 	}
 
-	if len(issueSession.openCalls) != 1 || issueSession.openCalls[0] != "OMS-1" {
-		t.Errorf("openCalls = %v, want [OMS-1]", issueSession.openCalls)
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "OMS-1" {
+		t.Errorf("openAtCalls = %v, want [OMS-1]", issueSession.openAtCalls)
 	}
 }
 
@@ -603,5 +603,56 @@ func TestPollOnce_SteadyStateRefreshesAssigneeEmailAndIssueSummary(t *testing.T)
 	}
 	if issueSession.sessions["OMS-1"].IssueSummary != "Updated summary" {
 		t.Errorf("IssueSummary = %q, want refreshed value %q", issueSession.sessions["OMS-1"].IssueSummary, "Updated summary")
+	}
+}
+
+func TestPollOnce_OpensNewSessionAtRealEntryTimeWhenAssigneeRegistersAfterTicketAlreadyInCodeProcess(t *testing.T) {
+	// Reproduces: a ticket has been in Code Process for hours, but its
+	// assignee only just registered — filterEligible excluded it from every
+	// prior cycle, so this is its first appearance in currentByKey. The
+	// session must still start at the REAL changelog entry time, not "now",
+	// otherwise elapsed/budget tracking silently resets.
+	historicalStart := time.Now().Add(-3 * time.Hour)
+	jiraClient := &fakeJiraClientService{
+		issues:             []jira_client_dto.Issue{assignedIssue("OMS-1", "dev@esb.co.id", 3)},
+		changelogEntryTime: historicalStart,
+		changelogFound:     true,
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("dev@esb.co.id")
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "OMS-1" {
+		t.Fatalf("openAtCalls = %v, want [OMS-1] — entry events must use the real changelog entry time, not CURRENT_TIMESTAMP", issueSession.openAtCalls)
+	}
+	if !issueSession.sessions["OMS-1"].CurrentSessionStartedDate.Equal(historicalStart) {
+		t.Errorf("CurrentSessionStartedDate = %v, want the changelog entry time %v — got reset to \"now\" instead of backfilled", issueSession.sessions["OMS-1"].CurrentSessionStartedDate, historicalStart)
+	}
+}
+
+func TestPollOnce_OpensNewSessionAtNowWhenNoChangelogEntryFound(t *testing.T) {
+	jiraClient := &fakeJiraClientService{
+		issues:         []jira_client_dto.Issue{assignedIssue("OMS-1", "dev@esb.co.id", 3)},
+		changelogFound: false,
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("dev@esb.co.id")
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "OMS-1" {
+		t.Fatalf("openAtCalls = %v, want [OMS-1]", issueSession.openAtCalls)
+	}
+	if time.Since(*issueSession.sessions["OMS-1"].CurrentSessionStartedDate) > time.Minute {
+		t.Error("CurrentSessionStartedDate should fall back to approximately now when no changelog entry is found")
 	}
 }

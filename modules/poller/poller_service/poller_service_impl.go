@@ -151,13 +151,24 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		}
 	}
 
-	// Entry events: new to the DB this cycle — open a fresh session.
+	// Entry events: new to the DB this cycle — open a fresh session at the
+	// REAL Code Process entry time, not now. A ticket may have already been
+	// in Code Process for a while before this is its first eligible cycle
+	// (e.g. the assignee only just registered) — using CURRENT_TIMESTAMP
+	// here would silently reset elapsed-time tracking to zero.
 	for key, issue := range currentByKey {
 		if _, alreadyActive := activeByKey[key]; alreadyActive {
 			continue
 		}
-		if err := p.issueSession.OpenOrResumeSession(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
-			return fmt.Errorf("poller: OpenOrResumeSession(%s) failed: %w", key, err)
+		entryTime, entryFound, err := p.jiraClient.GetLatestCodeProcessEntryTime(ctx, key)
+		if err != nil {
+			return fmt.Errorf("poller: GetLatestCodeProcessEntryTime(%s) failed: %w", key, err)
+		}
+		if !entryFound {
+			entryTime = time.Now()
+		}
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), entryTime, assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
+			return fmt.Errorf("poller: OpenOrResumeSessionAt(%s) failed: %w", key, err)
 		}
 	}
 
