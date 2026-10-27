@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"jira-u-bot/modules/business_hours/business_hours_dto"
+	"jira-u-bot/modules/business_hours/business_hours_service"
 	"jira-u-bot/modules/issue_session/issue_session_dto"
 )
 
@@ -83,5 +85,45 @@ func TestUpdateLastOverageReminder_PropagatesRepositoryError(t *testing.T) {
 	}
 	if !repo.updateOverageCalled {
 		t.Error("expected repository.UpdateLastOverageReminder to be called")
+	}
+}
+
+func TestCalculateElapsedSeconds_NoActiveSession(t *testing.T) {
+	session := issue_session_dto.IssueSession{
+		AccumulatedSeconds:        1800,
+		CurrentSessionStartedDate: nil,
+	}
+	bh := business_hours_service.NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	got := CalculateElapsedSeconds(session, bh, cal)
+
+	if got != 1800 {
+		t.Errorf("CalculateElapsedSeconds() = %d, want 1800 (AccumulatedSeconds only, no active session)", got)
+	}
+}
+
+func TestCalculateElapsedSeconds_WithActiveSession(t *testing.T) {
+	started := time.Now().Add(-10 * time.Minute)
+	bh := business_hours_service.NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	session := issue_session_dto.IssueSession{
+		AccumulatedSeconds:        600,
+		CurrentSessionStartedDate: &started,
+	}
+
+	got := CalculateElapsedSeconds(session, bh, cal)
+
+	// Computed independently here (not hardcoded) because this call and the
+	// one inside CalculateElapsedSeconds resolve time.Now() a few
+	// milliseconds apart — small tolerance absorbs that drift. If this test
+	// runs outside business hours (nights/weekends), ElapsedBusinessSeconds
+	// legitimately returns 0 for both calls and want == session.AccumulatedSeconds,
+	// which still passes.
+	wantLive := bh.ElapsedBusinessSeconds(started, time.Now(), cal)
+	want := session.AccumulatedSeconds + wantLive
+	if got < want-2 || got > want+2 {
+		t.Errorf("CalculateElapsedSeconds() = %d, want approximately %d (AccumulatedSeconds + live business seconds since CurrentSessionStartedDate)", got, want)
 	}
 }

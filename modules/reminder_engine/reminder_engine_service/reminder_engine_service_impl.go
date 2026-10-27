@@ -111,10 +111,7 @@ func tierDurationSeconds(tier string) int64 {
 }
 
 func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error {
-	elapsedSeconds := session.AccumulatedSeconds
-	if session.CurrentSessionStartedDate != nil {
-		elapsedSeconds += e.businessHours.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), e.holidayCalendar)
-	}
+	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, e.businessHours, e.holidayCalendar)
 
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	assigneeName := e.resolveAssigneeDisplayName(ctx, issue.Fields.Assignee)
