@@ -181,15 +181,13 @@ func TestSendReminder_ResolvesSpaceAndPostsFormattedMessage(t *testing.T) {
 }
 
 func TestSendPlainTextDM_PostsRawTextToResolvedSpace(t *testing.T) {
-	var gotBody string
+	var gotBody map[string]string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/spaces:setup" {
 			json.NewEncoder(w).Encode(map[string]string{"name": "spaces/ABC"})
 			return
 		}
-		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
-		gotBody = body["text"]
+		json.NewDecoder(r.Body).Decode(&gotBody)
 		json.NewEncoder(w).Encode(map[string]string{})
 	}))
 	defer server.Close()
@@ -204,7 +202,10 @@ func TestSendPlainTextDM_PostsRawTextToResolvedSpace(t *testing.T) {
 	if err := svc.SendPlainTextDM(context.Background(), "newuser@esb.co.id", "Terima kasih sudah mendaftar!"); err != nil {
 		t.Fatalf("SendPlainTextDM returned error: %v", err)
 	}
-	if gotBody != "Terima kasih sudah mendaftar!" {
-		t.Errorf("message text = %q, want %q", gotBody, "Terima kasih sudah mendaftar!")
+	if gotBody["text"] != "Terima kasih sudah mendaftar!" {
+		t.Errorf("message text = %q, want %q", gotBody["text"], "Terima kasih sudah mendaftar!")
+	}
+	if gotBody["markupSyntax"] != "MARKUP_SYNTAX_CHAT" {
+		t.Errorf("markupSyntax = %q, want %q — spaces.messages.create defaults to Markdown syntax (*word* renders as italic, not bold, and \\n is a soft break) unless this is forced to match the webhook path's Chat markup syntax", gotBody["markupSyntax"], "MARKUP_SYNTAX_CHAT")
 	}
 }

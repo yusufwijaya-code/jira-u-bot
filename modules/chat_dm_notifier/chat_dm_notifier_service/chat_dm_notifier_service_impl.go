@@ -110,7 +110,14 @@ func (s *chatDMNotifierServiceImpl) postMessage(ctx context.Context, spaceName, 
 		return fmt.Errorf("chat_dm_notifier: GetAccessToken failed: %w", err)
 	}
 
-	payload := map[string]string{"text": text}
+	// markupSyntax must be forced to MARKUP_SYNTAX_CHAT — spaces.messages.create
+	// defaults to MARKUP_SYNTAX_MARKDOWN (CommonMark) when unset, under which a
+	// single *word* renders as italic (not bold, as under Chat markup syntax)
+	// and a lone \n is a soft break instead of a hard line break. The webhook
+	// path (google_chat_notifier_service) never hits this because incoming
+	// webhooks always use Chat markup syntax; BuildMessageText's *bold* labels
+	// and single-\n line breaks only need this to also hold here.
+	payload := map[string]string{"text": text, "markupSyntax": "MARKUP_SYNTAX_CHAT"}
 	_, err = curl_helper.CurlRequest[struct{}](
 		ctx, chatAPIBase+"/"+spaceName+"/messages",
 		map[string]string{"Authorization": "Bearer " + token},
