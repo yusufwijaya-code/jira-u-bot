@@ -327,3 +327,16 @@ func TestBuildMessageText_EndsWithOKRHashtagFooter(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
+	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
+		{IssueKey: "OMS-1", Tier: "30m"},
+		{IssueKey: "OMS-1", IsOverage: true},
+		{IssueKey: "OMS-1", IsEarlyCompletion: true},
+	} {
+		text := BuildMessageText(msg)
+		if !strings.Contains(text, "/help") {
+			t.Errorf("message text %q does not mention /help — every reminder/overage/early-completion message (space and DM alike, since both reuse this function) must advertise the interactive commands", text)
+		}
+	}
+}

@@ -51,6 +51,12 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 // only requirements shared across all three shapes.
 const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
 
+// helpHint advertises the interactive bot's slash commands on every
+// outbound message — this function is shared by both the webhook/space
+// path and the DM path, so adding it here covers both without touching
+// either notifier separately.
+const helpHint = "💡 Ketik */help* ke bot ini buat lihat command lain"
+
 func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
 	case msg.IsEarlyCompletion:
@@ -111,7 +117,7 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 		)
 	}
 
-	lines = append(lines, "", messageFooter)
+	lines = append(lines, "", helpHint, "", messageFooter)
 	return strings.Join(lines, "\n")
 }
 

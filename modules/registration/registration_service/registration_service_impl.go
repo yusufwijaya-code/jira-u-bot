@@ -63,6 +63,8 @@ Manfaatnya buat kamu:
 
 Fokus ngerjain tiketnya aja, biar Jira U Bot yang ingetin waktunya 💪
 
+💡 Ketik */help* ke bot ini buat lihat command lain
+
 #BersamaSayaMenempuhOKRyangPassss`
 	if err := s.dmNotifier.SendPlainTextDM(ctx, email, text); err != nil {
 		log.Printf("registration_service: thank-you DM to %s failed: %v", email, err)
