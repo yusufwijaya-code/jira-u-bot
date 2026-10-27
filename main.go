@@ -15,6 +15,9 @@ import (
 	"jira-u-bot/config"
 	"jira-u-bot/migrations"
 	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
+	"jira-u-bot/modules/chat_interactive/chat_interactive_handler"
+	"jira-u-bot/modules/chat_interactive/chat_interactive_middleware"
+	"jira-u-bot/modules/chat_interactive/chat_interactive_service"
 	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
 	"jira-u-bot/modules/business_hours/business_hours_service"
 	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
@@ -95,6 +98,10 @@ func main() {
 
 	registrationRepo := registration_repository.NewRegistrationRepository(db)
 
+	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar)
+	chatInteractiveHandler := chat_interactive_handler.NewChatInteractiveHandler(chatInteractiveSvc)
+	chatEventsVerifier := chat_interactive_middleware.NewGoogleTokenVerifier()
+
 	jiraClientSvc := jira_client_service.NewJiraClientService(&cfg)
 
 	notifierSvc := google_chat_notifier_service.NewGoogleChatNotifierService(&cfg)
@@ -129,7 +136,7 @@ func main() {
 
 	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo, chatDMNotifierSvc, cfg.JiraEmail)
 	registrationHandler := registration_handler.NewRegistrationHandler(registrationService)
-	router := SetupRouter(registrationHandler)
+	router := SetupRouter(registrationHandler, chatInteractiveHandler, chatEventsVerifier, cfg.ChatEventsAudience)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

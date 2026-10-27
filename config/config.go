@@ -22,6 +22,7 @@ type AppConfig struct {
 	GoogleOAuthTokenPath    string
 	HolidayCalendarPath     string
 	Port                    string
+	ChatEventsAudience      string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -57,6 +58,7 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.GoogleOAuthTokenPath = v.GetString("GOOGLE_OAUTH_TOKEN_PATH")
 	cfg.HolidayCalendarPath = v.GetString("HOLIDAY_CALENDAR_PATH")
 	cfg.Port = v.GetString("PORT")
+	cfg.ChatEventsAudience = v.GetString("CHAT_EVENTS_AUDIENCE")
 
 	return nil
 }
