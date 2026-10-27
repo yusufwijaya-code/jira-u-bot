@@ -241,3 +241,26 @@ func TestGetIssueStatus_PropagatesErrorOnFailure(t *testing.T) {
 		t.Fatal("expected error to propagate when Jira API returns 500")
 	}
 }
+
+func TestLookupUserByEmail_TrueWhenResultFoundButEmailAddressHidden(t *testing.T) {
+	// Jira Cloud can mask emailAddress in search results for privacy reasons
+	// even when the account is a real match (confirmed live against the real
+	// esb-id Jira site: status 200, one result, emailAddress == "") — a match
+	// must not depend on that field being populated.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]map[string]any{
+			{"accountId": "712020:cc15b1b8-2e0f-46fb-bea5-9fcb502354cf", "emailAddress": "", "displayName": "Benni Setiady Gunawan Simarmata"},
+		})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	found, err := svc.LookupUserByEmail(context.Background(), "benni.simarmata@esb.co.id")
+	if err != nil {
+		t.Fatalf("LookupUserByEmail returned error: %v", err)
+	}
+	if !found {
+		t.Error("found = false, want true — a returned result is a match even when emailAddress is hidden")
+	}
+}

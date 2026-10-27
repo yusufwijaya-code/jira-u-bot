@@ -77,6 +77,12 @@ func (s *jiraClientServiceImpl) GetLatestCodeProcessEntryTime(ctx context.Contex
 	return latest, found, nil
 }
 
+// LookupUserByEmail reports whether a Jira account matches email. The Jira
+// Cloud user-search endpoint already matches `query` against email server-side,
+// but privacy settings can make it return the match with an empty
+// EmailAddress field — so a client-side equality check on that field would
+// silently reject real accounts whose email the org has hidden. Any result
+// returned for an email-shaped query is therefore treated as a match.
 func (s *jiraClientServiceImpl) LookupUserByEmail(ctx context.Context, email string) (bool, error) {
 	params := url.Values{}
 	params.Set("query", email)
@@ -89,12 +95,7 @@ func (s *jiraClientServiceImpl) LookupUserByEmail(ctx context.Context, email str
 		return false, fmt.Errorf("jira_client: LookupUserByEmail(%s) failed: %w", email, err)
 	}
 
-	for _, u := range *result {
-		if u.EmailAddress == email {
-			return true, nil
-		}
-	}
-	return false, nil
+	return len(*result) > 0, nil
 }
 
 func (s *jiraClientServiceImpl) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
