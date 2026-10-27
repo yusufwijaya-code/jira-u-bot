@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -168,12 +169,15 @@ func TestLookupUserByEmail_TrueWhenExactEmailMatchFound(t *testing.T) {
 
 	svc := NewJiraClientService(newTestConfig(server.URL))
 
-	found, err := svc.LookupUserByEmail(context.Background(), "anwar@esb.co.id")
+	accountID, found, err := svc.LookupUserByEmail(context.Background(), "anwar@esb.co.id")
 	if err != nil {
 		t.Fatalf("LookupUserByEmail returned error: %v", err)
 	}
 	if !found {
 		t.Error("found = false, want true")
+	}
+	if accountID != "abc123" {
+		t.Errorf("accountID = %q, want %q", accountID, "abc123")
 	}
 }
 
@@ -185,12 +189,15 @@ func TestLookupUserByEmail_FalseWhenNoResultsReturned(t *testing.T) {
 
 	svc := NewJiraClientService(newTestConfig(server.URL))
 
-	found, err := svc.LookupUserByEmail(context.Background(), "nobody@esb.co.id")
+	accountID, found, err := svc.LookupUserByEmail(context.Background(), "nobody@esb.co.id")
 	if err != nil {
 		t.Fatalf("LookupUserByEmail returned error: %v", err)
 	}
 	if found {
 		t.Error("found = true, want false for an email with no matching Jira account")
+	}
+	if accountID != "" {
+		t.Errorf("accountID = %q, want empty when not found", accountID)
 	}
 }
 
@@ -202,7 +209,7 @@ func TestLookupUserByEmail_PropagatesHTTPErrorOnFailure(t *testing.T) {
 
 	svc := NewJiraClientService(newTestConfig(server.URL))
 
-	_, err := svc.LookupUserByEmail(context.Background(), "anwar@esb.co.id")
+	_, _, err := svc.LookupUserByEmail(context.Background(), "anwar@esb.co.id")
 	if err == nil {
 		t.Fatal("expected error to propagate when Jira API returns 500 (spec: hard-block registration treats lookup failure as rejection, Note C5)")
 	}
@@ -256,11 +263,63 @@ func TestLookupUserByEmail_TrueWhenResultFoundButEmailAddressHidden(t *testing.T
 
 	svc := NewJiraClientService(newTestConfig(server.URL))
 
-	found, err := svc.LookupUserByEmail(context.Background(), "benni.simarmata@esb.co.id")
+	accountID, found, err := svc.LookupUserByEmail(context.Background(), "benni.simarmata@esb.co.id")
 	if err != nil {
 		t.Fatalf("LookupUserByEmail returned error: %v", err)
 	}
 	if !found {
 		t.Error("found = false, want true — a returned result is a match even when emailAddress is hidden")
+	}
+	if accountID != "712020:cc15b1b8-2e0f-46fb-bea5-9fcb502354cf" {
+		t.Errorf("accountID = %q, want the match's accountId even when emailAddress is hidden", accountID)
+	}
+}
+
+func TestSearchCodeProcessIssues_RequestsBothStoryPointFieldsAndParsesCoreVariant(t *testing.T) {
+	// CORE project tickets use a different custom field than OMS for Story
+	// Points (confirmed live: OMS uses customfield_10016 "Story point
+	// estimate", CORE uses customfield_11053 "Story Points" — a ticket
+	// never has both populated).
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fields := r.URL.Query().Get("fields")
+		if !strings.Contains(fields, "customfield_10016") || !strings.Contains(fields, "customfield_11053") {
+			t.Errorf("fields = %q, want it to request both customfield_10016 and customfield_11053", fields)
+		}
+
+		sp := 1.5
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"issues": []map[string]any{
+				{
+					"key": "CORE-10782",
+					"fields": map[string]any{
+						"status":            map[string]any{"name": "Code Process"},
+						"assignee":          map[string]any{"emailAddress": "rio.pratama@esb.co.id", "displayName": "Rio"},
+						"issuetype":         map[string]any{"name": "Subtask"},
+						"customfield_11053": sp,
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	issues, err := svc.SearchCodeProcessIssues(context.Background())
+	if err != nil {
+		t.Fatalf("SearchCodeProcessIssues returned error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("len(issues) = %d, want 1", len(issues))
+	}
+	if issues[0].Fields.StoryPoints != nil {
+		t.Errorf("StoryPoints (customfield_10016) = %v, want nil for a CORE ticket", *issues[0].Fields.StoryPoints)
+	}
+	if issues[0].Fields.StoryPointsCore == nil || *issues[0].Fields.StoryPointsCore != 1.5 {
+		t.Errorf("StoryPointsCore (customfield_11053) = %v, want 1.5", issues[0].Fields.StoryPointsCore)
+	}
+	if got := issues[0].Fields.EffectiveStoryPoints(); got == nil || *got != 1.5 {
+		t.Errorf("EffectiveStoryPoints() = %v, want 1.5", got)
 	}
 }

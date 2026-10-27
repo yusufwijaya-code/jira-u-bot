@@ -33,7 +33,7 @@ func newFakeRegistrationRepositoryForDM() *fakeRegistrationRepositoryForDM {
 	}
 }
 
-func (f *fakeRegistrationRepositoryForDM) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepositoryForDM) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {
 	return nil
 }
 
@@ -44,6 +44,10 @@ func (f *fakeRegistrationRepositoryForDM) FindUserByEmail(ctx context.Context, e
 	}
 	cp := u
 	return &cp, true, nil
+}
+
+func (f *fakeRegistrationRepositoryForDM) FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error) {
+	return nil, false, nil
 }
 
 func (f *fakeRegistrationRepositoryForDM) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {

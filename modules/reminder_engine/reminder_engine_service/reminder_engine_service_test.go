@@ -64,7 +64,7 @@ type fakeRegistrationRepository struct {
 	users map[string]registration_dto.User
 }
 
-func (f *fakeRegistrationRepository) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepository) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {
 	return nil
 }
 func (f *fakeRegistrationRepository) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
@@ -73,6 +73,9 @@ func (f *fakeRegistrationRepository) FindUserByEmail(ctx context.Context, email 
 		return nil, false, nil
 	}
 	return &u, true, nil
+}
+func (f *fakeRegistrationRepository) FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error) {
+	return nil, false, nil
 }
 func (f *fakeRegistrationRepository) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	return nil
@@ -406,6 +409,7 @@ func TestEvaluateAndSend_SelfAssigneeAlwaysUsesWebhookNotifier(t *testing.T) {
 
 	session := issue_session_dto.IssueSession{
 		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000, // forces overage so exactly one message is sent
+		AssigneeEmail: "yusuf.wijaya@esb.co.id",
 	}
 
 	if err := engine.EvaluateAndSend(context.Background(), testIssue("yusuf.wijaya@esb.co.id", "Yusuf Wijaya"), session); err != nil {
@@ -435,6 +439,7 @@ func TestEvaluateAndSend_TeammateAssigneeUsesDMNotifierWhenConfigured(t *testing
 
 	session := issue_session_dto.IssueSession{
 		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000,
+		AssigneeEmail: "teammate@esb.co.id",
 	}
 
 	if err := engine.EvaluateAndSend(context.Background(), testIssue("teammate@esb.co.id", "Teammate"), session); err != nil {
@@ -463,6 +468,7 @@ func TestEvaluateAndSend_TeammateAssigneeFallsBackToWebhookWhenDMNotifierNil(t *
 
 	session := issue_session_dto.IssueSession{
 		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000,
+		AssigneeEmail: "teammate@esb.co.id",
 	}
 
 	if err := engine.EvaluateAndSend(context.Background(), testIssue("teammate@esb.co.id", "Teammate"), session); err != nil {
@@ -549,5 +555,55 @@ func TestNotifyIfEarlyCompletion_RoutesSelfToWebhookAndTeammateToDM(t *testing.T
 	}
 	if len(dmNotifier.sentMessages) != 1 {
 		t.Errorf("teammate assignee must use DM (spec AC4.3) — dm=%d", len(dmNotifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T) {
+	// Reproduces the real production bug: Jira hides assignee.emailAddress
+	// org-wide for non-self accounts (confirmed live for Rio/Benni), but
+	// tr_issuesession.assigneeEmail was already correctly resolved and
+	// stored by the poller at session-open time. sendOverageIfDue/
+	// sendTierIfDue must use session.AssigneeEmail, not re-derive (and get
+	// a blank string) from issue.Fields.Assignee.EmailAddress — a blank
+	// string there breaks DM routing (Google Chat API rejects "users/"
+	// with no identifier).
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	dmNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+	)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey: "CORE-10783", StoryPoints: 1.5, AccumulatedSeconds: 10000,
+		AssigneeEmail: "rio.pratama@esb.co.id", // correctly resolved/stored by the poller
+	}
+	// issue.Fields.Assignee.EmailAddress is blank — the real Jira shape for
+	// a non-self assignee on this org.
+	issueWithBlankEmail := jira_client_dto.Issue{
+		Key: "CORE-10783",
+		Fields: jira_client_dto.IssueFields{
+			Assignee: &jira_client_dto.Assignee{AccountID: "acc-rio", EmailAddress: "", DisplayName: "Rio Adhi Pratama"},
+			Summary:  "Test ticket",
+		},
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), issueWithBlankEmail, session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(dmNotifier.sentMessages) != 1 {
+		t.Fatalf("dmNotifier.sentMessages = %d, want 1 — routing must use session.AssigneeEmail, not the blank issue field", len(dmNotifier.sentMessages))
+	}
+	if dmNotifier.sentMessages[0].AssigneeEmail != "rio.pratama@esb.co.id" {
+		t.Errorf("AssigneeEmail = %q, want %q (from session, not the blank Jira field)", dmNotifier.sentMessages[0].AssigneeEmail, "rio.pratama@esb.co.id")
+	}
+	if len(webhookNotifier.sentMessages) != 0 {
+		t.Errorf("webhookNotifier.sentMessages = %d, want 0", len(webhookNotifier.sentMessages))
 	}
 }

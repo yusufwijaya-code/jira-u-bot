@@ -33,8 +33,8 @@ func (f *fakeJiraClientService) GetLatestCodeProcessEntryTime(ctx context.Contex
 	return f.changelogEntryTime, f.changelogFound, f.changelogErr
 }
 
-func (f *fakeJiraClientService) LookupUserByEmail(ctx context.Context, email string) (bool, error) {
-	return false, nil
+func (f *fakeJiraClientService) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
+	return "", false, nil
 }
 
 func (f *fakeJiraClientService) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
@@ -154,7 +154,7 @@ func newFakeRegistrationRepositoryForPoller(registeredEmails ...string) *fakeReg
 	return &fakeRegistrationRepositoryForPoller{registeredEmails: m}
 }
 
-func (f *fakeRegistrationRepositoryForPoller) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepositoryForPoller) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {
 	return nil
 }
 
@@ -163,6 +163,18 @@ func (f *fakeRegistrationRepositoryForPoller) FindUserByEmail(ctx context.Contex
 		return nil, false, nil
 	}
 	return &registration_dto.User{Email: email}, true, nil
+}
+
+// FindUserByJiraAccountID: test convention is that an issue's
+// Assignee.AccountID is set to the same string used to register the user
+// (see assignedIssue/assignedCoreIssue) — a realistic Jira accountId
+// format doesn't matter here, only that matching correctly routes through
+// accountId rather than the (often blank in production) assignee email.
+func (f *fakeRegistrationRepositoryForPoller) FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error) {
+	if !f.registeredEmails[jiraAccountID] {
+		return nil, false, nil
+	}
+	return &registration_dto.User{Email: jiraAccountID}, true, nil
 }
 
 func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
@@ -189,7 +201,9 @@ func assignedIssue(key, email string, sp float64) jira_client_dto.Issue {
 		Key: key,
 		Fields: jira_client_dto.IssueFields{
 			StoryPoints: storyPointsPtr(sp),
-			Assignee:    &jira_client_dto.Assignee{EmailAddress: email, DisplayName: email},
+			// AccountID reuses the email string as a stand-in identifier —
+			// see fakeRegistrationRepositoryForPoller.FindUserByJiraAccountID.
+			Assignee: &jira_client_dto.Assignee{AccountID: email, EmailAddress: email, DisplayName: email},
 		},
 	}
 }
@@ -579,7 +593,7 @@ func TestPollOnce_SteadyStateRefreshesAssigneeEmailAndIssueSummary(t *testing.T)
 		issues: []jira_client_dto.Issue{
 			{Key: "OMS-1", Fields: jira_client_dto.IssueFields{
 				StoryPoints: storyPointsPtr(3),
-				Assignee:    &jira_client_dto.Assignee{EmailAddress: "reassigned@esb.co.id", DisplayName: "Reassigned"},
+				Assignee:    &jira_client_dto.Assignee{AccountID: "reassigned@esb.co.id", EmailAddress: "reassigned@esb.co.id", DisplayName: "Reassigned"},
 				Summary:     "Updated summary",
 			}},
 		},
@@ -654,5 +668,70 @@ func TestPollOnce_OpensNewSessionAtNowWhenNoChangelogEntryFound(t *testing.T) {
 	}
 	if time.Since(*issueSession.sessions["OMS-1"].CurrentSessionStartedDate) > time.Minute {
 		t.Error("CurrentSessionStartedDate should fall back to approximately now when no changelog entry is found")
+	}
+}
+
+func assignedCoreIssue(key, email string, sp float64) jira_client_dto.Issue {
+	return jira_client_dto.Issue{
+		Key: key,
+		Fields: jira_client_dto.IssueFields{
+			StoryPointsCore: storyPointsPtr(sp), // CORE project's field, customfield_11053
+			Assignee:        &jira_client_dto.Assignee{AccountID: email, EmailAddress: email, DisplayName: email},
+		},
+	}
+}
+
+func TestPollOnce_TracksCoreTicketUsingCoreStoryPointField(t *testing.T) {
+	// CORE tickets carry Story Points on customfield_11053, not
+	// customfield_10016 — isEligible must not treat them as "no SP".
+	jiraClient := &fakeJiraClientService{
+		issues: []jira_client_dto.Issue{assignedCoreIssue("CORE-10782", "rio.pratama@esb.co.id", 1.5)},
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("rio.pratama@esb.co.id")
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "CORE-10782" {
+		t.Errorf("openAtCalls = %v, want [CORE-10782] — a CORE ticket's Story Points (customfield_11053) must count toward eligibility", issueSession.openAtCalls)
+	}
+	if issueSession.sessions["CORE-10782"].StoryPoints != 1.5 {
+		t.Errorf("StoryPoints = %v, want 1.5", issueSession.sessions["CORE-10782"].StoryPoints)
+	}
+}
+
+func TestPollOnce_TracksIssueWhenAssigneeEmailIsBlankButAccountIDMatchesRegisteredUser(t *testing.T) {
+	// Reproduces the real production shape: Jira hides assignee.emailAddress
+	// org-wide (confirmed live for Rio/Benni) but always populates
+	// accountId. Eligibility must not depend on EmailAddress being set.
+	jiraClient := &fakeJiraClientService{
+		issues: []jira_client_dto.Issue{
+			{
+				Key: "CORE-10782",
+				Fields: jira_client_dto.IssueFields{
+					StoryPointsCore: storyPointsPtr(1.5),
+					Assignee:        &jira_client_dto.Assignee{AccountID: "acc-rio-123", EmailAddress: "", DisplayName: "Rio Adhi Pratama"},
+				},
+			},
+		},
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("acc-rio-123")
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "CORE-10782" {
+		t.Fatalf("openAtCalls = %v, want [CORE-10782] — eligibility must match on accountId even when EmailAddress is blank", issueSession.openAtCalls)
+	}
+	if issueSession.sessions["CORE-10782"].AssigneeEmail != "acc-rio-123" {
+		t.Errorf("AssigneeEmail = %q, want the REGISTERED email (%q in this fake), not the blank Jira-reported one", issueSession.sessions["CORE-10782"].AssigneeEmail, "acc-rio-123")
 	}
 }

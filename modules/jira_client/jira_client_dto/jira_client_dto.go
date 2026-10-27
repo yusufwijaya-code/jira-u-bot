@@ -11,6 +11,22 @@ type IssueFields struct {
 	Assignee    *Assignee `json:"assignee"`
 	IssueType   IssueType `json:"issuetype"`
 	StoryPoints *float64  `json:"customfield_10016"`
+	// StoryPointsCore is the CORE project's Story Points field
+	// (customfield_11053) — see StoryPointFieldIDCore. Use
+	// EffectiveStoryPoints() instead of reading StoryPoints/StoryPointsCore
+	// directly.
+	StoryPointsCore *float64 `json:"customfield_11053"`
+}
+
+// EffectiveStoryPoints returns this issue's Story Points regardless of
+// which Jira project's custom field it lives on (StoryPoints for OMS,
+// StoryPointsCore for CORE) — confirmed live that an issue never has both
+// populated.
+func (f IssueFields) EffectiveStoryPoints() *float64 {
+	if f.StoryPoints != nil {
+		return f.StoryPoints
+	}
+	return f.StoryPointsCore
 }
 
 type Status struct {
@@ -18,6 +34,11 @@ type Status struct {
 }
 
 type Assignee struct {
+	// AccountID is always populated by Jira, unlike EmailAddress — this org
+	// hides emailAddress on assignee objects for any account but the API
+	// token's own (confirmed live). Eligibility matching must key off this
+	// field, not EmailAddress.
+	AccountID    string `json:"accountId"`
 	EmailAddress string `json:"emailAddress"`
 	DisplayName  string `json:"displayName"`
 }

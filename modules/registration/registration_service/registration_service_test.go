@@ -12,8 +12,9 @@ import (
 )
 
 type fakeJiraClientServiceForRegistration struct {
-	found bool
-	err   error
+	accountID string
+	found     bool
+	err       error
 }
 
 func (f *fakeJiraClientServiceForRegistration) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -24,8 +25,8 @@ func (f *fakeJiraClientServiceForRegistration) GetLatestCodeProcessEntryTime(ctx
 	return time.Time{}, false, nil
 }
 
-func (f *fakeJiraClientServiceForRegistration) LookupUserByEmail(ctx context.Context, email string) (bool, error) {
-	return f.found, f.err
+func (f *fakeJiraClientServiceForRegistration) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
+	return f.accountID, f.found, f.err
 }
 
 func (f *fakeJiraClientServiceForRegistration) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
@@ -33,16 +34,22 @@ func (f *fakeJiraClientServiceForRegistration) GetIssueStatus(ctx context.Contex
 }
 
 type fakeRegistrationRepositoryForService struct {
-	upsertCalled bool
-	upsertErr    error
+	upsertCalled     bool
+	upsertErr        error
+	gotJiraAccountID string
 }
 
-func (f *fakeRegistrationRepositoryForService) UpsertUser(ctx context.Context, name, email string) error {
+func (f *fakeRegistrationRepositoryForService) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {
 	f.upsertCalled = true
+	f.gotJiraAccountID = jiraAccountID
 	return f.upsertErr
 }
 
 func (f *fakeRegistrationRepositoryForService) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
+	return nil, false, nil
+}
+
+func (f *fakeRegistrationRepositoryForService) FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error) {
 	return nil, false, nil
 }
 
@@ -51,7 +58,7 @@ func (f *fakeRegistrationRepositoryForService) UpdateGoogleChatDMSpaceID(ctx con
 }
 
 func TestRegister_UpsertsWhenJiraAccountFound(t *testing.T) {
-	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
+	jiraClient := &fakeJiraClientServiceForRegistration{found: true, accountID: "acc-anwar-123"}
 	repo := &fakeRegistrationRepositoryForService{}
 	svc := NewRegistrationService(jiraClient, repo, nil, "")
 
@@ -60,6 +67,9 @@ func TestRegister_UpsertsWhenJiraAccountFound(t *testing.T) {
 	}
 	if !repo.upsertCalled {
 		t.Error("expected UpsertUser to be called")
+	}
+	if repo.gotJiraAccountID != "acc-anwar-123" {
+		t.Errorf("UpsertUser received jiraAccountID = %q, want %q (must thread through from LookupUserByEmail)", repo.gotJiraAccountID, "acc-anwar-123")
 	}
 }
 

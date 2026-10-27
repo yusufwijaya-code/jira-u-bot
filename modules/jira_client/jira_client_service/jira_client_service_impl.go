@@ -32,7 +32,7 @@ func (s *jiraClientServiceImpl) SearchCodeProcessIssues(ctx context.Context) ([]
 	jql := fmt.Sprintf(`project in (CORE, OMS) AND status = "%s"`, jira_client_dto.StatusCodeProcess)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID)
+	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID+","+jira_client_dto.StoryPointFieldIDCore)
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
@@ -77,13 +77,15 @@ func (s *jiraClientServiceImpl) GetLatestCodeProcessEntryTime(ctx context.Contex
 	return latest, found, nil
 }
 
-// LookupUserByEmail reports whether a Jira account matches email. The Jira
-// Cloud user-search endpoint already matches `query` against email server-side,
-// but privacy settings can make it return the match with an empty
-// EmailAddress field — so a client-side equality check on that field would
-// silently reject real accounts whose email the org has hidden. Any result
-// returned for an email-shaped query is therefore treated as a match.
-func (s *jiraClientServiceImpl) LookupUserByEmail(ctx context.Context, email string) (bool, error) {
+// LookupUserByEmail reports whether a Jira account matches email, and that
+// account's accountId. The Jira Cloud user-search endpoint already matches
+// `query` against email server-side, but privacy settings can make it
+// return the match with an empty EmailAddress field — so a client-side
+// equality check on that field would silently reject real accounts whose
+// email the org has hidden. Any result returned for an email-shaped query
+// is therefore treated as a match. accountId, unlike email, is never
+// hidden — it's the identifier callers should persist for later matching.
+func (s *jiraClientServiceImpl) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
 	params := url.Values{}
 	params.Set("query", email)
 	reqURL := fmt.Sprintf("%s/rest/api/3/user/search?%s", s.cfg.JiraBaseURL, params.Encode())
@@ -92,10 +94,12 @@ func (s *jiraClientServiceImpl) LookupUserByEmail(ctx context.Context, email str
 		ctx, reqURL, s.authHeaders(), nil, http.MethodGet, 5000, true,
 	)
 	if err != nil {
-		return false, fmt.Errorf("jira_client: LookupUserByEmail(%s) failed: %w", email, err)
+		return "", false, fmt.Errorf("jira_client: LookupUserByEmail(%s) failed: %w", email, err)
 	}
-
-	return len(*result) > 0, nil
+	if len(*result) == 0 {
+		return "", false, nil
+	}
+	return (*result)[0].AccountID, true, nil
 }
 
 func (s *jiraClientServiceImpl) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {

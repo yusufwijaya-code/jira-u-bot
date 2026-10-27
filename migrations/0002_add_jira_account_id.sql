@@ -1,0 +1,1 @@
+ALTER TABLE ms_user ADD COLUMN jiraAccountId VARCHAR(255) AFTER email;

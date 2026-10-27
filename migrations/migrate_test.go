@@ -63,6 +63,7 @@ func TestApply_NewColumnsExistOnMsUserAndTrIssuesession(t *testing.T) {
 		table, column string
 	}{
 		{"ms_user", "googleChatDMSpaceID"},
+		{"ms_user", "jiraAccountId"},
 		{"tr_issuesession", "assigneeEmail"},
 		{"tr_issuesession", "issueSummary"},
 	}

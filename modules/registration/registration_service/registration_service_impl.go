@@ -27,7 +27,7 @@ func NewRegistrationService(
 }
 
 func (s *registrationServiceImpl) Register(ctx context.Context, name, email string) error {
-	found, err := s.jiraClient.LookupUserByEmail(ctx, email)
+	accountID, found, err := s.jiraClient.LookupUserByEmail(ctx, email)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrJiraLookupUnavailable, err)
 	}
@@ -35,7 +35,7 @@ func (s *registrationServiceImpl) Register(ctx context.Context, name, email stri
 		return ErrJiraAccountNotFound
 	}
 
-	if err := s.repo.UpsertUser(ctx, name, email); err != nil {
+	if err := s.repo.UpsertUser(ctx, name, email, accountID); err != nil {
 		return fmt.Errorf("registration_service: UpsertUser failed: %w", err)
 	}
 

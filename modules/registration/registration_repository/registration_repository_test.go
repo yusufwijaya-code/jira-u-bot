@@ -13,7 +13,7 @@ func TestUpsertUser_CreatesNewUser(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-anwar@esb.co.id") })
 
-	if err := repo.UpsertUser(ctx, "TestMySQL Anwar", "testmysql-anwar@esb.co.id"); err != nil {
+	if err := repo.UpsertUser(ctx, "TestMySQL Anwar", "testmysql-anwar@esb.co.id", "acc-anwar-123"); err != nil {
 		t.Fatalf("UpsertUser returned error: %v", err)
 	}
 
@@ -33,6 +33,9 @@ func TestUpsertUser_CreatesNewUser(t *testing.T) {
 	if user.GoogleChatDMSpaceID != "" {
 		t.Errorf("GoogleChatDMSpaceID = %q, want empty for a brand-new registration", user.GoogleChatDMSpaceID)
 	}
+	if user.JiraAccountID != "acc-anwar-123" {
+		t.Errorf("JiraAccountID = %q, want %q", user.JiraAccountID, "acc-anwar-123")
+	}
 }
 
 func TestUpsertUser_SameEmailUpdatesInsteadOfDuplicating(t *testing.T) {
@@ -41,10 +44,10 @@ func TestUpsertUser_SameEmailUpdatesInsteadOfDuplicating(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-anwar2@esb.co.id") })
 
-	if err := repo.UpsertUser(ctx, "TestMySQL Anwar", "testmysql-anwar2@esb.co.id"); err != nil {
+	if err := repo.UpsertUser(ctx, "TestMySQL Anwar", "testmysql-anwar2@esb.co.id", "acc-anwar2-1"); err != nil {
 		t.Fatalf("first UpsertUser returned error: %v", err)
 	}
-	if err := repo.UpsertUser(ctx, "TestMySQL Anwar Setiawan", "testmysql-anwar2@esb.co.id"); err != nil {
+	if err := repo.UpsertUser(ctx, "TestMySQL Anwar Setiawan", "testmysql-anwar2@esb.co.id", "acc-anwar2-2"); err != nil {
 		t.Fatalf("second UpsertUser returned error: %v", err)
 	}
 
@@ -63,6 +66,9 @@ func TestUpsertUser_SameEmailUpdatesInsteadOfDuplicating(t *testing.T) {
 	if user.UserName != "TestMySQL Anwar Setiawan" {
 		t.Errorf("UserName = %q, want updated name %q", user.UserName, "TestMySQL Anwar Setiawan")
 	}
+	if user.JiraAccountID != "acc-anwar2-2" {
+		t.Errorf("JiraAccountID = %q, want updated value %q", user.JiraAccountID, "acc-anwar2-2")
+	}
 }
 
 func TestUpdateGoogleChatDMSpaceID_PersistsAndIsReadable(t *testing.T) {
@@ -71,7 +77,7 @@ func TestUpdateGoogleChatDMSpaceID_PersistsAndIsReadable(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-dmspace@esb.co.id") })
 
-	if err := repo.UpsertUser(ctx, "TestMySQL DMSpace", "testmysql-dmspace@esb.co.id"); err != nil {
+	if err := repo.UpsertUser(ctx, "TestMySQL DMSpace", "testmysql-dmspace@esb.co.id", "acc-dmspace"); err != nil {
 		t.Fatalf("UpsertUser returned error: %v", err)
 	}
 	if err := repo.UpdateGoogleChatDMSpaceID(ctx, "testmysql-dmspace@esb.co.id", "spaces/ABC123"); err != nil {
@@ -100,6 +106,44 @@ func TestFindUserByEmail_NotFoundReturnsFalseNoError(t *testing.T) {
 	}
 	if found {
 		t.Error("found = true, want false for an unregistered email")
+	}
+	if user != nil {
+		t.Error("user should be nil when not found")
+	}
+}
+
+func TestFindUserByJiraAccountID_ReturnsMatchingUser(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-accid@esb.co.id") })
+
+	if err := repo.UpsertUser(ctx, "TestMySQL AccID", "testmysql-accid@esb.co.id", "acc-id-xyz"); err != nil {
+		t.Fatalf("UpsertUser returned error: %v", err)
+	}
+
+	user, found, err := repo.FindUserByJiraAccountID(ctx, "acc-id-xyz")
+	if err != nil {
+		t.Fatalf("FindUserByJiraAccountID returned error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected user to be found by jiraAccountId")
+	}
+	if user.Email != "testmysql-accid@esb.co.id" {
+		t.Errorf("Email = %q, want %q", user.Email, "testmysql-accid@esb.co.id")
+	}
+}
+
+func TestFindUserByJiraAccountID_NotFoundReturnsFalseNoError(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+
+	user, found, err := repo.FindUserByJiraAccountID(context.Background(), "acc-does-not-exist")
+	if err != nil {
+		t.Fatalf("FindUserByJiraAccountID returned error: %v", err)
+	}
+	if found {
+		t.Error("found = true, want false for an unregistered accountId")
 	}
 	if user != nil {
 		t.Error("user should be nil when not found")

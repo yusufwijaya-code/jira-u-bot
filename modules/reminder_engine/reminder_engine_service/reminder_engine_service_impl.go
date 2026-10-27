@@ -112,7 +112,7 @@ func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue j
 	if elapsedSeconds > budgetSeconds {
 		return e.sendOverageIfDue(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 	}
-	return e.sendTierIfDue(ctx, issue, session.StoryPoints, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
+	return e.sendTierIfDue(ctx, issue, session.StoryPoints, session.AssigneeEmail, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 }
 
 // resolveAssigneeDisplayName implements spec AC3.3: an unregistered assignee
@@ -137,10 +137,11 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 		return nil
 	}
 
-	var assigneeEmail string
-	if issue.Fields.Assignee != nil {
-		assigneeEmail = issue.Fields.Assignee.EmailAddress
-	}
+	// session.AssigneeEmail (resolved/persisted by the poller at session-
+	// open time) is the source of truth here — issue.Fields.Assignee.
+	// EmailAddress is often blank (Jira hides it org-wide for any account
+	// but the API token's own), and a blank email breaks DM routing.
+	assigneeEmail := session.AssigneeEmail
 
 	msg := google_chat_notifier_dto.ReminderMessage{
 		IssueKey:       issue.Key,
@@ -171,14 +172,9 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 	return e.issueSession.UpdateLastOverageReminder(ctx, issue.Key)
 }
 
-func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, assigneeEmail string, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
 	remaining := budgetSeconds - elapsedSeconds
 	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
-
-	var assigneeEmail string
-	if issue.Fields.Assignee != nil {
-		assigneeEmail = issue.Fields.Assignee.EmailAddress
-	}
 
 	for _, tier := range e.ApplicableTiers(budgetSeconds) {
 		if remaining > tierDurationSeconds(tier) {

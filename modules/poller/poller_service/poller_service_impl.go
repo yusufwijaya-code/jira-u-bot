@@ -46,34 +46,51 @@ func NewPollerService(
 	}
 }
 
-// isEligible implements the team's decision to scope the bot down from
-// "every CORE/OMS ticket in Code Process" to only tickets assigned to a
-// registered user with a real Story Points budget — an unassigned ticket,
-// an assignee who never used /register, or a ticket with no (or zero) SP
-// carries nothing meaningful to track and must never reach the session/
-// reminder pipeline at all (not even to show up as an instant overage).
-func (p *pollerServiceImpl) isEligible(ctx context.Context, issue jira_client_dto.Issue) bool {
-	if issue.Fields.StoryPoints == nil || *issue.Fields.StoryPoints <= 0 {
-		return false
+// resolveEligibility implements the team's decision to scope the bot down
+// from "every CORE/OMS ticket in Code Process" to only tickets assigned to
+// a registered user with a real Story Points budget — an unassigned
+// ticket, an assignee who never used /register, or a ticket with no (or
+// zero) SP carries nothing meaningful to track and must never reach the
+// session/reminder pipeline at all (not even to show up as an instant
+// overage).
+//
+// Matching is done by the assignee's Jira accountId, not their email —
+// this Jira org hides assignee.emailAddress for any account but the API
+// token's own (confirmed live), so accountId is the only assignee
+// identifier that's ever reliably populated. On a match, the REGISTERED
+// email (typed at registration, already verified against Jira) is
+// returned for session tracking/DM routing — never the issue's own
+// (often blank) emailAddress field.
+func (p *pollerServiceImpl) resolveEligibility(ctx context.Context, issue jira_client_dto.Issue) (assigneeEmail string, eligible bool) {
+	sp := issue.Fields.EffectiveStoryPoints()
+	if sp == nil || *sp <= 0 {
+		return "", false
 	}
 	if issue.Fields.Assignee == nil {
-		return false
+		return "", false
 	}
-	_, found, err := p.registrationRepo.FindUserByEmail(ctx, issue.Fields.Assignee.EmailAddress)
-	if err != nil {
-		return false
+	user, found, err := p.registrationRepo.FindUserByJiraAccountID(ctx, issue.Fields.Assignee.AccountID)
+	if err != nil || !found {
+		return "", false
 	}
-	return found
+	return user.Email, true
 }
 
-func (p *pollerServiceImpl) filterEligible(ctx context.Context, issues []jira_client_dto.Issue) []jira_client_dto.Issue {
+// filterEligible returns the eligible subset of issues alongside a
+// issueKey -> registered-email map (see resolveEligibility) for callers
+// that need the resolved email when opening/updating sessions.
+func (p *pollerServiceImpl) filterEligible(ctx context.Context, issues []jira_client_dto.Issue) ([]jira_client_dto.Issue, map[string]string) {
 	eligible := make([]jira_client_dto.Issue, 0, len(issues))
+	resolvedEmails := make(map[string]string, len(issues))
 	for _, issue := range issues {
-		if p.isEligible(ctx, issue) {
-			eligible = append(eligible, issue)
+		email, ok := p.resolveEligibility(ctx, issue)
+		if !ok {
+			continue
 		}
+		eligible = append(eligible, issue)
+		resolvedEmails[issue.Key] = email
 	}
-	return eligible
+	return eligible, resolvedEmails
 }
 
 func (p *pollerServiceImpl) Run(ctx context.Context) {
@@ -101,7 +118,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("poller: SearchCodeProcessIssues failed: %w", err)
 	}
-	issues = p.filterEligible(ctx, issues)
+	issues, resolvedEmails := p.filterEligible(ctx, issues)
 
 	currentByKey := make(map[string]jira_client_dto.Issue, len(issues))
 	for _, issue := range issues {
@@ -167,7 +184,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if !entryFound {
 			entryTime = time.Now()
 		}
-		if err := p.issueSession.OpenOrResumeSessionAt(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), entryTime, assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), entryTime, resolvedEmails[key], issue.Fields.Summary); err != nil {
 			return fmt.Errorf("poller: OpenOrResumeSessionAt(%s) failed: %w", key, err)
 		}
 	}
@@ -179,7 +196,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if _, wasAlreadyActive := activeByKey[key]; !wasAlreadyActive {
 			continue
 		}
-		if err := p.issueSession.UpdateStoryPoints(ctx, key, storyPointsOf(issue), assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
+		if err := p.issueSession.UpdateStoryPoints(ctx, key, storyPointsOf(issue), resolvedEmails[key], issue.Fields.Summary); err != nil {
 			return fmt.Errorf("poller: UpdateStoryPoints(%s) failed: %w", key, err)
 		}
 	}
@@ -211,7 +228,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("poller: backfill SearchCodeProcessIssues failed: %w", err)
 	}
-	issues = p.filterEligible(ctx, issues)
+	issues, resolvedEmails := p.filterEligible(ctx, issues)
 
 	for _, issue := range issues {
 		_, found, err := p.issueSession.GetSessionByIssueKey(ctx, issue.Key)
@@ -230,7 +247,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 			entryTime = time.Now()
 		}
 
-		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, assigneeEmailOf(issue), issue.Fields.Summary); err != nil {
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, resolvedEmails[issue.Key], issue.Fields.Summary); err != nil {
 			return fmt.Errorf("poller: backfill OpenOrResumeSessionAt(%s) failed: %w", issue.Key, err)
 		}
 	}
@@ -239,17 +256,11 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 }
 
 func storyPointsOf(issue jira_client_dto.Issue) float64 {
-	if issue.Fields.StoryPoints == nil {
+	sp := issue.Fields.EffectiveStoryPoints()
+	if sp == nil {
 		return 0
 	}
-	return *issue.Fields.StoryPoints
-}
-
-func assigneeEmailOf(issue jira_client_dto.Issue) string {
-	if issue.Fields.Assignee == nil {
-		return ""
-	}
-	return issue.Fields.Assignee.EmailAddress
+	return *sp
 }
 
 func projectKeyFromIssueKey(issueKey string) string {
