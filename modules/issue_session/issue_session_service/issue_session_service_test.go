@@ -50,6 +50,10 @@ func (f *fakeIssueSessionRepository) UpdateLastOverageReminder(ctx context.Conte
 	return f.err
 }
 
+func (f *fakeIssueSessionRepository) FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error) {
+	return nil, f.err
+}
+
 func TestOpenOrResumeSession_DelegatesToRepository(t *testing.T) {
 	repo := &fakeIssueSessionRepository{}
 	svc := NewIssueSessionService(repo)

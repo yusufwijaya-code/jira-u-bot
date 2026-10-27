@@ -164,3 +164,60 @@ func TestUpdateStoryPoints_AlsoRefreshesAssigneeEmailAndIssueSummary(t *testing.
 		t.Errorf("IssueSummary = %q, want updated value %q", session.IssueSummary, "Updated summary")
 	}
 }
+
+func TestFindActiveByAssigneeEmail_ReturnsOnlyThatAssigneesActiveSessions(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewIssueSessionRepository(db)
+	ctx := context.Background()
+	cleanupSession(t, repo, "TESTMYSQL-10")
+	cleanupSession(t, repo, "TESTMYSQL-11")
+
+	if err := repo.OpenOrResumeSession(ctx, "TESTMYSQL-10", "TESTMYSQL", 2, "dev@esb.co.id", "Ticket A"); err != nil {
+		t.Fatalf("OpenOrResumeSession TESTMYSQL-10 returned error: %v", err)
+	}
+	if err := repo.OpenOrResumeSession(ctx, "TESTMYSQL-11", "TESTMYSQL", 3, "other@esb.co.id", "Ticket B"); err != nil {
+		t.Fatalf("OpenOrResumeSession TESTMYSQL-11 returned error: %v", err)
+	}
+
+	got, err := repo.FindActiveByAssigneeEmail(ctx, "dev@esb.co.id")
+	if err != nil {
+		t.Fatalf("FindActiveByAssigneeEmail returned error: %v", err)
+	}
+
+	found := false
+	for _, s := range got {
+		if s.IssueKey == "TESTMYSQL-11" {
+			t.Error("result includes a session belonging to a different assignee")
+		}
+		if s.IssueKey == "TESTMYSQL-10" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected TESTMYSQL-10 in the result for dev@esb.co.id")
+	}
+}
+
+func TestFindActiveByAssigneeEmail_ExcludesClosedSessions(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewIssueSessionRepository(db)
+	ctx := context.Background()
+	cleanupSession(t, repo, "TESTMYSQL-12")
+
+	if err := repo.OpenOrResumeSession(ctx, "TESTMYSQL-12", "TESTMYSQL", 1, "dev@esb.co.id", "Closed ticket"); err != nil {
+		t.Fatalf("OpenOrResumeSession returned error: %v", err)
+	}
+	if err := repo.CloseSession(ctx, "TESTMYSQL-12", 100); err != nil {
+		t.Fatalf("CloseSession returned error: %v", err)
+	}
+
+	got, err := repo.FindActiveByAssigneeEmail(ctx, "dev@esb.co.id")
+	if err != nil {
+		t.Fatalf("FindActiveByAssigneeEmail returned error: %v", err)
+	}
+	for _, s := range got {
+		if s.IssueKey == "TESTMYSQL-12" {
+			t.Error("result includes a closed (flagActive=0) session")
+		}
+	}
+}

@@ -113,6 +113,31 @@ func (r *issueSessionRepositoryImpl) GetActiveSessions(ctx context.Context) ([]i
 	return sessions, rows.Err()
 }
 
+func (r *issueSessionRepositoryImpl) FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error) {
+	const query = `
+		SELECT issueSessionID, issueKey, projectKey, storyPoints,
+		       accumulatedSeconds, currentSessionStartedDate, flagActive,
+		       lastOverageReminderDate, assigneeEmail, issueSummary, createdBy, createdDate
+		FROM tr_issuesession
+		WHERE flagActive = 1 AND assigneeEmail = ?
+	`
+	rows, err := r.db.QueryContext(ctx, query, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []issue_session_dto.IssueSession
+	for rows.Next() {
+		s, err := scanIssueSessionRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
 func (r *issueSessionRepositoryImpl) GetSessionByIssueKey(ctx context.Context, issueKey string) (*issue_session_dto.IssueSession, bool, error) {
 	const query = `
 		SELECT issueSessionID, issueKey, projectKey, storyPoints,
