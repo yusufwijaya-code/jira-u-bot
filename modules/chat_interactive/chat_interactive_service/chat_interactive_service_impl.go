@@ -3,6 +3,7 @@ package chat_interactive_service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"jira-u-bot/modules/business_hours/business_hours_dto"
@@ -115,9 +116,53 @@ func (s *chatInteractiveServiceImpl) formatTicketLine(session issue_session_dto.
 }
 
 func (s *chatInteractiveServiceImpl) handleOverdue(ctx context.Context) string {
-	return "" // replaced in Task 7
+	sessions, err := s.issueSessionRepo.GetActiveSessions(ctx)
+	if err != nil {
+		return "Nggak ada tiket aktif saat ini 👍"
+	}
+
+	var overdue []issue_session_dto.IssueSession
+	for _, session := range sessions {
+		budgetSeconds := int64(session.StoryPoints * 3600)
+		elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
+		if elapsedSeconds > budgetSeconds {
+			overdue = append(overdue, session)
+		}
+	}
+
+	if len(overdue) == 0 {
+		return "Semua tiket masih dalam budget 🎉"
+	}
+
+	lines := []string{"🔴 Tiket yang sudah lewat budget:", ""}
+	for _, session := range overdue {
+		lines = append(lines, fmt.Sprintf("*%s* (%s) — %s", session.IssueKey, session.AssigneeEmail, session.IssueSummary))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (s *chatInteractiveServiceImpl) handleTeam(ctx context.Context) string {
-	return "" // replaced in Task 7
+	sessions, err := s.issueSessionRepo.GetActiveSessions(ctx)
+	if err != nil || len(sessions) == 0 {
+		return "Tidak ada aktivitas Code Process saat ini"
+	}
+
+	byAssignee := map[string][]issue_session_dto.IssueSession{}
+	var assignees []string
+	for _, session := range sessions {
+		if _, seen := byAssignee[session.AssigneeEmail]; !seen {
+			assignees = append(assignees, session.AssigneeEmail)
+		}
+		byAssignee[session.AssigneeEmail] = append(byAssignee[session.AssigneeEmail], session)
+	}
+	sort.Strings(assignees)
+
+	lines := []string{"👥 Ringkasan tim:", ""}
+	for _, email := range assignees {
+		lines = append(lines, fmt.Sprintf("*%s*", email))
+		for _, session := range byAssignee[email] {
+			lines = append(lines, fmt.Sprintf("  • %s — %s", session.IssueKey, session.IssueSummary))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
