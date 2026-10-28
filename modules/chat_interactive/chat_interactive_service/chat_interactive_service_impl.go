@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"jira-u-bot/modules/business_hours/business_hours_dto"
 	"jira-u-bot/modules/business_hours/business_hours_service"
@@ -150,7 +151,10 @@ func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email 
 	}
 
 	lines := []string{"⏰ Tiket kamu yang aktif:", ""}
-	for _, session := range sessions {
+	for i, session := range sessions {
+		if i > 0 {
+			lines = append(lines, "") // blank line between cards so they don't visually blend together
+		}
 		lines = append(lines, s.formatTicketLine(session))
 	}
 	return strings.Join(lines, "\n")
@@ -176,13 +180,15 @@ func (s *chatInteractiveServiceImpl) formatTicketLine(session issue_session_dto.
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
 	remainingSeconds := budgetSeconds - elapsedSeconds
+	deadline := s.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remainingSeconds, s.holidayCalendar)
 
 	return fmt.Sprintf(
-		"*%s* — %s\n*Story Point:* %.1f SP (budget %.1f jam)\n*Waktu berjalan:* %.1f jam\n*Sisa waktu:* %s",
+		"*%s* — %s\n*Story Point:* %.1f SP (budget %.1f jam)\n*Waktu berjalan:* %.1f jam\n*Sisa waktu:* %s\n*Harus Selesai Pass:* %s",
 		session.IssueKey, session.IssueSummary,
 		session.StoryPoints, float64(budgetSeconds)/3600,
 		float64(elapsedSeconds)/3600,
 		google_chat_notifier_service.FormatDuration(remainingSeconds),
+		google_chat_notifier_service.FormatDeadline(deadline),
 	)
 }
 

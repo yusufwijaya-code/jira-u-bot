@@ -21,6 +21,9 @@ var addJiraAccountIDSQL string
 //go:embed 0003_add_chat_command_poll_cursor.sql
 var addChatCommandPollCursorSQL string
 
+//go:embed 0004_cursor_subsecond_precision.sql
+var cursorSubsecondPrecisionSQL string
+
 func Apply(db *sql.DB) error {
 	if _, err := db.Exec(initSQL); err != nil {
 		return err
@@ -31,7 +34,12 @@ func Apply(db *sql.DB) error {
 	// CREATE TABLE IF NOT EXISTS is naturally idempotent (unlike ADD COLUMN
 	// on MySQL 8.0.43 — see applyAddJiraAccountID), so this needs no
 	// conditional wrapper.
-	_, err := db.Exec(addChatCommandPollCursorSQL)
+	if _, err := db.Exec(addChatCommandPollCursorSQL); err != nil {
+		return err
+	}
+	// MODIFY COLUMN re-applying the same target type is naturally
+	// idempotent too (unlike ADD COLUMN), so no conditional wrapper needed.
+	_, err := db.Exec(cursorSubsecondPrecisionSQL)
 	return err
 }
 

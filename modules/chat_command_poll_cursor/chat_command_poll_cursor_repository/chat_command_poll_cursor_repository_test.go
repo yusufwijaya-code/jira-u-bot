@@ -45,6 +45,45 @@ func TestUpdateCursor_ThenGetCursor_RoundTrips(t *testing.T) {
 	}
 }
 
+// TestUpdateCursor_PreservesSubSecondPrecision reproduces a real production
+// bug: Google Chat message createTime carries microsecond precision (e.g.
+// "2026-10-27T12:32:52.552687Z"). If the stored column truncates that away,
+// the ORIGINAL message's timestamp looks newer than the truncated cursor on
+// the next poll cycle, so chat_command_poller reprocesses it and sends a
+// duplicate reply — confirmed live (Benni got /u-mytickets answered twice,
+// exactly one poll interval apart).
+func TestUpdateCursor_PreservesSubSecondPrecision(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewChatCommandPollCursorRepository(db)
+	ctx := context.Background()
+	space := "spaces/TESTMYSQL-SUBSECOND"
+	t.Cleanup(func() { db.Exec(`DELETE FROM chat_command_poll_cursor WHERE googleChatDMSpaceID = ?`, space) })
+
+	want, err := time.Parse(time.RFC3339Nano, "2026-10-27T12:32:52.552687Z")
+	if err != nil {
+		t.Fatalf("time.Parse failed: %v", err)
+	}
+	if err := repo.UpdateCursor(ctx, space, want); err != nil {
+		t.Fatalf("UpdateCursor returned error: %v", err)
+	}
+
+	got, found, err := repo.GetCursor(ctx, space)
+	if err != nil {
+		t.Fatalf("GetCursor returned error: %v", err)
+	}
+	if !found {
+		t.Fatal("expected cursor to be found after UpdateCursor")
+	}
+	if !got.Equal(want) {
+		t.Errorf("GetCursor = %v, want %v (sub-second precision lost in storage)", got, want)
+	}
+	// The exact condition chat_command_poller checks on the next cycle —
+	// if this is true, the original message gets reprocessed forever.
+	if want.After(got) {
+		t.Errorf("want.After(got) = true — the original message's timestamp still looks newer than the stored cursor, so it would be reprocessed on every future poll cycle")
+	}
+}
+
 func TestUpdateCursor_SecondCallOverwritesInsteadOfDuplicating(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewChatCommandPollCursorRepository(db)

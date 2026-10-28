@@ -171,6 +171,51 @@ func TestRouteCommand_MyTicketsListsActiveTicketsForInvoker(t *testing.T) {
 	}
 }
 
+func TestRouteCommand_MyTicketsSeparatesMultipleTicketsWithBlankLine(t *testing.T) {
+	started := time.Now().Add(-30 * time.Minute)
+	repo := &fakeIssueSessionRepoForChat{
+		byAssignee: map[string][]issue_session_dto.IssueSession{
+			"dev@esb.co.id": {
+				{IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 600, CurrentSessionStartedDate: &started, IssueSummary: "Fix bug"},
+				{IssueKey: "OMS-2", StoryPoints: 1, AccumulatedSeconds: 300, CurrentSessionStartedDate: &started, IssueSummary: "Fix another bug"},
+			},
+		},
+		byKey: map[string]issue_session_dto.IssueSession{},
+	}
+	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
+
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-mytickets")
+
+	if !strings.Contains(got, "OMS-1") || !strings.Contains(got, "OMS-2") {
+		t.Fatalf("RouteCommand() = %q, want it to mention both tickets", got)
+	}
+	// Each card ends with a "Harus Selesai Pass" line — the next card
+	// (starting with the bold-markdown issue key) must not start
+	// immediately on the following line.
+	if !strings.Contains(got, "\n\n*OMS-2*") {
+		t.Errorf("RouteCommand() = %q, want a blank line separating the two ticket cards", got)
+	}
+}
+
+func TestRouteCommand_MyTicketsIncludesDeadline(t *testing.T) {
+	started := time.Now().Add(-30 * time.Minute)
+	repo := &fakeIssueSessionRepoForChat{
+		byAssignee: map[string][]issue_session_dto.IssueSession{
+			"dev@esb.co.id": {
+				{IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 600, CurrentSessionStartedDate: &started, IssueSummary: "Fix bug"},
+			},
+		},
+		byKey: map[string]issue_session_dto.IssueSession{},
+	}
+	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
+
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-mytickets")
+
+	if !strings.Contains(got, "Harus Selesai Pass") {
+		t.Errorf("RouteCommand() = %q, want it to include the Harus Selesai Pass deadline", got)
+	}
+}
+
 func TestRouteCommand_MyTicketsNoActiveTicketsIsFriendly(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
 
