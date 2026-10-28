@@ -14,9 +14,9 @@ import (
 	"jira-u-bot/base/helpers/shutdown"
 	"jira-u-bot/config"
 	"jira-u-bot/migrations"
+	"jira-u-bot/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
+	"jira-u-bot/modules/chat_command_poller/chat_command_poller_service"
 	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
-	"jira-u-bot/modules/chat_interactive/chat_interactive_handler"
-	"jira-u-bot/modules/chat_interactive/chat_interactive_middleware"
 	"jira-u-bot/modules/chat_interactive/chat_interactive_service"
 	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
 	"jira-u-bot/modules/business_hours/business_hours_service"
@@ -99,8 +99,6 @@ func main() {
 	registrationRepo := registration_repository.NewRegistrationRepository(db)
 
 	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar)
-	chatInteractiveHandler := chat_interactive_handler.NewChatInteractiveHandler(chatInteractiveSvc)
-	chatEventsVerifier := chat_interactive_middleware.NewGoogleTokenVerifier()
 
 	jiraClientSvc := jira_client_service.NewJiraClientService(&cfg)
 
@@ -113,9 +111,15 @@ func main() {
 
 	var dmNotifierSvc google_chat_notifier_service.GoogleChatNotifierService
 	var chatDMNotifierSvc chat_dm_notifier_service.ChatDMNotifierService
+	var chatCommandPollerSvc chat_command_poller_service.ChatCommandPollerService
 	if chatOAuthSvc != nil {
 		chatDMNotifierSvc = chat_dm_notifier_service.NewChatDMNotifierService(chatOAuthSvc, registrationRepo)
 		dmNotifierSvc = chatDMNotifierSvc
+
+		cursorRepo := chat_command_poll_cursor_repository.NewChatCommandPollCursorRepository(db)
+		chatCommandPollerSvc = chat_command_poller_service.NewChatCommandPollerService(
+			chatOAuthSvc, registrationRepo, cursorRepo, chatInteractiveSvc, chatDMNotifierSvc, cfg.GoogleChatSelfUserID,
+		)
 	}
 
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
@@ -134,9 +138,17 @@ func main() {
 		pollerSvc.Run(shutdownMgr.Context())
 	}()
 
+	if chatCommandPollerSvc != nil {
+		shutdownMgr.AddWorker()
+		go func() {
+			defer shutdownMgr.WorkerDone()
+			chatCommandPollerSvc.Run(shutdownMgr.Context())
+		}()
+	}
+
 	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo, chatDMNotifierSvc, cfg.JiraEmail)
 	registrationHandler := registration_handler.NewRegistrationHandler(registrationService)
-	router := SetupRouter(registrationHandler, chatInteractiveHandler, chatEventsVerifier, cfg.ChatEventsAudience)
+	router := SetupRouter(registrationHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

@@ -93,6 +93,28 @@ func TestApply_DoesNotCreateGoogleChatUserIDColumn(t *testing.T) {
 	}
 }
 
+func TestApply_CreatesChatCommandPollCursorTable(t *testing.T) {
+	db := openTestConn(t)
+
+	if err := Apply(db); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+
+	cases := []struct {
+		column string
+	}{
+		{"googleChatDMSpaceID"},
+		{"lastProcessedMessageCreateTime"},
+	}
+	for _, c := range cases {
+		var name string
+		err := db.QueryRow(`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'jira_db' AND TABLE_NAME = 'chat_command_poll_cursor' AND COLUMN_NAME = ?`, c.column).Scan(&name)
+		if err != nil {
+			t.Errorf("column chat_command_poll_cursor.%s was not created: %v", c.column, err)
+		}
+	}
+}
+
 func TestApply_EnforcesUniqueEmailOnMsUser(t *testing.T) {
 	db := openTestConn(t)
 	if err := Apply(db); err != nil {

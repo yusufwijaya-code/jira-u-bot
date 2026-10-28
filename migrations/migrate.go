@@ -11,11 +11,21 @@ var initSQL string
 //go:embed 0002_add_jira_account_id.sql
 var addJiraAccountIDSQL string
 
+//go:embed 0003_add_chat_command_poll_cursor.sql
+var addChatCommandPollCursorSQL string
+
 func Apply(db *sql.DB) error {
 	if _, err := db.Exec(initSQL); err != nil {
 		return err
 	}
-	return applyAddJiraAccountID(db)
+	if err := applyAddJiraAccountID(db); err != nil {
+		return err
+	}
+	// CREATE TABLE IF NOT EXISTS is naturally idempotent (unlike ADD COLUMN
+	// on MySQL 8.0.43 — see applyAddJiraAccountID), so this needs no
+	// conditional wrapper.
+	_, err := db.Exec(addChatCommandPollCursorSQL)
+	return err
 }
 
 // applyAddJiraAccountID runs 0002_add_jira_account_id.sql's ALTER TABLE

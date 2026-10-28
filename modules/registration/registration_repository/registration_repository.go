@@ -15,4 +15,10 @@ type RegistrationRepository interface {
 	// accountId is always present).
 	FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error)
 	UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error
+	// FindAllWithGoogleChatDMSpaceID returns every registered user that
+	// already has a cached DM space (i.e. has received at least one DM from
+	// the bot) — chat_command_poller uses this as its poll scope, so a
+	// sender is only ever someone the registration + reminder flow already
+	// vetted.
+	FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error)
 }

@@ -8,7 +8,6 @@ import (
 
 	"jira-u-bot/modules/business_hours/business_hours_dto"
 	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/chat_interactive/chat_interactive_dto"
 	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
 	"jira-u-bot/modules/issue_session/issue_session_dto"
 	"jira-u-bot/modules/issue_session/issue_session_repository"
@@ -18,16 +17,14 @@ import (
 
 const registerURL = "https://labcup.tech/jira-notif/register"
 
-// Command IDs assigned when registering each slash command in the Google
-// Chat API Configuration tab (GCP Console) — the numeric "Command ID" field
-// there, NOT the command name. These exact numbers must be used when
-// configuring the app, or the event's appCommandId won't match any case
-// below and every command will silently fall through to help.
+// Command prefixes recognized at the start of a DM message. The /u- prefix
+// (operator's choice) keeps these from colliding with any other bot's
+// commands in the same space.
 const (
-	CommandIDMyTickets = 1
-	CommandIDBudget    = 2
-	CommandIDOverdue   = 3
-	CommandIDTeam      = 4
+	commandMyTickets = "/u-mytickets"
+	commandBudget    = "/u-budget"
+	commandOverdue   = "/u-overdue"
+	commandTeam      = "/u-team"
 )
 
 type chatInteractiveServiceImpl struct {
@@ -51,24 +48,21 @@ func NewChatInteractiveService(
 	}
 }
 
-func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, event chat_interactive_dto.ChatEvent) string {
-	_, found, err := s.registrationRepo.FindUserByEmail(ctx, event.User.Email)
+func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, senderEmail, messageText string) string {
+	_, found, err := s.registrationRepo.FindUserByEmail(ctx, senderEmail)
 	if err != nil || !found {
 		return fmt.Sprintf("Kamu belum terdaftar. Daftar dulu di %s ya 🙏", registerURL)
 	}
 
-	if event.AppCommandPayload == nil {
-		return s.handleHelp()
-	}
-
-	switch event.AppCommandPayload.AppCommandMetadata.AppCommandID {
-	case CommandIDMyTickets:
-		return s.handleMyTickets(ctx, event.User.Email)
-	case CommandIDBudget:
-		return s.handleBudget(ctx, event.AppCommandPayload.ArgumentText)
-	case CommandIDOverdue:
+	text := strings.TrimSpace(messageText)
+	switch {
+	case text == commandMyTickets:
+		return s.handleMyTickets(ctx, senderEmail)
+	case strings.HasPrefix(text, commandBudget):
+		return s.handleBudget(ctx, strings.TrimSpace(strings.TrimPrefix(text, commandBudget)))
+	case text == commandOverdue:
 		return s.handleOverdue(ctx)
-	case CommandIDTeam:
+	case text == commandTeam:
 		return s.handleTeam(ctx)
 	default:
 		return s.handleHelp()
@@ -77,10 +71,10 @@ func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, event cha
 
 func (s *chatInteractiveServiceImpl) handleHelp() string {
 	return "🤖 Command yang tersedia:\n\n" +
-		"*/mytickets* — tiket Code Process kamu\n" +
-		"*/budget <issueKey>* — detail budget satu tiket\n" +
-		"*/overdue* — semua tiket yang lewat budget\n" +
-		"*/team* — ringkasan semua tiket aktif per orang"
+		"*/u-mytickets* — tiket Code Process kamu\n" +
+		"*/u-budget <issueKey>* — detail budget satu tiket\n" +
+		"*/u-overdue* — semua tiket yang lewat budget\n" +
+		"*/u-team* — ringkasan semua tiket aktif per orang"
 }
 
 func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {
@@ -99,7 +93,7 @@ func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email 
 func (s *chatInteractiveServiceImpl) handleBudget(ctx context.Context, issueKey string) string {
 	issueKey = strings.TrimSpace(issueKey)
 	if issueKey == "" {
-		return "Pakai gini: */budget <issueKey>* — contoh: /budget CORE-10765"
+		return "Pakai gini: */u-budget <issueKey>* — contoh: /u-budget CORE-10765"
 	}
 
 	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)
@@ -111,8 +105,7 @@ func (s *chatInteractiveServiceImpl) handleBudget(ctx context.Context, issueKey 
 }
 
 // formatTicketLine renders one ticket's SP/elapsed/remaining in the same
-// bold-label style as reminder messages (Tech Spec: response text must
-// match the existing reminder visual style).
+// bold-label style as reminder messages.
 func (s *chatInteractiveServiceImpl) formatTicketLine(session issue_session_dto.IssueSession) string {
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)

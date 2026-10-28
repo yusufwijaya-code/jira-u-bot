@@ -16,6 +16,6 @@ type IssueSessionRepository interface {
 	GetSessionByIssueKey(ctx context.Context, issueKey string) (*issue_session_dto.IssueSession, bool, error)
 	UpdateLastOverageReminder(ctx context.Context, issueKey string) error
 	// FindActiveByAssigneeEmail returns every flagActive=1 session assigned
-	// to email — used by the /mytickets interactive command.
+	// to email — used by the /u-mytickets interactive command.
 	FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error)
 }

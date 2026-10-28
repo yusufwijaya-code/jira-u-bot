@@ -3,6 +3,7 @@ package registration_service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,6 +56,10 @@ func (f *fakeRegistrationRepositoryForService) FindUserByJiraAccountID(ctx conte
 
 func (f *fakeRegistrationRepositoryForService) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	return nil
+}
+
+func (f *fakeRegistrationRepositoryForService) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
 }
 
 func TestRegister_UpsertsWhenJiraAccountFound(t *testing.T) {
@@ -129,6 +134,12 @@ func TestRegister_SendsThankYouDMForNonSelfRegistration(t *testing.T) {
 
 	if len(dmNotifier.sentToEmails) != 1 || dmNotifier.sentToEmails[0] != "teammate@esb.co.id" {
 		t.Errorf("sentToEmails = %v, want [teammate@esb.co.id] (spec AC3.1)", dmNotifier.sentToEmails)
+	}
+	if len(dmNotifier.sentPlainTextCalls) != 1 || !strings.Contains(dmNotifier.sentPlainTextCalls[0], "/u-help") {
+		t.Errorf("thank-you DM text = %q, want it to mention /u-help", dmNotifier.sentPlainTextCalls)
+	}
+	if !strings.Contains(dmNotifier.sentPlainTextCalls[0], "T-5 menit") {
+		t.Errorf("thank-you DM text = %q, want it to list the T-5 menit tier alongside the others (reminder_log_dto.Tier5m exists but was missing from this summary)", dmNotifier.sentPlainTextCalls[0])
 	}
 }
 

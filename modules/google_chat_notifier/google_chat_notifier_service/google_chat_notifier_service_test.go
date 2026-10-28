@@ -335,8 +335,8 @@ func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
 		{IssueKey: "OMS-1", IsEarlyCompletion: true},
 	} {
 		text := BuildMessageText(msg)
-		if !strings.Contains(text, "/help") {
-			t.Errorf("message text %q does not mention /help — every reminder/overage/early-completion message (space and DM alike, since both reuse this function) must advertise the interactive commands", text)
+		if !strings.Contains(text, "/u-help") {
+			t.Errorf("message text %q does not mention /u-help — every reminder/overage/early-completion message (space and DM alike, since both reuse this function) must advertise the interactive commands", text)
 		}
 	}
 }
