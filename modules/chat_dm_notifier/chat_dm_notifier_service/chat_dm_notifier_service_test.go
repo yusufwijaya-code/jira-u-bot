@@ -50,6 +50,10 @@ func (f *fakeRegistrationRepositoryForDM) FindUserByJiraAccountID(ctx context.Co
 	return nil, false, nil
 }
 
+func (f *fakeRegistrationRepositoryForDM) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
 func (f *fakeRegistrationRepositoryForDM) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	f.updateSpaceIDCalls[email] = spaceID
 	u := f.users[email]

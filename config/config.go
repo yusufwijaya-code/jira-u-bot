@@ -22,7 +22,12 @@ type AppConfig struct {
 	GoogleOAuthTokenPath    string
 	HolidayCalendarPath     string
 	Port                    string
-	ChatEventsAudience      string
+	// GoogleChatSelfUserID is the Chat API sender resource name (format
+	// "users/<id>") of the OAuth-authorized account itself — used by
+	// chat_command_poller to skip its own sent messages when scanning a DM
+	// space for incoming commands. Captured once by comparing
+	// sender.name on a message the operator sent, e.g. via the Chat API.
+	GoogleChatSelfUserID string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -58,7 +63,7 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.GoogleOAuthTokenPath = v.GetString("GOOGLE_OAUTH_TOKEN_PATH")
 	cfg.HolidayCalendarPath = v.GetString("HOLIDAY_CALENDAR_PATH")
 	cfg.Port = v.GetString("PORT")
-	cfg.ChatEventsAudience = v.GetString("CHAT_EVENTS_AUDIENCE")
+	cfg.GoogleChatSelfUserID = v.GetString("GOOGLE_CHAT_SELF_USER_ID")
 
 	return nil
 }

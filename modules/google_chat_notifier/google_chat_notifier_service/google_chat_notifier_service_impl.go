@@ -51,11 +51,13 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 // only requirements shared across all three shapes.
 const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
 
-// helpHint advertises the interactive bot's slash commands on every
-// outbound message — this function is shared by both the webhook/space
-// path and the DM path, so adding it here covers both without touching
-// either notifier separately.
-const helpHint = "💡 Ketik */help* ke bot ini buat lihat command lain"
+// helpHint advertises the interactive slash commands on every outbound
+// message — this function is shared by both the webhook/space path and the
+// DM path, so adding it here covers both without touching either notifier
+// separately. Commands are typed directly into the DM conversation (no
+// separate bot to address — see chat_command_poller), hence "di sini" and
+// not "ke bot ini".
+const helpHint = "💡 Ketik */u-help* di sini buat lihat command lain"
 
 func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {

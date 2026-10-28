@@ -68,6 +68,32 @@ func scanUser(row *sql.Row) (*registration_dto.User, bool, error) {
 	return &u, true, nil
 }
 
+func (r *registrationRepositoryImpl) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
+	const query = `
+		SELECT userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId
+		FROM ms_user
+		WHERE googleChatDMSpaceID IS NOT NULL AND googleChatDMSpaceID <> ''
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []registration_dto.User
+	for rows.Next() {
+		var u registration_dto.User
+		var dmSpaceID, jiraAccountID sql.NullString
+		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID); err != nil {
+			return nil, err
+		}
+		u.GoogleChatDMSpaceID = dmSpaceID.String
+		u.JiraAccountID = jiraAccountID.String
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
 func (r *registrationRepositoryImpl) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	const query = `
 		UPDATE ms_user

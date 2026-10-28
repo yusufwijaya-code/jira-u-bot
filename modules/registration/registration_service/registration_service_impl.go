@@ -57,13 +57,13 @@ func (s *registrationServiceImpl) sendThankYouDM(ctx context.Context, email stri
 🤖 Mulai sekarang, setiap tiket Code Process yang kamu pegang bakal dipantau otomatis, dan reminder-nya masuk langsung ke DM ini.
 
 Manfaatnya buat kamu:
-⏰ Diingetin sebelum budget waktu habis (T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-1 menit)
+⏰ Diingetin sebelum budget waktu habis (T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-5 menit, T-1 menit)
 🔴 Dapet notif kalau sudah lewat budget, biar bisa segera eskalasi
 🎉 Dapet apresiasi kalau selesai lebih awal dari budget
 
 Fokus ngerjain tiketnya aja, biar Jira U Bot yang ingetin waktunya 💪
 
-💡 Ketik */help* ke bot ini buat lihat command lain
+💡 Ketik */u-help* di sini buat lihat command lain
 
 #BersamaSayaMenempuhOKRyangPassss`
 	if err := s.dmNotifier.SendPlainTextDM(ctx, email, text); err != nil {

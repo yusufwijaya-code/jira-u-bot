@@ -181,6 +181,10 @@ func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx cont
 	return nil
 }
 
+func (f *fakeRegistrationRepositoryForPoller) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
 // --- helper ---
 
 func newTestPoller(jiraClient *fakeJiraClientService, issueSession *fakeIssueSessionServiceForPoller, reminderEngine *fakeReminderEngineService, registrationRepo *fakeRegistrationRepositoryForPoller) *pollerServiceImpl {

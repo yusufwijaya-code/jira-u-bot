@@ -81,6 +81,10 @@ func (f *fakeRegistrationRepository) UpdateGoogleChatDMSpaceID(ctx context.Conte
 	return nil
 }
 
+func (f *fakeRegistrationRepository) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
 type fakeGoogleChatNotifierService struct {
 	sentMessages []google_chat_notifier_dto.ReminderMessage
 }

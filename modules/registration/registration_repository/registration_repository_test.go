@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"jira-u-bot/base/testutil"
+	"jira-u-bot/modules/registration/registration_dto"
 )
 
 func TestUpsertUser_CreatesNewUser(t *testing.T) {
@@ -131,6 +132,46 @@ func TestFindUserByJiraAccountID_ReturnsMatchingUser(t *testing.T) {
 	}
 	if user.Email != "testmysql-accid@esb.co.id" {
 		t.Errorf("Email = %q, want %q", user.Email, "testmysql-accid@esb.co.id")
+	}
+}
+
+func TestFindAllWithGoogleChatDMSpaceID_ReturnsOnlyUsersWithCachedSpace(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		db.Exec(`DELETE FROM ms_user WHERE email IN (?, ?)`, "testmysql-withspace@esb.co.id", "testmysql-nospace@esb.co.id")
+	})
+
+	if err := repo.UpsertUser(ctx, "TestMySQL WithSpace", "testmysql-withspace@esb.co.id", "acc-withspace"); err != nil {
+		t.Fatalf("UpsertUser(withspace) returned error: %v", err)
+	}
+	if err := repo.UpdateGoogleChatDMSpaceID(ctx, "testmysql-withspace@esb.co.id", "spaces/HASSPACE"); err != nil {
+		t.Fatalf("UpdateGoogleChatDMSpaceID returned error: %v", err)
+	}
+	if err := repo.UpsertUser(ctx, "TestMySQL NoSpace", "testmysql-nospace@esb.co.id", "acc-nospace"); err != nil {
+		t.Fatalf("UpsertUser(nospace) returned error: %v", err)
+	}
+
+	users, err := repo.FindAllWithGoogleChatDMSpaceID(ctx)
+	if err != nil {
+		t.Fatalf("FindAllWithGoogleChatDMSpaceID returned error: %v", err)
+	}
+
+	var found *registration_dto.User
+	for i := range users {
+		if users[i].Email == "testmysql-withspace@esb.co.id" {
+			found = &users[i]
+		}
+		if users[i].Email == "testmysql-nospace@esb.co.id" {
+			t.Errorf("result includes %q which has no cached DM space ID", users[i].Email)
+		}
+	}
+	if found == nil {
+		t.Fatal("expected testmysql-withspace@esb.co.id in results")
+	}
+	if found.GoogleChatDMSpaceID != "spaces/HASSPACE" {
+		t.Errorf("GoogleChatDMSpaceID = %q, want %q", found.GoogleChatDMSpaceID, "spaces/HASSPACE")
 	}
 }
 
