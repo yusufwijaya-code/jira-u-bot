@@ -4,12 +4,13 @@ Bot Go yang memantau tiket Jira berstatus **Code Process**, menghitung budget wa
 
 ## Fitur
 
-- Polling tiket Jira (project OMS & CORE) tiap 30 detik, hanya untuk assignee yang sudah registrasi
+- Polling tiket Jira (project OMS & CORE) tiap 10 detik, hanya untuk assignee yang sudah registrasi
 - Reminder bertingkat: T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-5 menit, T-1 menit, plus notifikasi overage berulang
 - Notifikasi "selesai lebih awal" saat tiket pindah ke Code Review sebelum budget habis
 - Elapsed time dihitung berbasis jam kerja (08:30–17:30 WIB, istirahat 12:00–13:00) dan kalender libur
 - Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
 - Command interaktif (`/u-mytickets`, `/u-budget <issueKey>`, `/u-overdue`, `/u-team`, `/u-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
+- Command `/u-geser<issueKey>:todo` dan `/u-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi; hint-nya otomatis muncul di tiap pesan reminder & overdue
 - Halaman registrasi web (`/jira-notif/register`) untuk memetakan email ke akun Jira
 
 ## Tech Stack

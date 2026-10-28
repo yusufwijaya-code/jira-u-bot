@@ -81,3 +81,27 @@ type UserSearchResult struct {
 	AccountID    string `json:"accountId"`
 	EmailAddress string `json:"emailAddress"`
 }
+
+// Transition is one entry from GET /issue/{key}/transitions — the set of
+// moves actually available from the issue's CURRENT status, as defined by
+// its project's workflow. Workflows vary per project and issue type (e.g.
+// OMS and CORE use differently-capitalized status names, "Code Review" vs
+// "CODE REVIEW"), so callers must match To.Name case-insensitively rather
+// than assuming a transition exists or hardcoding its ID.
+type Transition struct {
+	ID string `json:"id"`
+	To Status `json:"to"`
+}
+
+type TransitionsResponse struct {
+	Transitions []Transition `json:"transitions"`
+}
+
+// TransitionRequest is the body for POST /issue/{key}/transitions.
+type TransitionRequest struct {
+	Transition TransitionID `json:"transition"`
+}
+
+type TransitionID struct {
+	ID string `json:"id"`
+}

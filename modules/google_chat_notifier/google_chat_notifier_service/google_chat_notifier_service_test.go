@@ -328,6 +328,54 @@ func TestBuildMessageText_EndsWithOKRHashtagFooter(t *testing.T) {
 	}
 }
 
+func TestBuildMessageText_ReturnedToTodoHasOwnHeaderAndBody(t *testing.T) {
+	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
+		IssueKey: "OMS-1", IssueSummary: "Fix bug", AssigneeName: "Benni",
+		StoryPoints: 1.5, BudgetSeconds: 5400, ElapsedSeconds: 1800,
+		IsReturnedToTodo: true,
+	})
+
+	if !strings.Contains(text, "Dikembalikan ke To Do") {
+		t.Errorf("text = %q, want it to mention being returned to To Do", text)
+	}
+	if strings.Contains(text, "Sisa waktu") || strings.Contains(text, "Harus Selesai Pass") {
+		t.Errorf("text = %q, want it NOT to show a remaining-time/deadline framing — the ticket is back in To Do, not being tracked anymore", text)
+	}
+}
+
+func TestBuildMessageText_ReturnedToTodoDoesNotIncludeGeserHint(t *testing.T) {
+	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
+		IssueKey: "OMS-1", IsReturnedToTodo: true,
+	})
+
+	if strings.Contains(text, "/u-geser<OMS-1>") {
+		t.Errorf("text = %q, want no geser hint — the ticket is already back in To Do, nothing left to reschedule", text)
+	}
+	if !strings.Contains(text, "/u-help") {
+		t.Errorf("text = %q, want it to still mention /u-help", text)
+	}
+}
+
+func TestBuildMessageText_IncludesGeserHintForTierAndOverageOnly(t *testing.T) {
+	cases := []struct {
+		name     string
+		msg      google_chat_notifier_dto.ReminderMessage
+		wantHint bool
+	}{
+		{"tier reminder", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", Tier: "30m"}, true},
+		{"overage", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", IsOverage: true}, true},
+		{"early completion", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", IsEarlyCompletion: true}, false},
+		{"returned to todo", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", IsReturnedToTodo: true}, false},
+	}
+	for _, c := range cases {
+		text := BuildMessageText(c.msg)
+		hasHint := strings.Contains(text, "/u-geser<OMS-1>:todo") && strings.Contains(text, "/u-geser<OMS-1>:code-review")
+		if hasHint != c.wantHint {
+			t.Errorf("%s: geser hint present = %v, want %v — text = %q", c.name, hasHint, c.wantHint, text)
+		}
+	}
+}
+
 func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
 	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
 		{IssueKey: "OMS-1", Tier: "30m"},

@@ -571,6 +571,70 @@ func TestNotifyIfEarlyCompletion_RoutesSelfToWebhookAndTeammateToDM(t *testing.T
 	}
 }
 
+func TestNotifyReturnedToTodo_AlwaysSendsRegardlessOfElapsedVsBudget(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
+		"teammate@esb.co.id": {UserName: "Teammate Name", Email: "teammate@esb.co.id"},
+	}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+	)
+
+	startedAt := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
+
+	// elapsedSeconds > budgetSeconds here — unlike NotifyIfEarlyCompletion,
+	// this must still send: there's no "early"/"late" framing for being
+	// pulled back to To Do.
+	if err := engine.NotifyReturnedToTodo(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 99999, 10800, startedAt); err != nil {
+		t.Fatalf("NotifyReturnedToTodo returned error: %v", err)
+	}
+
+	if len(webhookNotifier.sentMessages) != 1 {
+		t.Fatalf("sentMessages = %d, want 1", len(webhookNotifier.sentMessages))
+	}
+	msg := webhookNotifier.sentMessages[0]
+	if !msg.IsReturnedToTodo {
+		t.Error("IsReturnedToTodo = false, want true")
+	}
+	if msg.AssigneeName != "Teammate Name" {
+		t.Errorf("AssigneeName = %q, want %q (resolved via registration lookup)", msg.AssigneeName, "Teammate Name")
+	}
+	if !msg.CodeProcessStartedAt.Equal(startedAt) {
+		t.Errorf("CodeProcessStartedAt = %v, want %v", msg.CodeProcessStartedAt, startedAt)
+	}
+}
+
+func TestNotifyReturnedToTodo_RoutesSelfToWebhookAndTeammateToDM(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	webhookNotifier := &fakeGoogleChatNotifierService{}
+	dmNotifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+	)
+
+	if err := engine.NotifyReturnedToTodo(context.Background(), "OMS-1", "yusuf.wijaya@esb.co.id", "Self ticket", 1000, 10800, time.Time{}); err != nil {
+		t.Fatalf("NotifyReturnedToTodo returned error: %v", err)
+	}
+	if len(webhookNotifier.sentMessages) != 1 || len(dmNotifier.sentMessages) != 0 {
+		t.Errorf("self assignee must use webhook — webhook=%d dm=%d", len(webhookNotifier.sentMessages), len(dmNotifier.sentMessages))
+	}
+
+	if err := engine.NotifyReturnedToTodo(context.Background(), "OMS-2", "teammate@esb.co.id", "Teammate ticket", 1000, 10800, time.Time{}); err != nil {
+		t.Fatalf("NotifyReturnedToTodo returned error: %v", err)
+	}
+	if len(dmNotifier.sentMessages) != 1 {
+		t.Errorf("teammate assignee must use DM — dm=%d", len(dmNotifier.sentMessages))
+	}
+}
+
 func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T) {
 	// Reproduces the real production bug: Jira hides assignee.emailAddress
 	// org-wide for non-self accounts (confirmed live for Rio/Benni), but

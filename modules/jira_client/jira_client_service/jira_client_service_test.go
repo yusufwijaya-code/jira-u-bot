@@ -324,6 +324,97 @@ func TestSearchCodeProcessIssues_RequestsBothStoryPointFieldsAndParsesCoreVarian
 	}
 }
 
+func TestGetTransitions_ParsesAvailableTransitions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/rest/api/3/issue/OMS-12561/transitions" {
+			t.Errorf("path = %s, want /rest/api/3/issue/OMS-12561/transitions", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"transitions": []map[string]any{
+				{"id": "5", "name": "Carried Out Again Tomorrow or Postponed.", "to": map[string]any{"name": "To Do"}},
+				{"id": "9", "name": "Merge Request to Snapshot Branch", "to": map[string]any{"name": "Code Review"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	transitions, err := svc.GetTransitions(context.Background(), "OMS-12561")
+	if err != nil {
+		t.Fatalf("GetTransitions returned error: %v", err)
+	}
+	if len(transitions) != 2 {
+		t.Fatalf("len(transitions) = %d, want 2", len(transitions))
+	}
+	if transitions[0].ID != "5" || transitions[0].To.Name != "To Do" {
+		t.Errorf("transitions[0] = %+v, want {ID:5 To.Name:To Do}", transitions[0])
+	}
+	if transitions[1].ID != "9" || transitions[1].To.Name != "Code Review" {
+		t.Errorf("transitions[1] = %+v, want {ID:9 To.Name:Code Review}", transitions[1])
+	}
+}
+
+func TestGetTransitions_PropagatesErrorOnFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	_, err := svc.GetTransitions(context.Background(), "OMS-NOPE")
+	if err == nil {
+		t.Fatal("expected error to propagate on non-2xx response")
+	}
+}
+
+func TestTransitionIssue_PostsTransitionID(t *testing.T) {
+	var gotPath, gotMethod string
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	if err := svc.TransitionIssue(context.Background(), "OMS-12561", "5"); err != nil {
+		t.Fatalf("TransitionIssue returned error: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/rest/api/3/issue/OMS-12561/transitions" {
+		t.Errorf("path = %s, want /rest/api/3/issue/OMS-12561/transitions", gotPath)
+	}
+	transition, _ := gotBody["transition"].(map[string]any)
+	if transition["id"] != "5" {
+		t.Errorf("body transition.id = %v, want \"5\"", transition["id"])
+	}
+}
+
+func TestTransitionIssue_PropagatesErrorOnFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	err := svc.TransitionIssue(context.Background(), "OMS-12561", "999")
+	if err == nil {
+		t.Fatal("expected error to propagate on non-2xx response")
+	}
+}
+
 func TestSearchCodeProcessIssues_ParsesCoreStoryPointEstimateField(t *testing.T) {
 	// Reproduces CORE-10832: a CORE ticket can have "Story Point Estimate"
 	// (customfield_10125) filled in while "Story Points" (customfield_11053)

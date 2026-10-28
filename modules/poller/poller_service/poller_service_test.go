@@ -41,6 +41,14 @@ func (f *fakeJiraClientService) GetIssueStatus(ctx context.Context, issueKey str
 	return f.issueStatus, f.issueStatusErr
 }
 
+func (f *fakeJiraClientService) GetTransitions(ctx context.Context, issueKey string) ([]jira_client_dto.Transition, error) {
+	return nil, nil
+}
+
+func (f *fakeJiraClientService) TransitionIssue(ctx context.Context, issueKey, transitionID string) error {
+	return nil
+}
+
 type fakeIssueSessionServiceForPoller struct {
 	sessions      map[string]*issue_session_dto.IssueSession
 	openCalls     []string
@@ -124,6 +132,8 @@ type fakeReminderEngineService struct {
 	evaluateCalls              []string
 	notifyEarlyCompletionCalls []string
 	notifyEarlyCompletionErr   error
+	notifyReturnedToTodoCalls  []string
+	notifyReturnedToTodoErr    error
 }
 
 func (f *fakeReminderEngineService) ApplicableTiers(budgetSeconds int64) []string { return nil }
@@ -136,6 +146,11 @@ func (f *fakeReminderEngineService) EvaluateAndSend(ctx context.Context, issue j
 func (f *fakeReminderEngineService) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {
 	f.notifyEarlyCompletionCalls = append(f.notifyEarlyCompletionCalls, issueKey)
 	return f.notifyEarlyCompletionErr
+}
+
+func (f *fakeReminderEngineService) NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error {
+	f.notifyReturnedToTodoCalls = append(f.notifyReturnedToTodoCalls, issueKey)
+	return f.notifyReturnedToTodoErr
 }
 
 // fakeRegistrationRepositoryForPoller backs the poller's eligibility filter
@@ -213,6 +228,12 @@ func assignedIssue(key, email string, sp float64) jira_client_dto.Issue {
 }
 
 // --- tests ---
+
+func TestPollInterval_Is10Seconds(t *testing.T) {
+	if pollInterval != 10*time.Second {
+		t.Errorf("pollInterval = %v, want 10s", pollInterval)
+	}
+}
 
 func TestPollOnce_OpensNewSessionForNewlySeenIssue(t *testing.T) {
 	jiraClient := &fakeJiraClientService{
@@ -543,6 +564,52 @@ func TestPollOnce_ExitToOtherStatusSkipsEarlyCompletion(t *testing.T) {
 
 	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
 		t.Errorf("notifyEarlyCompletionCalls = %v, want none — destination status is Done, not Code Review (AC4.5)", reminderEngine.notifyEarlyCompletionCalls)
+	}
+	if len(reminderEngine.notifyReturnedToTodoCalls) != 0 {
+		t.Errorf("notifyReturnedToTodoCalls = %v, want none — destination status is Done, not To Do", reminderEngine.notifyReturnedToTodoCalls)
+	}
+}
+
+func TestPollOnce_ExitToTodoTriggersReturnedToTodoNotice(t *testing.T) {
+	// Covers both /u-geser<X>:todo and a manual Jira change — the poller
+	// can't tell them apart, and shouldn't need to.
+	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "To Do"}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-10 * time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller()
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v", err)
+	}
+
+	if len(reminderEngine.notifyReturnedToTodoCalls) != 1 || reminderEngine.notifyReturnedToTodoCalls[0] != "OMS-1" {
+		t.Errorf("notifyReturnedToTodoCalls = %v, want [OMS-1]", reminderEngine.notifyReturnedToTodoCalls)
+	}
+	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
+		t.Errorf("notifyEarlyCompletionCalls = %v, want none — destination is To Do, not Code Review", reminderEngine.notifyEarlyCompletionCalls)
+	}
+}
+
+func TestPollOnce_NotifyReturnedToTodoErrorIsLoggedNotPropagated(t *testing.T) {
+	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "To Do"}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-10 * time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+	reminderEngine := &fakeReminderEngineService{notifyReturnedToTodoErr: errors.New("send failed")}
+	registrationRepo := newFakeRegistrationRepositoryForPoller()
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce returned error: %v, want nil — NotifyReturnedToTodo failures are best-effort", err)
 	}
 }
 

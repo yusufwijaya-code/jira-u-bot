@@ -253,3 +253,25 @@ func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context,
 
 	return e.pickNotifier(assigneeEmail).SendReminder(ctx, msg)
 }
+
+func (e *reminderEngineServiceImpl) NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error {
+	assigneeName := assigneeEmail
+	if user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail); err == nil && found {
+		assigneeName = user.UserName
+	}
+
+	msg := google_chat_notifier_dto.ReminderMessage{
+		IssueKey:             issueKey,
+		IssueURL:             fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issueKey),
+		IssueSummary:         issueSummary,
+		AssigneeName:         assigneeName,
+		AssigneeEmail:        assigneeEmail,
+		StoryPoints:          float64(budgetSeconds) / 3600,
+		BudgetSeconds:        budgetSeconds,
+		ElapsedSeconds:       elapsedSeconds,
+		IsReturnedToTodo:     true,
+		CodeProcessStartedAt: codeProcessStartedAt,
+	}
+
+	return e.pickNotifier(assigneeEmail).SendReminder(ctx, msg)
+}

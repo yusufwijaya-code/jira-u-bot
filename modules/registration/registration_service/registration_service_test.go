@@ -34,6 +34,14 @@ func (f *fakeJiraClientServiceForRegistration) GetIssueStatus(ctx context.Contex
 	return "", nil
 }
 
+func (f *fakeJiraClientServiceForRegistration) GetTransitions(ctx context.Context, issueKey string) ([]jira_client_dto.Transition, error) {
+	return nil, nil
+}
+
+func (f *fakeJiraClientServiceForRegistration) TransitionIssue(ctx context.Context, issueKey, transitionID string) error {
+	return nil
+}
+
 type fakeRegistrationRepositoryForService struct {
 	upsertCalled     bool
 	upsertErr        error

@@ -17,7 +17,7 @@ import (
 	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
 )
 
-const pollInterval = 30 * time.Second
+const pollInterval = 10 * time.Second
 
 type pollerServiceImpl struct {
 	jiraClient       jira_client_service.JiraClientService
@@ -151,29 +151,35 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 			return fmt.Errorf("poller: CloseSession(%s) failed: %w", key, err)
 		}
 
-		// Early-completion notice (spec AC4.1/AC4.4/AC4.5) is best-effort:
-		// the session above is already closed by the time we get here, so
-		// there is no natural retry hook if either step below fails — log
-		// and move on to the next ticket rather than failing the cycle.
+		// Exit-destination notices (spec AC4.1/AC4.4/AC4.5, plus the To Do
+		// case for /u-geser and manual Jira changes) are best-effort: the
+		// session above is already closed by the time we get here, so there
+		// is no natural retry hook if either step below fails — log and move
+		// on to the next ticket rather than failing the cycle.
 		status, err := p.jiraClient.GetIssueStatus(ctx, key)
 		if err != nil {
-			log.Printf("poller: GetIssueStatus(%s) failed, skipping early-completion notice: %v", key, err)
-			continue
-		}
-		if status != jira_client_dto.StatusCodeReview {
+			log.Printf("poller: GetIssueStatus(%s) failed, skipping exit-destination notice: %v", key, err)
 			continue
 		}
 		var startedAt time.Time
 		if session.CurrentSessionStartedDate != nil {
 			startedAt = *session.CurrentSessionStartedDate
 		}
-		// codeReviewEnteredAt is "now": GetIssueStatus above just confirmed the
-		// ticket is in Code Review this cycle, so the moment this poll runs is
-		// the closest we track to when it actually left Code Process — there is
-		// no separate changelog lookup for the Code Review transition the way
-		// GetLatestCodeProcessEntryTime exists for entering Code Process.
-		if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt, time.Now()); err != nil {
-			log.Printf("poller: NotifyIfEarlyCompletion(%s) failed: %v", key, err)
+		switch status {
+		case jira_client_dto.StatusCodeReview:
+			// codeReviewEnteredAt is "now": GetIssueStatus above just confirmed
+			// the ticket is in Code Review this cycle, so the moment this poll
+			// runs is the closest we track to when it actually left Code
+			// Process — there is no separate changelog lookup for the Code
+			// Review transition the way GetLatestCodeProcessEntryTime exists
+			// for entering Code Process.
+			if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt, time.Now()); err != nil {
+				log.Printf("poller: NotifyIfEarlyCompletion(%s) failed: %v", key, err)
+			}
+		case jira_client_dto.StatusToDo:
+			if err := p.reminderEngine.NotifyReturnedToTodo(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt); err != nil {
+				log.Printf("poller: NotifyReturnedToTodo(%s) failed: %v", key, err)
+			}
 		}
 	}
 
