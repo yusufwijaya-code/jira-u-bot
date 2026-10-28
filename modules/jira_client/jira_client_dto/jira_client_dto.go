@@ -11,20 +11,29 @@ type IssueFields struct {
 	Assignee    *Assignee `json:"assignee"`
 	IssueType   IssueType `json:"issuetype"`
 	StoryPoints *float64  `json:"customfield_10016"`
-	// StoryPointsCore is the CORE project's Story Points field
-	// (customfield_11053) — see StoryPointFieldIDCore. Use
-	// EffectiveStoryPoints() instead of reading StoryPoints/StoryPointsCore
+	// StoryPointsCoreEstimate is CORE's "Story Point Estimate" field
+	// (customfield_10125) — see StoryPointFieldIDCoreEstimate. Takes
+	// priority over StoryPointsCore when both happen to be set. Use
+	// EffectiveStoryPoints() instead of reading any of these three fields
 	// directly.
+	StoryPointsCoreEstimate *float64 `json:"customfield_10125"`
+	// StoryPointsCore is CORE's older "Story Points" field
+	// (customfield_11053) — see StoryPointFieldIDCore. Kept as a fallback:
+	// some CORE tickets only have this one filled in, not Story Point
+	// Estimate.
 	StoryPointsCore *float64 `json:"customfield_11053"`
 }
 
 // EffectiveStoryPoints returns this issue's Story Points regardless of
-// which Jira project's custom field it lives on (StoryPoints for OMS,
-// StoryPointsCore for CORE) — confirmed live that an issue never has both
-// populated.
+// which Jira project's custom field it lives on: StoryPoints for OMS: for
+// CORE, StoryPointsCoreEstimate ("Story Point Estimate") takes priority,
+// falling back to StoryPointsCore ("Story Points") when Estimate is empty.
 func (f IssueFields) EffectiveStoryPoints() *float64 {
 	if f.StoryPoints != nil {
 		return f.StoryPoints
+	}
+	if f.StoryPointsCoreEstimate != nil {
+		return f.StoryPointsCoreEstimate
 	}
 	return f.StoryPointsCore
 }

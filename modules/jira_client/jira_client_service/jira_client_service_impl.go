@@ -32,7 +32,7 @@ func (s *jiraClientServiceImpl) SearchCodeProcessIssues(ctx context.Context) ([]
 	jql := fmt.Sprintf(`project in (CORE, OMS) AND status = "%s"`, jira_client_dto.StatusCodeProcess)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID+","+jira_client_dto.StoryPointFieldIDCore)
+	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID+","+jira_client_dto.StoryPointFieldIDCore+","+jira_client_dto.StoryPointFieldIDCoreEstimate)
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())

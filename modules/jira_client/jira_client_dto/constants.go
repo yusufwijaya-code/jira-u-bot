@@ -17,6 +17,14 @@ const StoryPointFieldID = "customfield_10016"
 // EffectiveStoryPoints) to support both projects.
 const StoryPointFieldIDCore = "customfield_11053"
 
+// StoryPointFieldIDCoreEstimate is CORE's "Story Point Estimate" field —
+// a second, separate Story Points field some CORE tickets use instead of
+// (or alongside) StoryPointFieldIDCore. Confirmed live on CORE-10832: this
+// field held 3 while customfield_11053 ("Story Points") was null, so a
+// ticket filled in under Story Point Estimate alone was silently treated
+// as having no budget before this field was added.
+const StoryPointFieldIDCoreEstimate = "customfield_10125"
+
 // StatusCodeReview is the destination status Early Completion Notice
 // checks for (spec AC4.1/AC4.5) — a ticket leaving "Code Process" to any
 // OTHER status never triggers this notice.
