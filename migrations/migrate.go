@@ -3,7 +3,14 @@ package migrations
 import (
 	"database/sql"
 	_ "embed"
+	"errors"
+
+	"github.com/go-sql-driver/mysql"
 )
+
+// mysqlDupColumnErrNo is MySQL's ER_DUP_FIELDNAME ("Duplicate column
+// name") — see addColumnIfNotExists.
+const mysqlDupColumnErrNo = 1060
 
 //go:embed 0001_init_mysql.sql
 var initSQL string
@@ -28,31 +35,32 @@ func Apply(db *sql.DB) error {
 	return err
 }
 
-// applyAddJiraAccountID runs 0002_add_jira_account_id.sql's ALTER TABLE
-// conditionally — MySQL 8.0.43 (the version this project targets) does not
-// support "ADD COLUMN IF NOT EXISTS", so idempotency across repeated Apply
-// calls is handled here instead, the same way v1's incremental migrations
-// did before the clean-slate MySQL rewrite.
+// applyAddJiraAccountID runs 0002_add_jira_account_id.sql's ALTER TABLE —
+// MySQL 8.0.43 (the version this project targets) does not support "ADD
+// COLUMN IF NOT EXISTS", so idempotency is handled by addColumnIfNotExists
+// instead, the same way v1's incremental migrations did before the
+// clean-slate MySQL rewrite.
 func applyAddJiraAccountID(db *sql.DB) error {
-	exists, err := columnExists(db, "ms_user", "jiraAccountId")
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	_, err = db.Exec(addJiraAccountIDSQL)
-	return err
+	return addColumnIfNotExists(db, addJiraAccountIDSQL)
 }
 
-func columnExists(db *sql.DB, table, column string) (bool, error) {
-	const query = `
-		SELECT COUNT(*) FROM information_schema.COLUMNS
-		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
-	`
-	var count int
-	if err := db.QueryRow(query, table, column).Scan(&count); err != nil {
-		return false, err
+// addColumnIfNotExists runs alterSQL and tolerates MySQL reporting the
+// column as already present. A separate "does it exist?" pre-check
+// (the previous approach) is a TOCTOU race: go test ./... runs each
+// package's tests as a separate process, and several packages call
+// Apply(db) against the SAME shared jira_db schema (confirmed live in CI —
+// see TestAddColumnIfNotExists_ConcurrentCallsNeverFail), so two processes
+// can both see "missing" before either's ALTER commits. Attempting the
+// ALTER unconditionally and swallowing only the specific duplicate-column
+// error removes the race window entirely.
+func addColumnIfNotExists(db *sql.DB, alterSQL string) error {
+	_, err := db.Exec(alterSQL)
+	if err == nil {
+		return nil
 	}
-	return count > 0, nil
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == mysqlDupColumnErrNo {
+		return nil
+	}
+	return err
 }
