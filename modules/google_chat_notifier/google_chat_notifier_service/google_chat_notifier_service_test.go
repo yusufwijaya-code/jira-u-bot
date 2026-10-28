@@ -328,6 +328,25 @@ func TestBuildMessageText_EndsWithOKRHashtagFooter(t *testing.T) {
 	}
 }
 
+func TestBuildMessageText_IncludesGeserHintForTierAndOverageOnly(t *testing.T) {
+	cases := []struct {
+		name     string
+		msg      google_chat_notifier_dto.ReminderMessage
+		wantHint bool
+	}{
+		{"tier reminder", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", Tier: "30m"}, true},
+		{"overage", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", IsOverage: true}, true},
+		{"early completion", google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-1", IsEarlyCompletion: true}, false},
+	}
+	for _, c := range cases {
+		text := BuildMessageText(c.msg)
+		hasHint := strings.Contains(text, "/u-geser<OMS-1>:todo") && strings.Contains(text, "/u-geser<OMS-1>:code-review")
+		if hasHint != c.wantHint {
+			t.Errorf("%s: geser hint present = %v, want %v — text = %q", c.name, hasHint, c.wantHint, text)
+		}
+	}
+}
+
 func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
 	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
 		{IssueKey: "OMS-1", Tier: "30m"},

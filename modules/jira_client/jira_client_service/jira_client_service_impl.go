@@ -116,6 +116,31 @@ func (s *jiraClientServiceImpl) GetIssueStatus(ctx context.Context, issueKey str
 	return result.Fields.Status.Name, nil
 }
 
+func (s *jiraClientServiceImpl) GetTransitions(ctx context.Context, issueKey string) ([]jira_client_dto.Transition, error) {
+	reqURL := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", s.cfg.JiraBaseURL, issueKey)
+
+	result, err := curl_helper.CurlRequest[jira_client_dto.TransitionsResponse](
+		ctx, reqURL, s.authHeaders(), nil, http.MethodGet, 10000, true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("jira_client: GetTransitions(%s) failed: %w", issueKey, err)
+	}
+	return result.Transitions, nil
+}
+
+func (s *jiraClientServiceImpl) TransitionIssue(ctx context.Context, issueKey, transitionID string) error {
+	reqURL := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", s.cfg.JiraBaseURL, issueKey)
+	body := jira_client_dto.TransitionRequest{Transition: jira_client_dto.TransitionID{ID: transitionID}}
+
+	_, err := curl_helper.CurlRequest[struct{}](
+		ctx, reqURL, s.authHeaders(), body, http.MethodPost, 10000, false,
+	)
+	if err != nil {
+		return fmt.Errorf("jira_client: TransitionIssue(%s, %s) failed: %w", issueKey, transitionID, err)
+	}
+	return nil
+}
+
 func basicAuthHeader(username, password string) string {
 	raw := username + ":" + password
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(raw))

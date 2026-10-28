@@ -41,6 +41,14 @@ func (f *fakeJiraClientService) GetIssueStatus(ctx context.Context, issueKey str
 	return f.issueStatus, f.issueStatusErr
 }
 
+func (f *fakeJiraClientService) GetTransitions(ctx context.Context, issueKey string) ([]jira_client_dto.Transition, error) {
+	return nil, nil
+}
+
+func (f *fakeJiraClientService) TransitionIssue(ctx context.Context, issueKey, transitionID string) error {
+	return nil
+}
+
 type fakeIssueSessionServiceForPoller struct {
 	sessions      map[string]*issue_session_dto.IssueSession
 	openCalls     []string
@@ -213,6 +221,12 @@ func assignedIssue(key, email string, sp float64) jira_client_dto.Issue {
 }
 
 // --- tests ---
+
+func TestPollInterval_Is10Seconds(t *testing.T) {
+	if pollInterval != 10*time.Second {
+		t.Errorf("pollInterval = %v, want 10s", pollInterval)
+	}
+}
 
 func TestPollOnce_OpensNewSessionForNewlySeenIssue(t *testing.T) {
 	jiraClient := &fakeJiraClientService{

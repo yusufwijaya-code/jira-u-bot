@@ -3,6 +3,7 @@ package chat_interactive_service
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"jira-u-bot/modules/issue_session/issue_session_dto"
 	"jira-u-bot/modules/issue_session/issue_session_repository"
 	"jira-u-bot/modules/issue_session/issue_session_service"
+	"jira-u-bot/modules/jira_client/jira_client_service"
 	"jira-u-bot/modules/registration/registration_repository"
 )
 
@@ -27,11 +29,25 @@ const (
 	commandTeam      = "/u-team"
 )
 
+// geserCommandPattern matches /u-geser<ISSUEKEY>:target — e.g.
+// /u-geser<OMS-123>:todo or /u-geser<CORE-456>:code-review.
+var geserCommandPattern = regexp.MustCompile(`^/u-geser<([A-Za-z]+-\d+)>:(\S+)$`)
+
+// geserTargetStatusNames maps the command's target slug to the Jira status
+// name to search for among the issue's available transitions. Matching is
+// case-insensitive at use (see handleGeser) because projects spell the
+// same status differently — OMS uses "Code Review", CORE uses "CODE REVIEW".
+var geserTargetStatusNames = map[string]string{
+	"todo":        "To Do",
+	"code-review": "Code Review",
+}
+
 type chatInteractiveServiceImpl struct {
 	registrationRepo registration_repository.RegistrationRepository
 	issueSessionRepo issue_session_repository.IssueSessionRepository
 	businessHours    business_hours_service.BusinessHoursService
 	holidayCalendar  business_hours_dto.HolidayCalendar
+	jiraClient       jira_client_service.JiraClientService
 }
 
 func NewChatInteractiveService(
@@ -39,12 +55,14 @@ func NewChatInteractiveService(
 	issueSessionRepo issue_session_repository.IssueSessionRepository,
 	businessHours business_hours_service.BusinessHoursService,
 	holidayCalendar business_hours_dto.HolidayCalendar,
+	jiraClient jira_client_service.JiraClientService,
 ) ChatInteractiveService {
 	return &chatInteractiveServiceImpl{
 		registrationRepo: registrationRepo,
 		issueSessionRepo: issueSessionRepo,
 		businessHours:    businessHours,
 		holidayCalendar:  holidayCalendar,
+		jiraClient:       jiraClient,
 	}
 }
 
@@ -64,9 +82,55 @@ func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, senderEma
 		return s.handleOverdue(ctx)
 	case text == commandTeam:
 		return s.handleTeam(ctx)
+	case geserCommandPattern.MatchString(text):
+		matches := geserCommandPattern.FindStringSubmatch(text)
+		return s.handleGeser(ctx, senderEmail, matches[1], matches[2])
 	default:
 		return s.handleHelp()
 	}
+}
+
+// handleGeser implements /u-geser<issueKey>:target — lets the SENDER
+// transition one of their own tracked tickets directly, without opening
+// Jira. Scope is deliberately limited to tickets the sender is themselves
+// assigned to (same ownership check as /u-budget's data, just enforced
+// rather than merely displayed) — this command can change real Jira state,
+// so it must not let anyone move someone else's ticket.
+func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmail, issueKey, targetSlug string) string {
+	targetStatusName, recognized := geserTargetStatusNames[strings.ToLower(targetSlug)]
+	if !recognized {
+		return fmt.Sprintf("Target %q nggak dikenali. Target yang didukung: todo, code-review", targetSlug)
+	}
+
+	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)
+	if err != nil || !found || !session.FlagActive {
+		return fmt.Sprintf("Tiket %s nggak ditemukan atau nggak lagi aktif di-track 🤔", issueKey)
+	}
+	if session.AssigneeEmail != senderEmail {
+		return fmt.Sprintf("Tiket %s bukan tiket kamu — cuma assignee tiket yang bisa geser statusnya 🙏", issueKey)
+	}
+
+	transitions, err := s.jiraClient.GetTransitions(ctx, issueKey)
+	if err != nil {
+		return fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", issueKey)
+	}
+
+	var matchedID string
+	for _, tr := range transitions {
+		if strings.EqualFold(tr.To.Name, targetStatusName) {
+			matchedID = tr.ID
+			break
+		}
+	}
+	if matchedID == "" {
+		return fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", issueKey, targetStatusName)
+	}
+
+	if err := s.jiraClient.TransitionIssue(ctx, issueKey, matchedID); err != nil {
+		return fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", issueKey, targetStatusName)
+	}
+
+	return fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", issueKey, targetStatusName)
 }
 
 func (s *chatInteractiveServiceImpl) handleHelp() string {
@@ -74,7 +138,9 @@ func (s *chatInteractiveServiceImpl) handleHelp() string {
 		"*/u-mytickets* — tiket Code Process kamu\n" +
 		"*/u-budget <issueKey>* — detail budget satu tiket\n" +
 		"*/u-overdue* — semua tiket yang lewat budget\n" +
-		"*/u-team* — ringkasan semua tiket aktif per orang"
+		"*/u-team* — ringkasan semua tiket aktif per orang\n" +
+		"*/u-geser<issueKey>:todo* — geser tiket kamu balik ke To Do\n" +
+		"*/u-geser<issueKey>:code-review* — geser tiket kamu ke Code Review"
 }
 
 func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {

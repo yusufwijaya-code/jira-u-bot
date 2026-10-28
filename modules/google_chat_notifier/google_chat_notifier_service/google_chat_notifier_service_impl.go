@@ -59,6 +59,16 @@ const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
 // not "ke bot ini".
 const helpHint = "💡 Ketik */u-help* di sini buat lihat command lain"
 
+// geserHint advertises the /u-geser shortcut on tier and overage reminders
+// specifically (not early-completion — nothing left to reschedule there),
+// with the issue key already filled in so it's copy-paste ready.
+func geserHint(issueKey string) string {
+	return fmt.Sprintf(
+		"Keburu nggak sempat? Ketik */u-geser<%s>:todo* buat geser balik ke To Do, atau */u-geser<%s>:code-review* kalau udah mau lanjut di-review.",
+		issueKey, issueKey,
+	)
+}
+
 func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
 	case msg.IsEarlyCompletion:
@@ -119,7 +129,11 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 		)
 	}
 
-	lines = append(lines, "", helpHint, "", messageFooter)
+	lines = append(lines, "")
+	if !msg.IsEarlyCompletion {
+		lines = append(lines, geserHint(msg.IssueKey), "")
+	}
+	lines = append(lines, helpHint, "", messageFooter)
 	return strings.Join(lines, "\n")
 }
 

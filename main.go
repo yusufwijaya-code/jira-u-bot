@@ -106,9 +106,9 @@ func main() {
 
 	registrationRepo := registration_repository.NewRegistrationRepository(db)
 
-	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar)
-
 	jiraClientSvc := jira_client_service.NewJiraClientService(&cfg)
+
+	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, jiraClientSvc)
 
 	notifierSvc := google_chat_notifier_service.NewGoogleChatNotifierService(&cfg)
 

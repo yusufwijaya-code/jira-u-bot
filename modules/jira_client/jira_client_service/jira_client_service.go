@@ -25,4 +25,12 @@ type JiraClientService interface {
 	// then the ticket no longer appears in any "status = Code Process" JQL
 	// result and its new status can't be learned any other way.
 	GetIssueStatus(ctx context.Context, issueKey string) (string, error)
+	// GetTransitions returns the transitions CURRENTLY AVAILABLE from
+	// issueKey's present status — callers must search this list for a
+	// matching target (To.Name) rather than assuming any particular
+	// transition exists, since workflows vary per project/issue type.
+	GetTransitions(ctx context.Context, issueKey string) ([]jira_client_dto.Transition, error)
+	// TransitionIssue executes transitionID (one of the IDs returned by
+	// GetTransitions) against issueKey.
+	TransitionIssue(ctx context.Context, issueKey, transitionID string) error
 }

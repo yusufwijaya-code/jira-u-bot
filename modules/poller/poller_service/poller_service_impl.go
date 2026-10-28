@@ -17,7 +17,7 @@ import (
 	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
 )
 
-const pollInterval = 30 * time.Second
+const pollInterval = 10 * time.Second
 
 type pollerServiceImpl struct {
 	jiraClient       jira_client_service.JiraClientService
