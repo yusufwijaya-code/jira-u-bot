@@ -23,4 +23,9 @@ type ReminderEngineService interface {
 	// let the message show both ends of the ticket's time in Code Process,
 	// not just the elapsed/remaining totals.
 	NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error
+	// NotifyReturnedToTodo sends a notice when a ticket leaves Code Process
+	// back to To Do — whether via /u-geser or a manual Jira change. Unlike
+	// NotifyIfEarlyCompletion, this always sends: there's no "early" or
+	// "late" framing for simply being pulled back to To Do.
+	NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error
 }

@@ -29,3 +29,8 @@ const StoryPointFieldIDCoreEstimate = "customfield_10125"
 // checks for (spec AC4.1/AC4.5) — a ticket leaving "Code Process" to any
 // OTHER status never triggers this notice.
 const StatusCodeReview = "Code Review"
+
+// StatusToDo is the destination status the poller checks for to send the
+// "returned to To Do" notice — whether a ticket got there via /u-geser or
+// a manual Jira change.
+const StatusToDo = "To Do"

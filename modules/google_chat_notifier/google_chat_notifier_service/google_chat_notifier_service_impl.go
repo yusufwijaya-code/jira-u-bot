@@ -73,6 +73,8 @@ func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
 	case msg.IsEarlyCompletion:
 		return fmt.Sprintf("✅ *%s* — Selesai Lebih Awal", msg.IssueKey)
+	case msg.IsReturnedToTodo:
+		return fmt.Sprintf("↩️ *%s* — Dikembalikan ke To Do", msg.IssueKey)
 	case msg.IsOverage:
 		return fmt.Sprintf("🔴 *%s* — SUDAH LEWAT BUDGET", msg.IssueKey)
 	default:
@@ -116,6 +118,11 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 			"",
 			"Mantap, kerja bagus! 👏",
 		)
+	case msg.IsReturnedToTodo:
+		lines = append(lines,
+			"",
+			"↩️ Tiket ini dipindah balik ke To Do sebelum selesai dari Code Process.",
+		)
 	case msg.IsOverage:
 		lines = append(lines,
 			fmt.Sprintf("*Lewat budget selama:* %s", FormatDuration(remainingSeconds)),
@@ -130,7 +137,7 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	}
 
 	lines = append(lines, "")
-	if !msg.IsEarlyCompletion {
+	if !msg.IsEarlyCompletion && !msg.IsReturnedToTodo {
 		lines = append(lines, geserHint(msg.IssueKey), "")
 	}
 	lines = append(lines, helpHint, "", messageFooter)
