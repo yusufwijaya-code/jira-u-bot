@@ -282,8 +282,8 @@ func TestSearchCodeProcessIssues_RequestsBothStoryPointFieldsAndParsesCoreVarian
 	// never has both populated).
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fields := r.URL.Query().Get("fields")
-		if !strings.Contains(fields, "customfield_10016") || !strings.Contains(fields, "customfield_11053") {
-			t.Errorf("fields = %q, want it to request both customfield_10016 and customfield_11053", fields)
+		if !strings.Contains(fields, "customfield_10016") || !strings.Contains(fields, "customfield_11053") || !strings.Contains(fields, "customfield_10125") {
+			t.Errorf("fields = %q, want it to request customfield_10016, customfield_11053, and customfield_10125", fields)
 		}
 
 		sp := 1.5
@@ -321,5 +321,42 @@ func TestSearchCodeProcessIssues_RequestsBothStoryPointFieldsAndParsesCoreVarian
 	}
 	if got := issues[0].Fields.EffectiveStoryPoints(); got == nil || *got != 1.5 {
 		t.Errorf("EffectiveStoryPoints() = %v, want 1.5", got)
+	}
+}
+
+func TestSearchCodeProcessIssues_ParsesCoreStoryPointEstimateField(t *testing.T) {
+	// Reproduces CORE-10832: a CORE ticket can have "Story Point Estimate"
+	// (customfield_10125) filled in while "Story Points" (customfield_11053)
+	// stays empty — EffectiveStoryPoints must still resolve a value instead
+	// of silently treating the ticket as having no budget.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"issues": []map[string]any{
+				{
+					"key": "CORE-10832",
+					"fields": map[string]any{
+						"status":            map[string]any{"name": "Code Process"},
+						"assignee":          map[string]any{"emailAddress": "kevin.adam@esb.co.id", "displayName": "Kevin"},
+						"issuetype":         map[string]any{"name": "Bug"},
+						"customfield_10125": 3,
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+
+	issues, err := svc.SearchCodeProcessIssues(context.Background())
+	if err != nil {
+		t.Fatalf("SearchCodeProcessIssues returned error: %v", err)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("len(issues) = %d, want 1", len(issues))
+	}
+	if got := issues[0].Fields.EffectiveStoryPoints(); got == nil || *got != 3 {
+		t.Errorf("EffectiveStoryPoints() = %v, want 3 — Story Point Estimate must be recognized even when Story Points is empty", got)
 	}
 }
