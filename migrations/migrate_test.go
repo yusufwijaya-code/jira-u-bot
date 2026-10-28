@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"database/sql"
+	"sync"
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -111,6 +112,45 @@ func TestApply_CreatesChatCommandPollCursorTable(t *testing.T) {
 		err := db.QueryRow(`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = 'jira_db' AND TABLE_NAME = 'chat_command_poll_cursor' AND COLUMN_NAME = ?`, c.column).Scan(&name)
 		if err != nil {
 			t.Errorf("column chat_command_poll_cursor.%s was not created: %v", c.column, err)
+		}
+	}
+}
+
+// TestAddColumnIfNotExists_ConcurrentCallsNeverFail reproduces the CI
+// failure (Error 1060 "Duplicate column name 'jiraAccountId'"): go test
+// ./... runs each package's tests as a separate process, and several
+// packages call Apply(db) against the SAME shared jira_db schema (no
+// per-package isolation — see testutil.OpenTestDB). The old
+// check-then-ALTER pattern in applyAddJiraAccountID has a TOCTOU race: two
+// processes can both see "column missing" before either's ALTER commits,
+// so the loser gets a duplicate-column error. This test forces that race
+// deterministically against a disposable table, never touching ms_user, so
+// it can't destabilize any sibling package's concurrently running tests.
+func TestAddColumnIfNotExists_ConcurrentCallsNeverFail(t *testing.T) {
+	db := openTestConn(t)
+	const table = "testmysql_migrate_race_table"
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS ` + table + ` (id BIGINT PRIMARY KEY)`); err != nil {
+		t.Fatalf("setup CREATE TABLE failed: %v", err)
+	}
+	t.Cleanup(func() { db.Exec(`DROP TABLE IF EXISTS ` + table) })
+
+	const alterSQL = `ALTER TABLE ` + table + ` ADD COLUMN raceCol VARCHAR(50)`
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 20)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- addColumnIfNotExists(db, alterSQL)
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Errorf("concurrent addColumnIfNotExists returned error: %v — must tolerate MySQL's duplicate-column error instead of propagating it", err)
 		}
 	}
 }

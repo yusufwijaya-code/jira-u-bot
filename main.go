@@ -44,9 +44,17 @@ func shouldRunSetupMode(args []string) bool {
 	return false
 }
 
+// mysqlDSN's time_zone param sets this connection's MySQL SESSION
+// time_zone to WIB (+07:00) on every connect — scoped to this service's own
+// connections only, unlike a server-wide `SET GLOBAL time_zone` (the shared
+// MySQL instance also hosts an unrelated database, fsldk_db, that a global
+// change would affect). Needed because CURRENT_TIMESTAMP (createdDate/
+// editedDate/sentDate across several repositories) is evaluated by MySQL
+// itself — parseTime/loc only affect how the Go driver converts time.Time
+// values it sends/receives, not what CURRENT_TIMESTAMP resolves to.
 func mysqlDSN(cfg config.AppConfig) string {
 	return fmt.Sprintf(
-		"%s:%s@(%s:%s)/%s?parseTime=true&loc=Asia%%2FJakarta&multiStatements=true",
+		"%s:%s@(%s:%s)/%s?parseTime=true&loc=Asia%%2FJakarta&multiStatements=true&time_zone=%%27%%2B07%%3A00%%27",
 		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost, cfg.MySQLPort, cfg.MySQLDatabase,
 	)
 }
