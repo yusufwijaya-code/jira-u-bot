@@ -1,8 +1,12 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"jira-u-bot/config"
 )
@@ -45,5 +49,41 @@ func TestShouldRunSetupMode_DetectsSetupOAuthFlag(t *testing.T) {
 				t.Errorf("shouldRunSetupMode(%v) = %v, want %v", c.args, got, c.want)
 			}
 		})
+	}
+}
+
+func TestRedirectToDashboardHandler_RedirectsToBasePathDashboard(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	cfg := &config.AppConfig{BasePath: "/jira-notif"}
+	r.GET("/jira-notif", redirectToDashboardHandler(cfg))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/jira-notif", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusFound)
+	}
+	if loc := w.Header().Get("Location"); loc != "/jira-notif/dashboard" {
+		t.Errorf("Location = %q, want /jira-notif/dashboard", loc)
+	}
+}
+
+func TestNotFoundHandler_Returns404WithDashboardLink(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	cfg := &config.AppConfig{BasePath: "/jira-notif"}
+	r.NoRoute(notFoundHandler(cfg))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/jira-notif/this-route-does-not-exist", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+	if !strings.Contains(w.Body.String(), `href="/jira-notif/dashboard"`) {
+		t.Errorf("body missing a link back to the dashboard: %s", w.Body.String())
 	}
 }
