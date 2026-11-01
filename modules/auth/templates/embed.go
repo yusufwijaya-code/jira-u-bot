@@ -2,5 +2,5 @@ package templates
 
 import "embed"
 
-//go:embed register.html register_success.html
+//go:embed login.html
 var FS embed.FS

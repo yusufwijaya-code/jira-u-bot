@@ -28,6 +28,22 @@ type AppConfig struct {
 	// space for incoming commands. Captured once by comparing
 	// sender.name on a message the operator sent, e.g. via the Chat API.
 	GoogleChatSelfUserID string
+	// GoogleSignInClientID/Secret/RedirectURL are a SEPARATE OAuth Client
+	// (type "Web application") from GoogleOAuthClientID/Secret above (type
+	// "Desktop app", used for the DM-sending feature) — both live in the
+	// same GCP project (Tech Spec "Dashboard Jira Manage", Open Question
+	// #5), but Sign-In with Google needs its own redirect-based client.
+	GoogleSignInClientID     string
+	GoogleSignInClientSecret string
+	GoogleSignInRedirectURL  string
+	// AdminEmail is the single hardcoded admin account (Tech Spec
+	// "Dashboard Jira Manage", AC1.6) — not a settable role, a constant
+	// read from config so it's not duplicated across source files.
+	AdminEmail string
+	// CredentialEncryptionKey is the 32-byte base64 key used to encrypt
+	// personal Jira API tokens at rest (tr_usercredential) — see
+	// modules/jira_credential/jira_credential_crypto.
+	CredentialEncryptionKey string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -64,6 +80,11 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.HolidayCalendarPath = v.GetString("HOLIDAY_CALENDAR_PATH")
 	cfg.Port = v.GetString("PORT")
 	cfg.GoogleChatSelfUserID = v.GetString("GOOGLE_CHAT_SELF_USER_ID")
+	cfg.GoogleSignInClientID = v.GetString("GOOGLE_SIGNIN_CLIENT_ID")
+	cfg.GoogleSignInClientSecret = v.GetString("GOOGLE_SIGNIN_CLIENT_SECRET")
+	cfg.GoogleSignInRedirectURL = v.GetString("GOOGLE_SIGNIN_REDIRECT_URL")
+	cfg.AdminEmail = v.GetString("ADMIN_EMAIL")
+	cfg.CredentialEncryptionKey = v.GetString("CREDENTIAL_ENCRYPTION_KEY")
 
 	return nil
 }

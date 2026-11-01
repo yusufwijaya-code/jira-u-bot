@@ -24,6 +24,9 @@ var addChatCommandPollCursorSQL string
 //go:embed 0004_cursor_subsecond_precision.sql
 var cursorSubsecondPrecisionSQL string
 
+//go:embed 0005_add_dashboard_auth_tables.sql
+var addDashboardAuthTablesSQL string
+
 func Apply(db *sql.DB) error {
 	if _, err := db.Exec(initSQL); err != nil {
 		return err
@@ -39,7 +42,12 @@ func Apply(db *sql.DB) error {
 	}
 	// MODIFY COLUMN re-applying the same target type is naturally
 	// idempotent too (unlike ADD COLUMN), so no conditional wrapper needed.
-	_, err := db.Exec(cursorSubsecondPrecisionSQL)
+	if _, err := db.Exec(cursorSubsecondPrecisionSQL); err != nil {
+		return err
+	}
+	// Both CREATE TABLE IF NOT EXISTS statements — naturally idempotent,
+	// same as addChatCommandPollCursorSQL above.
+	_, err := db.Exec(addDashboardAuthTablesSQL)
 	return err
 }
 

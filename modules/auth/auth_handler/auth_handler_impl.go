@@ -1,0 +1,125 @@
+package auth_handler
+
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"html/template"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"jira-u-bot/modules/auth/auth_service"
+	authtemplates "jira-u-bot/modules/auth/templates"
+	"jira-u-bot/modules/registration/registration_service"
+)
+
+const (
+	stateCookieName   = "oauth_state"
+	sessionCookieName = "session_token"
+	stateCookieMaxAge = 5 * 60        // 5 minutes — just long enough for the Google consent round-trip
+	sessionCookieMaxAge = 30 * 24 * 3600 // 30 days, matches auth_service.sessionLifetime
+)
+
+type loginPageData struct {
+	Error string
+}
+
+type authHandlerImpl struct {
+	authService  auth_service.AuthService
+	loginTemplate *template.Template
+}
+
+func NewAuthHandler(authService auth_service.AuthService) AuthHandler {
+	loginTmpl := template.Must(template.ParseFS(authtemplates.FS, "login.html"))
+	return &authHandlerImpl{authService: authService, loginTemplate: loginTmpl}
+}
+
+func (h *authHandlerImpl) Login(c *gin.Context) {
+	state, err := randomState()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "failed to start login")
+		return
+	}
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(stateCookieName, state, stateCookieMaxAge, "/", "", true, true)
+	c.Redirect(http.StatusFound, h.authService.AuthCodeURL(state))
+}
+
+func (h *authHandlerImpl) Callback(c *gin.Context) {
+	cookieState, cookieErr := c.Cookie(stateCookieName)
+	// Clear the state cookie immediately regardless of outcome — it's
+	// single-use, and leaving it around after a failed/successful attempt
+	// just extends its (short) window for no benefit.
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(stateCookieName, "", -1, "/", "", true, true)
+
+	if cookieErr != nil || cookieState == "" || cookieState != c.Query("state") {
+		h.renderLoginError(c, "Sesi login tidak valid atau kedaluwarsa, coba lagi")
+		return
+	}
+
+	ctx := c.Request.Context()
+	claims, err := h.authService.VerifyGoogleCallback(ctx, c.Query("code"))
+	if err != nil {
+		if errors.Is(err, auth_service.ErrDomainNotAllowed) {
+			h.renderLoginError(c, "Login hanya untuk email @esb.co.id yang terverifikasi Google")
+			return
+		}
+		h.renderLoginError(c, "Gagal login dengan Google, coba lagi sebentar lagi")
+		return
+	}
+
+	user, err := h.authService.GetOrCreateUser(ctx, claims.Email, claims.Name)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth_service.ErrUserDeactivated):
+			h.renderLoginError(c, "Akun kamu sudah dinonaktifkan — hubungi admin")
+		case errors.Is(err, registration_service.ErrJiraAccountNotFound):
+			h.renderLoginError(c, "Email ini belum terdaftar sebagai akun Jira esb-id")
+		case errors.Is(err, registration_service.ErrJiraLookupUnavailable):
+			h.renderLoginError(c, "Gagal memverifikasi akun ke Jira, coba lagi sebentar lagi")
+		default:
+			h.renderLoginError(c, "Gagal memproses akun, coba lagi")
+		}
+		return
+	}
+
+	token, err := h.authService.IssueSession(ctx, user.UserID)
+	if err != nil {
+		h.renderLoginError(c, "Gagal membuat sesi, coba lagi")
+		return
+	}
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(sessionCookieName, token, sessionCookieMaxAge, "/", "", true, true)
+	c.Redirect(http.StatusFound, "/dashboard")
+}
+
+func (h *authHandlerImpl) Logout(c *gin.Context) {
+	if token, err := c.Cookie(sessionCookieName); err == nil && token != "" {
+		h.authService.Logout(c.Request.Context(), token)
+	}
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(sessionCookieName, "", -1, "/", "", true, true)
+	c.Redirect(http.StatusFound, "/auth/google/login")
+}
+
+func (h *authHandlerImpl) renderLoginError(c *gin.Context, message string) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Status(http.StatusOK)
+	h.loginTemplate.Execute(c.Writer, loginPageData{Error: message})
+}
+
+// randomState generates the CSRF state parameter (spec AC1.2/security) —
+// 32 random bytes, base64url-encoded, same shape/strength as the session
+// token in auth_service.newSessionToken but intentionally not shared code
+// (different lifetime/purpose, no benefit to coupling them).
+func randomState() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}

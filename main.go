@@ -14,6 +14,9 @@ import (
 	"jira-u-bot/base/helpers/shutdown"
 	"jira-u-bot/config"
 	"jira-u-bot/migrations"
+	"jira-u-bot/modules/auth/auth_handler"
+	"jira-u-bot/modules/auth/auth_service"
+	"jira-u-bot/modules/auth/auth_session_repository"
 	"jira-u-bot/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
 	"jira-u-bot/modules/chat_command_poller/chat_command_poller_service"
 	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
@@ -25,7 +28,6 @@ import (
 	"jira-u-bot/modules/issue_session/issue_session_service"
 	"jira-u-bot/modules/jira_client/jira_client_service"
 	"jira-u-bot/modules/poller/poller_service"
-	"jira-u-bot/modules/registration/registration_handler"
 	"jira-u-bot/modules/registration/registration_repository"
 	"jira-u-bot/modules/registration/registration_service"
 	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
@@ -155,8 +157,11 @@ func main() {
 	}
 
 	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo, chatDMNotifierSvc, cfg.JiraEmail)
-	registrationHandler := registration_handler.NewRegistrationHandler(registrationService)
-	router := SetupRouter(registrationHandler)
+
+	authSessionRepo := auth_session_repository.NewAuthSessionRepository(db)
+	authSvc := auth_service.NewAuthService(&cfg, registrationService, registrationRepo, authSessionRepo)
+	authHandler := auth_handler.NewAuthHandler(authSvc)
+	router := SetupRouter(&cfg, authSvc, authHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
