@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"html/template"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,9 +17,14 @@ import (
 )
 
 const (
-	stateCookieName     = "oauth_state"
-	sessionCookieName   = "session_token"
-	stateCookieMaxAge   = 5 * 60         // 5 minutes — just long enough for the Google consent round-trip
+	stateCookieName   = "oauth_state"
+	sessionCookieName = "session_token"
+	// stateCookieMaxAge needs enough slack for Google's own extra identity
+	// challenges ("Verify it's you" 2FA prompts, which Google can trigger
+	// mid-flow on a new/unverified OAuth app) on top of the normal consent
+	// round-trip — confirmed live: a 5-minute window expired mid-challenge
+	// and broke an otherwise-successful login.
+	stateCookieMaxAge   = 15 * 60        // 15 minutes
 	sessionCookieMaxAge = 30 * 24 * 3600 // 30 days, matches auth_service.sessionLifetime
 )
 
@@ -47,6 +53,14 @@ func (h *authHandlerImpl) cookiePath() string {
 	return h.basePath
 }
 
+// LoginPage shows the app's own landing page — no cookies, no redirect, no
+// contact with Google. This is what unauthenticated visitors should land
+// on first (AuthMiddleware points here), so they see the app before being
+// sent into Google's consent flow by clicking the button themselves.
+func (h *authHandlerImpl) LoginPage(c *gin.Context) {
+	h.renderLoginPage(c, "")
+}
+
 func (h *authHandlerImpl) Login(c *gin.Context) {
 	state, err := randomState()
 	if err != nil {
@@ -68,7 +82,7 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	c.SetCookie(stateCookieName, "", -1, h.cookiePath(), "", true, true)
 
 	if cookieErr != nil || cookieState == "" || cookieState != c.Query("state") {
-		h.renderLoginError(c, "Sesi login tidak valid atau kedaluwarsa, coba lagi")
+		h.renderLoginPage(c, "Sesi login tidak valid atau kedaluwarsa, coba lagi")
 		return
 	}
 
@@ -76,10 +90,11 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	claims, err := h.authService.VerifyGoogleCallback(ctx, c.Query("code"))
 	if err != nil {
 		if errors.Is(err, auth_service.ErrDomainNotAllowed) {
-			h.renderLoginError(c, "Login hanya untuk email @esb.co.id yang terverifikasi Google")
+			h.renderLoginPage(c, "Login hanya untuk email @esb.co.id yang terverifikasi Google")
 			return
 		}
-		h.renderLoginError(c, "Gagal login dengan Google, coba lagi sebentar lagi")
+		log.Printf("auth_handler: VerifyGoogleCallback failed: %v", err)
+		h.renderLoginPage(c, "Gagal login dengan Google, coba lagi sebentar lagi")
 		return
 	}
 
@@ -87,20 +102,20 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, auth_service.ErrUserDeactivated):
-			h.renderLoginError(c, "Akun kamu sudah dinonaktifkan — hubungi admin")
+			h.renderLoginPage(c, "Akun kamu sudah dinonaktifkan — hubungi admin")
 		case errors.Is(err, registration_service.ErrJiraAccountNotFound):
-			h.renderLoginError(c, "Email ini belum terdaftar sebagai akun Jira esb-id")
+			h.renderLoginPage(c, "Email ini belum terdaftar sebagai akun Jira esb-id")
 		case errors.Is(err, registration_service.ErrJiraLookupUnavailable):
-			h.renderLoginError(c, "Gagal memverifikasi akun ke Jira, coba lagi sebentar lagi")
+			h.renderLoginPage(c, "Gagal memverifikasi akun ke Jira, coba lagi sebentar lagi")
 		default:
-			h.renderLoginError(c, "Gagal memproses akun, coba lagi")
+			h.renderLoginPage(c, "Gagal memproses akun, coba lagi")
 		}
 		return
 	}
 
 	token, err := h.authService.IssueSession(ctx, user.UserID)
 	if err != nil {
-		h.renderLoginError(c, "Gagal membuat sesi, coba lagi")
+		h.renderLoginPage(c, "Gagal membuat sesi, coba lagi")
 		return
 	}
 
@@ -115,10 +130,10 @@ func (h *authHandlerImpl) Logout(c *gin.Context) {
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(sessionCookieName, "", -1, h.cookiePath(), "", true, true)
-	c.Redirect(http.StatusFound, h.basePath+"/auth/google/login")
+	c.Redirect(http.StatusFound, h.basePath+"/auth/login")
 }
 
-func (h *authHandlerImpl) renderLoginError(c *gin.Context, message string) {
+func (h *authHandlerImpl) renderLoginPage(c *gin.Context, message string) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
 	h.loginTemplate.Execute(c.Writer, loginPageData{BasePath: h.basePath, Error: message})

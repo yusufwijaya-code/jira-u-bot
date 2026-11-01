@@ -55,8 +55,8 @@ func TestAuthMiddleware_RedirectsWhenNoCookie(t *testing.T) {
 	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{}, testCfg())
 	w, c := runMiddleware(t, mw, httptest.NewRequest("GET", "/jira-notif/dashboard", nil))
 
-	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/google/login" {
-		t.Errorf("status=%d location=%q, want redirect to /jira-notif/auth/google/login (spec AC1.7, BasePath-aware)", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/login" {
+		t.Errorf("status=%d location=%q, want redirect to /jira-notif/auth/login (spec AC1.7, BasePath-aware)", w.Code, w.Header().Get("Location"))
 	}
 	if !c.IsAborted() {
 		t.Error("expected the middleware chain to be aborted")
@@ -70,8 +70,8 @@ func TestAuthMiddleware_RedirectsWhenSessionNotFound(t *testing.T) {
 
 	w, _ := runMiddleware(t, mw, req)
 
-	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/google/login" {
-		t.Errorf("status=%d location=%q, want redirect to /jira-notif/auth/google/login", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/login" {
+		t.Errorf("status=%d location=%q, want redirect to /jira-notif/auth/login", w.Code, w.Header().Get("Location"))
 	}
 }
 

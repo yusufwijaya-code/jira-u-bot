@@ -22,7 +22,11 @@ const sessionCookieName = "session_token"
 // cookie), so a deactivated-mid-session user is blocked on their very next
 // request.
 func AuthMiddleware(authService auth_service.AuthService, cfg *config.AppConfig) gin.HandlerFunc {
-	loginURL := cfg.BasePath + "/auth/google/login"
+	// Points at the app's own landing page (not /auth/google/login
+	// directly) — an unauthenticated visitor should see the app and click
+	// "Sign in with Google" themselves, not get bounced straight into
+	// Google's consent screen before they've seen anything.
+	loginURL := cfg.BasePath + "/auth/login"
 	return func(c *gin.Context) {
 		token, err := c.Cookie(sessionCookieName)
 		if err != nil || token == "" {

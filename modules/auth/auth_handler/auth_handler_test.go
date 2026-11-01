@@ -66,6 +66,29 @@ func newTestContext() (*httptest.ResponseRecorder, *gin.Context) {
 	return w, c
 }
 
+func TestLoginPage_RendersWithoutErrorOrContactingGoogle(t *testing.T) {
+	svc := &fakeAuthServiceForHandler{}
+	handler := NewAuthHandler(svc, testCfg())
+
+	w, c := newTestContext()
+	c.Request = httptest.NewRequest("GET", "/jira-notif/auth/login", nil)
+
+	handler.LoginPage(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a plain landing page, not a redirect into Google's OAuth flow)", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `href="/jira-notif/auth/google/login"`) {
+		t.Errorf("body = %q, want the Sign in with Google button pointing at /jira-notif/auth/google/login", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), `role="alert"`) {
+		t.Error("expected no error alert on the plain landing page")
+	}
+	if len(w.Result().Cookies()) != 0 {
+		t.Errorf("cookies = %v, want none — LoginPage must not touch cookies (that's Login's job once the button is clicked)", w.Result().Cookies())
+	}
+}
+
 func TestLogin_SetsStateCookieAndRedirectsToGoogle(t *testing.T) {
 	svc := &fakeAuthServiceForHandler{authCodeURL: "https://accounts.google.com/o/oauth2/auth?client_id=x"}
 	handler := NewAuthHandler(svc, testCfg())
@@ -226,8 +249,8 @@ func TestLogout_ClearsCookieAndRedirects(t *testing.T) {
 
 	handler.Logout(c)
 
-	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/google/login" {
-		t.Errorf("status=%d location=%q, want 302 to /jira-notif/auth/google/login (spec AC1.9, BasePath-aware)", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/login" {
+		t.Errorf("status=%d location=%q, want 302 to /jira-notif/auth/login (spec AC1.9, BasePath-aware — the app's own landing page, not straight to Google)", w.Code, w.Header().Get("Location"))
 	}
 	if svc.logoutCalledWith != "session-to-kill" {
 		t.Errorf("Logout called with %q, want %q", svc.logoutCalledWith, "session-to-kill")
