@@ -10,6 +10,8 @@ import (
 	"jira-u-bot/modules/auth/auth_handler"
 	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/auth/auth_service"
+	"jira-u-bot/modules/sprint_report"
+	"jira-u-bot/modules/sprint_report/sprint_report_handler"
 	"jira-u-bot/modules/user_dashboard"
 	"jira-u-bot/modules/user_dashboard/user_dashboard_handler"
 )
@@ -20,6 +22,7 @@ func SetupRouter(
 	authHandler auth_handler.AuthHandler,
 	userDashboardHandler user_dashboard_handler.UserDashboardHandler,
 	adminDashboardHandler admin_dashboard_handler.AdminDashboardHandler,
+	sprintReportHandler sprint_report_handler.SprintReportHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -35,6 +38,7 @@ func SetupRouter(
 	dashboardAPI := r.Group("/api/dashboard")
 	dashboardAPI.Use(auth_middleware.AuthMiddleware(authSvc))
 	user_dashboard.Router(dashboardPages, dashboardAPI, userDashboardHandler)
+	sprint_report.Router(dashboardPages, sprintReportHandler)
 
 	dashboardAdmin := dashboardPages.Group("/admin")
 	dashboardAdmin.Use(auth_middleware.AdminMiddleware(cfg))

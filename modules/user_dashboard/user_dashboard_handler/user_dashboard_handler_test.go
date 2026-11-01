@@ -17,13 +17,13 @@ import (
 )
 
 type fakeUserDashboardService struct {
-	board             user_dashboard_dto.Board
-	boardErr          error
-	teamView          user_dashboard_dto.TeamView
-	overdueItems      []user_dashboard_dto.OverdueItem
-	setPreferenceCSV  string
-	setPreferenceErr  error
-	getPreference     *string
+	board            user_dashboard_dto.Board
+	boardErr         error
+	teamView         user_dashboard_dto.TeamView
+	overdueItems     []user_dashboard_dto.OverdueItem
+	setPreferenceCSV string
+	setPreferenceErr error
+	getPreference    *string
 }
 
 func (f *fakeUserDashboardService) GetMyBoard(ctx context.Context, email string) (user_dashboard_dto.Board, error) {
@@ -56,11 +56,11 @@ func (f *fakeChatInteractiveForHandler) RouteCommand(ctx context.Context, sender
 }
 
 type fakeJiraCredentialForHandler struct {
-	upsertErr      error
-	upsertCalled   bool
-	deleteCalled   bool
-	maskedPreview  string
-	maskedFound    bool
+	upsertErr     error
+	upsertCalled  bool
+	deleteCalled  bool
+	maskedPreview string
+	maskedFound   bool
 }
 
 func (f *fakeJiraCredentialForHandler) ResolveCredential(ctx context.Context, email string) (*jira_client_dto.Credential, error) {

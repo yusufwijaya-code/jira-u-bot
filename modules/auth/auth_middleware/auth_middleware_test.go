@@ -33,7 +33,9 @@ func (f *fakeAuthServiceForMiddleware) IssueSession(ctx context.Context, userID 
 func (f *fakeAuthServiceForMiddleware) FindSession(ctx context.Context, sessionID string) (*auth_dto.Session, bool, error) {
 	return f.session, f.found, f.err
 }
-func (f *fakeAuthServiceForMiddleware) Logout(ctx context.Context, sessionID string) error { return nil }
+func (f *fakeAuthServiceForMiddleware) Logout(ctx context.Context, sessionID string) error {
+	return nil
+}
 
 func runMiddleware(t *testing.T, mw gin.HandlerFunc, req *http.Request) (*httptest.ResponseRecorder, *gin.Context) {
 	t.Helper()

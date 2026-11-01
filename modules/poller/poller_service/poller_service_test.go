@@ -77,7 +77,7 @@ func newFakeIssueSessionServiceForPoller() *fakeIssueSessionServiceForPoller {
 	}
 }
 
-func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
 	f.openCalls = append(f.openCalls, issueKey)
 	now := time.Now()
 	f.sessions[issueKey] = &issue_session_dto.IssueSession{
@@ -88,7 +88,7 @@ func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSession(ctx context.Conte
 	return nil
 }
 
-func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary, sprintName string) error {
 	f.openAtCalls = append(f.openAtCalls, issueKey)
 	f.sessions[issueKey] = &issue_session_dto.IssueSession{
 		IssueKey: issueKey, ProjectKey: projectKey, StoryPoints: sp,
@@ -98,7 +98,7 @@ func (f *fakeIssueSessionServiceForPoller) OpenOrResumeSessionAt(ctx context.Con
 	return nil
 }
 
-func (f *fakeIssueSessionServiceForPoller) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionServiceForPoller) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
 	f.updateSPCalls[issueKey] = sp
 	if s, ok := f.sessions[issueKey]; ok {
 		s.StoryPoints = sp

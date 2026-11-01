@@ -291,7 +291,7 @@ func TestPollOnce_SkipsMessagesAtOrBeforeCursor(t *testing.T) {
 	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	server := newMessagesServer(t, map[string][]messageFixture{
 		"spaces/ABC": {
-			{senderName: "users/OTHER", text: "/u-mytickets", createTime: cursor}, // exactly at cursor
+			{senderName: "users/OTHER", text: "/u-mytickets", createTime: cursor},                       // exactly at cursor
 			{senderName: "users/OTHER", text: "/u-mytickets", createTime: cursor.Add(-1 * time.Minute)}, // before cursor
 		},
 	}, nil)

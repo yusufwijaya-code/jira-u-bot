@@ -206,7 +206,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if !entryFound {
 			entryTime = time.Now()
 		}
-		if err := p.issueSession.OpenOrResumeSessionAt(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), entryTime, resolvedEmails[key], issue.Fields.Summary); err != nil {
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), entryTime, resolvedEmails[key], issue.Fields.Summary, sprintNameOf(issue)); err != nil {
 			return fmt.Errorf("poller: OpenOrResumeSessionAt(%s) failed: %w", key, err)
 		}
 	}
@@ -218,7 +218,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if _, wasAlreadyActive := activeByKey[key]; !wasAlreadyActive {
 			continue
 		}
-		if err := p.issueSession.UpdateStoryPoints(ctx, key, storyPointsOf(issue), resolvedEmails[key], issue.Fields.Summary); err != nil {
+		if err := p.issueSession.UpdateStoryPoints(ctx, key, storyPointsOf(issue), resolvedEmails[key], issue.Fields.Summary, sprintNameOf(issue)); err != nil {
 			return fmt.Errorf("poller: UpdateStoryPoints(%s) failed: %w", key, err)
 		}
 	}
@@ -269,7 +269,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 			entryTime = time.Now()
 		}
 
-		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, resolvedEmails[issue.Key], issue.Fields.Summary); err != nil {
+		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, resolvedEmails[issue.Key], issue.Fields.Summary, sprintNameOf(issue)); err != nil {
 			return fmt.Errorf("poller: backfill OpenOrResumeSessionAt(%s) failed: %w", issue.Key, err)
 		}
 	}
@@ -283,6 +283,17 @@ func storyPointsOf(issue jira_client_dto.Issue) float64 {
 		return 0
 	}
 	return *sp
+}
+
+// sprintNameOf returns "" when the ticket has no sprint info (never
+// assigned, or Jira didn't return it) — tr_issuesession.sprintName is
+// nullable and this empty string maps to that (spec Chapter 11a).
+func sprintNameOf(issue jira_client_dto.Issue) string {
+	name, found := issue.Fields.ActiveSprintName()
+	if !found {
+		return ""
+	}
+	return name
 }
 
 func projectKeyFromIssueKey(issueKey string) string {

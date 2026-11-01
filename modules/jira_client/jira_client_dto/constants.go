@@ -34,3 +34,10 @@ const StatusCodeReview = "Code Review"
 // "returned to To Do" notice — whether a ticket got there via /u-geser or
 // a manual Jira change.
 const StatusToDo = "To Do"
+
+// SprintFieldID is the Jira custom field ID for Sprint — confirmed live
+// 2026-11-01 identical for OMS and CORE (unlike Story Points above, which
+// genuinely differs per project). Same hardcoded-constant treatment as the
+// Story Point field IDs: a struct's json tag can't follow a runtime
+// config value, so there's nothing a config var would actually buy here.
+const SprintFieldID = "customfield_10020"

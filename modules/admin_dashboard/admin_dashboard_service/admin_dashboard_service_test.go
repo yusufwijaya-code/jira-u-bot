@@ -11,11 +11,11 @@ import (
 )
 
 type fakeRegistrationRepoForAdmin struct {
-	users               []registration_dto.User
-	toggledUserID       int64
-	toggledActive       bool
-	updatedAccountID    string
-	deletedUserID       int64
+	users            []registration_dto.User
+	toggledUserID    int64
+	toggledActive    bool
+	updatedAccountID string
+	deletedUserID    int64
 }
 
 func (f *fakeRegistrationRepoForAdmin) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {

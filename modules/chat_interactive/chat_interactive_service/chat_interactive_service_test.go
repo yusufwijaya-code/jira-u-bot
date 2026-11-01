@@ -114,13 +114,13 @@ type fakeIssueSessionRepoForChat struct {
 	byKey      map[string]issue_session_dto.IssueSession
 }
 
-func (f *fakeIssueSessionRepoForChat) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepoForChat) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
 	return nil
 }
-func (f *fakeIssueSessionRepoForChat) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepoForChat) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary, sprintName string) error {
 	return nil
 }
-func (f *fakeIssueSessionRepoForChat) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepoForChat) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
 	return nil
 }
 func (f *fakeIssueSessionRepoForChat) CloseSession(ctx context.Context, issueKey string, additionalSeconds int64) error {
@@ -141,6 +141,14 @@ func (f *fakeIssueSessionRepoForChat) UpdateLastOverageReminder(ctx context.Cont
 }
 func (f *fakeIssueSessionRepoForChat) FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error) {
 	return f.byAssignee[email], nil
+}
+
+func (f *fakeIssueSessionRepoForChat) FindBySprintNames(ctx context.Context, sprintNames []string) ([]issue_session_dto.IssueSession, error) {
+	return nil, nil
+}
+
+func (f *fakeIssueSessionRepoForChat) ListDistinctSprintNames(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 // fakeJiraCredentialServiceForChat backs Chapter 9d tests — Credential !=

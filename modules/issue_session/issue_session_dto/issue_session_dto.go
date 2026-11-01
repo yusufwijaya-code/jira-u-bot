@@ -13,6 +13,10 @@ type IssueSession struct {
 	LastOverageReminderDate   *time.Time
 	AssigneeEmail             string
 	IssueSummary              string
-	CreatedBy                 string
-	CreatedDate               time.Time
+	// SprintName is set at session creation/update time from Jira's Sprint
+	// field (Tech Spec "Dashboard Jira Manage", Chapter 11a) — empty for
+	// any session opened before this field existed, never backfilled.
+	SprintName  string
+	CreatedBy   string
+	CreatedDate time.Time
 }

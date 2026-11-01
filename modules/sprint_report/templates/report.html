@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint Report - Jira U Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=REM:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root { --blue:#1286e1; --blue-dark:#0e65a9; --text:#333; --text-muted:#6c6c6c; --border:#e6e6e6; --bg:#f7fafc; --success:#15803d; --success-bg:#dcfce7; --error:#b91c1c; --error-bg:#fef2f2; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:'REM',ui-sans-serif,system-ui,sans-serif; color:var(--text); background:var(--bg); }
+    header { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; background:#fff; border-bottom:1px solid var(--border); }
+    header .brand { font-weight:700; color:var(--blue-dark); }
+    header nav a { color:var(--text-muted); text-decoration:none; margin-left:16px; font-size:0.9rem; }
+    main { max-width:1200px; margin:0 auto; padding:24px; }
+    section { background:#fff; border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:20px; }
+    h2 { font-size:1rem; margin:0 0 14px; color:var(--blue-dark); }
+    .sprints { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; max-height:160px; overflow-y:auto; }
+    .sprints label { display:flex; align-items:center; gap:6px; font-size:0.85rem; background:var(--bg); padding:6px 12px; border-radius:999px; cursor:pointer; }
+    .cap-field { margin-bottom:14px; font-size:0.85rem; }
+    .cap-field input { width:70px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-family:inherit; }
+    button { font-family:inherit; font-size:0.85rem; font-weight:600; border:none; border-radius:999px; padding:8px 20px; cursor:pointer; background:var(--blue); color:#fff; }
+    .summary-cards { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px; }
+    .stat-card { border-radius:14px; padding:16px; }
+    .stat-card.deviation { background:var(--error-bg); }
+    .stat-card.achievement { background:#eaf5ff; }
+    .stat-card.within { background:var(--success-bg); }
+    .stat-card .label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:6px; }
+    .stat-card .value { font-size:1.6rem; font-weight:700; }
+    .stat-card .sub { font-size:0.75rem; color:var(--text-muted); margin-top:4px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { text-align:left; padding:8px 10px; font-size:0.8rem; border-bottom:1px solid var(--border); }
+    th { background:var(--bg); color:var(--text-muted); text-transform:uppercase; font-size:0.68rem; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.68rem; font-weight:700; }
+    .badge.within { background:var(--success-bg); color:var(--success); }
+    .badge.out { background:var(--error-bg); color:var(--error); }
+    .empty { color:var(--text-muted); text-align:center; padding:30px; }
+</style>
+</head>
+<body>
+<header>
+    <span class="brand">🤖 Jira U Bot — Sprint Report</span>
+    <nav>
+        <span>{{.Email}}</span>
+        <a href="/dashboard">My Board</a>
+        <a href="/auth/logout">Logout</a>
+    </nav>
+</header>
+<main>
+    <section>
+        <h2>Pilih Sprint</h2>
+        <form method="GET" action="/dashboard/report">
+            <div class="sprints">
+                {{range .AvailableSprints}}
+                <label><input type="checkbox" name="sprint" value="{{.}}" {{if index $.SelectedSprints .}}checked{{end}}> {{.}}</label>
+                {{end}}
+                {{if not .AvailableSprints}}<p class="empty" style="padding:0;">Belum ada sprint yang tercatat</p>{{end}}
+            </div>
+            <div class="cap-field">
+                <label>Cap deviation (%): <input type="number" name="cap" value="{{fmt2 .CapPercent}}" step="0.1" min="0.1"></label>
+            </div>
+            <button type="submit">Generate Report</button>
+        </form>
+    </section>
+
+    {{if .HasSelection}}
+    <section>
+        <div class="summary-cards">
+            <div class="stat-card deviation">
+                <div class="label">Aggregate Deviation</div>
+                <div class="value">{{fmt2 .Report.AggregateDeviationPercent}}%</div>
+                <div class="sub">{{fmt2 .Report.SumEstimatedHours}}h estimated · {{fmt2 .Report.SumActualHours}}h actual · cap {{fmt2 .Report.CapPercent}}%</div>
+            </div>
+            <div class="stat-card achievement">
+                <div class="label">Achievement</div>
+                <div class="value">{{fmt2 .Report.AchievementPercent}}%</div>
+                <div class="sub">(Target {{fmt2 .Report.CapPercent}}% ÷ Deviation {{fmt2 .Report.AggregateDeviationPercent}}%) × 100%</div>
+            </div>
+            <div class="stat-card within">
+                <div class="label">Per-Row Within Band</div>
+                <div class="value">{{.Report.WithinCount}}/{{.Report.TotalCount}}</div>
+                <div class="sub">tiket dalam batas cap {{fmt2 .Report.CapPercent}}%</div>
+            </div>
+        </div>
+
+        <h2>Per-item comparison</h2>
+        {{if .Report.Rows}}
+        <table>
+            <thead><tr><th>Sprint</th><th>Jira Key</th><th>Task</th><th>Est. (h)</th><th>Actual (h)</th><th>Deviation</th><th>Result</th></tr></thead>
+            <tbody>
+                {{range .Report.Rows}}
+                <tr>
+                    <td>{{.SprintName}}</td>
+                    <td>{{.IssueKey}}</td>
+                    <td>{{.Task}}</td>
+                    <td>{{fmt2 .EstimatedHours}}</td>
+                    <td>{{fmt2 .ActualHours}}</td>
+                    <td>{{fmt2 .DeviationPercent}}%</td>
+                    <td>{{if .Within}}<span class="badge within">WITHIN</span>{{else}}<span class="badge out">OUT</span>{{end}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p class="empty">Tidak ada tiket untuk sprint yang dipilih</p>
+        {{end}}
+    </section>
+    {{end}}
+</main>
+</body>
+</html>

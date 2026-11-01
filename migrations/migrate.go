@@ -30,6 +30,9 @@ var addDashboardAuthTablesSQL string
 //go:embed 0006_add_reminder_tier_preference.sql
 var addReminderTierPreferenceSQL string
 
+//go:embed 0007_add_sprint_name.sql
+var addSprintNameSQL string
+
 func Apply(db *sql.DB) error {
 	if _, err := db.Exec(initSQL); err != nil {
 		return err
@@ -55,7 +58,10 @@ func Apply(db *sql.DB) error {
 	}
 	// ADD COLUMN — needs the same duplicate-column tolerance as
 	// applyAddJiraAccountID (MySQL 8.0.43 has no "ADD COLUMN IF NOT EXISTS").
-	return addColumnIfNotExists(db, addReminderTierPreferenceSQL)
+	if err := addColumnIfNotExists(db, addReminderTierPreferenceSQL); err != nil {
+		return err
+	}
+	return addColumnIfNotExists(db, addSprintNameSQL)
 }
 
 // applyAddJiraAccountID runs 0002_add_jira_account_id.sql's ALTER TABLE —

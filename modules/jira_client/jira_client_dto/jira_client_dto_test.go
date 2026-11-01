@@ -46,3 +46,60 @@ func TestEffectiveStoryPoints_ReturnsNilWhenNoFieldIsPopulated(t *testing.T) {
 		t.Errorf("EffectiveStoryPoints() = %v, want nil", got)
 	}
 }
+
+func TestActiveSprintName_RealOMSFixture(t *testing.T) {
+	// Captured live from esb-id.atlassian.net 2026-11-01 (OMS-12548).
+	f := IssueFields{SprintRaw: []byte(`[{"id":8293,"name":"OMS Sprint 22 - 2026","state":"active","boardId":28,"goal":"","startDate":"2026-10-26T03:15:31.542Z","endDate":"2026-11-08T17:00:00.000Z"}]`)}
+
+	name, found := f.ActiveSprintName()
+	if !found || name != "OMS Sprint 22 - 2026" {
+		t.Errorf("ActiveSprintName() = %q, %v, want %q, true", name, found, "OMS Sprint 22 - 2026")
+	}
+}
+
+func TestActiveSprintName_RealCoreFixture(t *testing.T) {
+	// Captured live from esb-id.atlassian.net 2026-11-01 (CORE-10881).
+	f := IssueFields{SprintRaw: []byte(`[{"id":7987,"name":"Core Sprint 22 2026","state":"active","boardId":26,"goal":"","startDate":"2026-10-26T03:06:47.518Z","endDate":"2026-11-06T17:21:46.000Z"}]`)}
+
+	name, found := f.ActiveSprintName()
+	if !found || name != "Core Sprint 22 2026" {
+		t.Errorf("ActiveSprintName() = %q, %v, want %q, true", name, found, "Core Sprint 22 2026")
+	}
+}
+
+func TestActiveSprintName_FallsBackToLastSprintWhenNoneActive(t *testing.T) {
+	f := IssueFields{SprintRaw: []byte(`[{"name":"Sprint 18","state":"closed"},{"name":"Sprint 19","state":"closed"}]`)}
+
+	name, found := f.ActiveSprintName()
+	if !found || name != "Sprint 19" {
+		t.Errorf("ActiveSprintName() = %q, %v, want %q, true (last sprint in array)", name, found, "Sprint 19")
+	}
+}
+
+func TestActiveSprintName_FalseWhenFieldNull(t *testing.T) {
+	f := IssueFields{SprintRaw: []byte(`null`)}
+
+	_, found := f.ActiveSprintName()
+	if found {
+		t.Error("ActiveSprintName() found = true, want false for a ticket never assigned to a sprint")
+	}
+}
+
+func TestActiveSprintName_FalseWhenFieldEmpty(t *testing.T) {
+	f := IssueFields{}
+
+	_, found := f.ActiveSprintName()
+	if found {
+		t.Error("ActiveSprintName() found = true, want false for an unset field")
+	}
+}
+
+func TestActiveSprintName_LegacyStringFormatFallback(t *testing.T) {
+	// Defensive fallback — never observed live, but kept cheap to handle.
+	f := IssueFields{SprintRaw: []byte(`"com.atlassian.greenhopper.service.sprint.Sprint@abc123[id=61,rapidViewId=10,state=ACTIVE,name=Sprint 20,startDate=...]"`)}
+
+	name, found := f.ActiveSprintName()
+	if !found || name != "Sprint 20" {
+		t.Errorf("ActiveSprintName() = %q, %v, want %q, true", name, found, "Sprint 20")
+	}
+}

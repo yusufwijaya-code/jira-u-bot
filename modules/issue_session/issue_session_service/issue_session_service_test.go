@@ -17,16 +17,16 @@ type fakeIssueSessionRepository struct {
 	err                 error
 }
 
-func (f *fakeIssueSessionRepository) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepository) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, storyPoints float64, assigneeEmail, issueSummary, sprintName string) error {
 	f.openOrResumeCalled = true
 	return f.err
 }
 
-func (f *fakeIssueSessionRepository) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepository) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, storyPoints float64, startedAt time.Time, assigneeEmail, issueSummary, sprintName string) error {
 	return f.err
 }
 
-func (f *fakeIssueSessionRepository) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepository) UpdateStoryPoints(ctx context.Context, issueKey string, storyPoints float64, assigneeEmail, issueSummary, sprintName string) error {
 	return f.err
 }
 
@@ -54,11 +54,19 @@ func (f *fakeIssueSessionRepository) FindActiveByAssigneeEmail(ctx context.Conte
 	return nil, f.err
 }
 
+func (f *fakeIssueSessionRepository) FindBySprintNames(ctx context.Context, sprintNames []string) ([]issue_session_dto.IssueSession, error) {
+	return nil, nil
+}
+
+func (f *fakeIssueSessionRepository) ListDistinctSprintNames(ctx context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func TestOpenOrResumeSession_DelegatesToRepository(t *testing.T) {
 	repo := &fakeIssueSessionRepository{}
 	svc := NewIssueSessionService(repo)
 
-	if err := svc.OpenOrResumeSession(context.Background(), "OMS-1", "OMS", 3, "dev@esb.co.id", "Test ticket"); err != nil {
+	if err := svc.OpenOrResumeSession(context.Background(), "OMS-1", "OMS", 3, "dev@esb.co.id", "Test ticket", "Sprint 1"); err != nil {
 		t.Fatalf("OpenOrResumeSession returned error: %v", err)
 	}
 	if !repo.openOrResumeCalled {

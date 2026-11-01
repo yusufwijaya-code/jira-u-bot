@@ -20,12 +20,12 @@ import (
 )
 
 type userDashboardServiceImpl struct {
-	jiraClient      jira_client_service.JiraClientService
-	jiraCredential  jira_credential_service.JiraCredentialService
+	jiraClient       jira_client_service.JiraClientService
+	jiraCredential   jira_credential_service.JiraCredentialService
 	registrationRepo registration_repository.RegistrationRepository
 	issueSessionRepo issue_session_repository.IssueSessionRepository
-	businessHours   business_hours_service.BusinessHoursService
-	holidayCalendar business_hours_dto.HolidayCalendar
+	businessHours    business_hours_service.BusinessHoursService
+	holidayCalendar  business_hours_dto.HolidayCalendar
 }
 
 func NewUserDashboardService(

@@ -1,0 +1,98 @@
+package sprint_report_service
+
+import (
+	"context"
+
+	"jira-u-bot/modules/business_hours/business_hours_dto"
+	"jira-u-bot/modules/business_hours/business_hours_service"
+	"jira-u-bot/modules/issue_session/issue_session_repository"
+	"jira-u-bot/modules/issue_session/issue_session_service"
+	"jira-u-bot/modules/sprint_report/sprint_report_dto"
+)
+
+type sprintReportServiceImpl struct {
+	issueSessionRepo issue_session_repository.IssueSessionRepository
+	businessHours    business_hours_service.BusinessHoursService
+	holidayCalendar  business_hours_dto.HolidayCalendar
+}
+
+func NewSprintReportService(
+	issueSessionRepo issue_session_repository.IssueSessionRepository,
+	businessHours business_hours_service.BusinessHoursService,
+	holidayCalendar business_hours_dto.HolidayCalendar,
+) SprintReportService {
+	return &sprintReportServiceImpl{
+		issueSessionRepo: issueSessionRepo,
+		businessHours:    businessHours,
+		holidayCalendar:  holidayCalendar,
+	}
+}
+
+func (s *sprintReportServiceImpl) ListAvailableSprints(ctx context.Context) ([]string, error) {
+	return s.issueSessionRepo.ListDistinctSprintNames(ctx)
+}
+
+func (s *sprintReportServiceImpl) GenerateReport(ctx context.Context, sprintNames []string, capPercent float64) (sprint_report_dto.Report, error) {
+	sessions, err := s.issueSessionRepo.FindBySprintNames(ctx, sprintNames)
+	if err != nil {
+		return sprint_report_dto.Report{}, err
+	}
+
+	report := sprint_report_dto.Report{CapPercent: capPercent}
+	for _, session := range sessions {
+		estimatedHours := session.StoryPoints
+		// AC7.5: live elapsed via CalculateElapsedSeconds, not raw
+		// accumulatedSeconds — a still-active session's actual time stays
+		// accurate as of the moment the report is generated.
+		actualHours := float64(issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)) / 3600.0
+
+		row := sprint_report_dto.Row{
+			SprintName:     session.SprintName,
+			IssueKey:       session.IssueKey,
+			Task:           session.IssueSummary,
+			EstimatedHours: estimatedHours,
+			ActualHours:    actualHours,
+		}
+		row.DeviationPercent = deviationPercent(estimatedHours, actualHours)
+		row.Within = row.DeviationPercent <= capPercent
+
+		report.Rows = append(report.Rows, row)
+		report.SumEstimatedHours += estimatedHours
+		report.SumActualHours += actualHours
+		report.TotalCount++
+		if row.Within {
+			report.WithinCount++
+		}
+	}
+
+	report.AggregateDeviationPercent = deviationPercent(report.SumEstimatedHours, report.SumActualHours)
+	report.AchievementPercent = achievementPercent(capPercent, report.AggregateDeviationPercent)
+	return report, nil
+}
+
+// deviationPercent is |Actual - Estimated| / Estimated * 100 (spec AC7.2
+// formula) — estimated is guaranteed > 0 for any real tracked session
+// (poller_service.resolveEligibility rejects storyPoints <= 0 before a
+// session is ever created), so this guard is purely defensive.
+func deviationPercent(estimated, actual float64) float64 {
+	if estimated == 0 {
+		return 0
+	}
+	diff := actual - estimated
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff / estimated * 100
+}
+
+// achievementPercent is (cap / deviation) * 100 (spec AC7.2 formula) — an
+// aggregate deviation of exactly 0% (estimated matches actual to the
+// second) is treated as the ceiling case rather than computing a
+// division-by-zero: a perfect match is at least as good as hitting the
+// cap exactly.
+func achievementPercent(capPercent, deviationPercent float64) float64 {
+	if deviationPercent == 0 {
+		return 100
+	}
+	return capPercent / deviationPercent * 100
+}

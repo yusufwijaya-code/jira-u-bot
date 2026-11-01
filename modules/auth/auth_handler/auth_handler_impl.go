@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	stateCookieName   = "oauth_state"
-	sessionCookieName = "session_token"
-	stateCookieMaxAge = 5 * 60        // 5 minutes — just long enough for the Google consent round-trip
+	stateCookieName     = "oauth_state"
+	sessionCookieName   = "session_token"
+	stateCookieMaxAge   = 5 * 60         // 5 minutes — just long enough for the Google consent round-trip
 	sessionCookieMaxAge = 30 * 24 * 3600 // 30 days, matches auth_service.sessionLifetime
 )
 
@@ -26,7 +26,7 @@ type loginPageData struct {
 }
 
 type authHandlerImpl struct {
-	authService  auth_service.AuthService
+	authService   auth_service.AuthService
 	loginTemplate *template.Template
 }
 

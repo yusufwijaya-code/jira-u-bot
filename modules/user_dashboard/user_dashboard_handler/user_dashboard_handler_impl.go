@@ -51,9 +51,9 @@ type overduePageData struct {
 }
 
 type userDashboardHandlerImpl struct {
-	dashboardSvc   user_dashboard_service.UserDashboardService
+	dashboardSvc    user_dashboard_service.UserDashboardService
 	chatInteractive chat_interactive_service.ChatInteractiveService
-	jiraCredential jira_credential_service.JiraCredentialService
+	jiraCredential  jira_credential_service.JiraCredentialService
 
 	dashboardTemplate *template.Template
 	teamTemplate      *template.Template

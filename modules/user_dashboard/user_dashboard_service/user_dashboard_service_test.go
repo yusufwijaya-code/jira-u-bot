@@ -70,7 +70,7 @@ func (f *fakeJiraCredentialForDashboard) MaskedPreview(ctx context.Context, user
 }
 
 type fakeRegistrationRepoForDashboard struct {
-	usersByEmail        map[string]registration_dto.User
+	usersByEmail         map[string]registration_dto.User
 	updatedPreferenceCSV string
 }
 
@@ -115,17 +115,17 @@ func (f *fakeRegistrationRepoForDashboard) FindAllWithGoogleChatDMSpaceID(ctx co
 }
 
 type fakeIssueSessionRepoForDashboard struct {
-	byIssueKey   map[string]issue_session_dto.IssueSession
-	activeAll    []issue_session_dto.IssueSession
+	byIssueKey map[string]issue_session_dto.IssueSession
+	activeAll  []issue_session_dto.IssueSession
 }
 
-func (f *fakeIssueSessionRepoForDashboard) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepoForDashboard) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
 	return nil
 }
-func (f *fakeIssueSessionRepoForDashboard) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepoForDashboard) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary, sprintName string) error {
 	return nil
 }
-func (f *fakeIssueSessionRepoForDashboard) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary string) error {
+func (f *fakeIssueSessionRepoForDashboard) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
 	return nil
 }
 func (f *fakeIssueSessionRepoForDashboard) CloseSession(ctx context.Context, issueKey string, additionalSeconds int64) error {
@@ -145,6 +145,14 @@ func (f *fakeIssueSessionRepoForDashboard) UpdateLastOverageReminder(ctx context
 	return nil
 }
 func (f *fakeIssueSessionRepoForDashboard) FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error) {
+	return nil, nil
+}
+
+func (f *fakeIssueSessionRepoForDashboard) FindBySprintNames(ctx context.Context, sprintNames []string) ([]issue_session_dto.IssueSession, error) {
+	return nil, nil
+}
+
+func (f *fakeIssueSessionRepoForDashboard) ListDistinctSprintNames(ctx context.Context) ([]string, error) {
 	return nil, nil
 }
 
@@ -271,7 +279,7 @@ func TestGetOverdueView_OnlyReturnsSessionsPastBudget(t *testing.T) {
 	// this test actually runs (weekend/after-hours would otherwise compute
 	// near-zero elapsed business seconds for a live session).
 	sessionRepo := &fakeIssueSessionRepoForDashboard{activeAll: []issue_session_dto.IssueSession{
-		{IssueKey: "OMS-1", AssigneeEmail: "a@esb.co.id", StoryPoints: 1, AccumulatedSeconds: 7200}, // 1 SP = 1h budget, 2h elapsed -> overdue
+		{IssueKey: "OMS-1", AssigneeEmail: "a@esb.co.id", StoryPoints: 1, AccumulatedSeconds: 7200},  // 1 SP = 1h budget, 2h elapsed -> overdue
 		{IssueKey: "OMS-2", AssigneeEmail: "b@esb.co.id", StoryPoints: 10, AccumulatedSeconds: 3600}, // 10h budget, well within
 	}}
 	svc := newTestService(&fakeJiraClientForDashboard{}, &fakeJiraCredentialForDashboard{}, &fakeRegistrationRepoForDashboard{}, sessionRepo)
