@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -136,4 +137,32 @@ func (h *adminDashboardHandlerImpl) DeleteUserCredential(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+type broadcastMessageRequest struct {
+	Message string `json:"message"`
+}
+
+func (h *adminDashboardHandlerImpl) BroadcastMessage(c *gin.Context) {
+	var req broadcastMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	message := strings.TrimSpace(req.Message)
+	if message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "pesan tidak boleh kosong"})
+		return
+	}
+
+	result, err := h.svc.BroadcastMessage(c.Request.Context(), message)
+	if err != nil {
+		if errors.Is(err, admin_dashboard_service.ErrDMNotConfigured) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "personal DM (OAuth) belum pernah di-setup di server ini, broadcast tidak tersedia"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengirim broadcast, coba lagi"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"sentCount": result.SentCount, "failedEmails": result.FailedEmails})
 }

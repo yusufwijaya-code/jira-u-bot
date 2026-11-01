@@ -21,13 +21,16 @@ func testCfg() *config.AppConfig {
 }
 
 type fakeAdminDashboardService struct {
-	users             []admin_dashboard_dto.UserRow
-	setActiveErr      error
-	lastSetActiveArgs [3]int64 // acting, target, active(as 0/1)
-	deleteUserErr     error
-	lastDeletedUserID int64
-	updatedAccountID  string
-	deletedCredID     int64
+	users                []admin_dashboard_dto.UserRow
+	setActiveErr         error
+	lastSetActiveArgs    [3]int64 // acting, target, active(as 0/1)
+	deleteUserErr        error
+	lastDeletedUserID    int64
+	updatedAccountID     string
+	deletedCredID        int64
+	broadcastResult      admin_dashboard_dto.BroadcastResult
+	broadcastErr         error
+	lastBroadcastMessage string
 }
 
 func (f *fakeAdminDashboardService) ListUsers(ctx context.Context) ([]admin_dashboard_dto.UserRow, error) {
@@ -52,6 +55,10 @@ func (f *fakeAdminDashboardService) DeleteUser(ctx context.Context, actingUserID
 func (f *fakeAdminDashboardService) DeleteUserCredential(ctx context.Context, targetUserID int64) error {
 	f.deletedCredID = targetUserID
 	return nil
+}
+func (f *fakeAdminDashboardService) BroadcastMessage(ctx context.Context, message string) (admin_dashboard_dto.BroadcastResult, error) {
+	f.lastBroadcastMessage = message
+	return f.broadcastResult, f.broadcastErr
 }
 
 func newAdminTestContext(method, path, body string, params gin.Params) (*httptest.ResponseRecorder, *gin.Context) {
@@ -143,5 +150,50 @@ func TestDeleteUserCredential_DelegatesToService(t *testing.T) {
 
 	if w.Code != http.StatusOK || svc.deletedCredID != 2 {
 		t.Errorf("status=%d deletedCredID=%d, want 200 and 2", w.Code, svc.deletedCredID)
+	}
+}
+
+func TestBroadcastMessage_SendsTrimmedMessageAndReturnsResult(t *testing.T) {
+	svc := &fakeAdminDashboardService{broadcastResult: admin_dashboard_dto.BroadcastResult{SentCount: 3}}
+	handler := NewAdminDashboardHandler(svc, testCfg())
+
+	w, c := newAdminTestContext("POST", "/dashboard/admin/broadcast", `{"message":"  Ada fitur baru!  "}`, nil)
+	handler.BroadcastMessage(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if svc.lastBroadcastMessage != "Ada fitur baru!" {
+		t.Errorf("lastBroadcastMessage = %q, want trimmed %q", svc.lastBroadcastMessage, "Ada fitur baru!")
+	}
+	if !strings.Contains(w.Body.String(), `"sentCount":3`) {
+		t.Errorf("body = %q, want it to include sentCount", w.Body.String())
+	}
+}
+
+func TestBroadcastMessage_RejectsEmptyMessage(t *testing.T) {
+	svc := &fakeAdminDashboardService{}
+	handler := NewAdminDashboardHandler(svc, testCfg())
+
+	w, c := newAdminTestContext("POST", "/dashboard/admin/broadcast", `{"message":"   "}`, nil)
+	handler.BroadcastMessage(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for a blank message", w.Code)
+	}
+	if svc.lastBroadcastMessage != "" {
+		t.Error("service must not be called for a blank message")
+	}
+}
+
+func TestBroadcastMessage_ReturnsServiceUnavailableWhenDMNotConfigured(t *testing.T) {
+	svc := &fakeAdminDashboardService{broadcastErr: admin_dashboard_service.ErrDMNotConfigured}
+	handler := NewAdminDashboardHandler(svc, testCfg())
+
+	w, c := newAdminTestContext("POST", "/dashboard/admin/broadcast", `{"message":"Ada fitur baru!"}`, nil)
+	handler.BroadcastMessage(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
 }

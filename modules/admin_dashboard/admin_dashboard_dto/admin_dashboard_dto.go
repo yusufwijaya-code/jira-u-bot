@@ -15,3 +15,11 @@ type UserRow struct {
 	HasCredential    bool
 	CredentialMasked string
 }
+
+// BroadcastResult reports the outcome of BroadcastMessage — FailedEmails is
+// nil (not just empty) when every send succeeded, so callers/templates can
+// tell "nothing failed" apart from "list not populated" at a glance.
+type BroadcastResult struct {
+	SentCount    int
+	FailedEmails []string
+}

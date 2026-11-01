@@ -8,4 +8,5 @@ type AdminDashboardHandler interface {
 	EditJiraAccountID(c *gin.Context)
 	DeleteUser(c *gin.Context)
 	DeleteUserCredential(c *gin.Context)
+	BroadcastMessage(c *gin.Context)
 }

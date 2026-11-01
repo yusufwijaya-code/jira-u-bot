@@ -24,6 +24,12 @@
     button { font-family:inherit; font-size:0.75rem; font-weight:600; border:none; border-radius:999px; padding:6px 12px; cursor:pointer; background:var(--blue); color:#fff; margin-right:4px; }
     button.danger { background:#fff; color:var(--error); border:1px solid var(--error); }
     button.secondary { background:#fff; color:var(--text-muted); border:1px solid var(--border); }
+    .broadcast-card { background:#fff; border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:20px; }
+    .broadcast-card h2 { margin:0 0 10px; font-size:0.95rem; }
+    .broadcast-card textarea { width:100%; min-height:80px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:0.85rem; resize:vertical; }
+    .broadcast-card .row { display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-top:10px; }
+    .broadcast-result { font-size:0.82rem; color:var(--text-muted); }
+    .broadcast-result.error { color:var(--error); }
 </style>
 </head>
 <body>
@@ -36,6 +42,14 @@
     </nav>
 </header>
 <main>
+    <div class="broadcast-card">
+        <h2>📣 Broadcast ke semua user aktif</h2>
+        <textarea id="broadcast-text" placeholder="Tulis pengumuman fitur baru / update di sini..."></textarea>
+        <div class="row">
+            <span id="broadcast-result" class="broadcast-result"></span>
+            <button id="broadcast-send">Kirim</button>
+        </div>
+    </div>
     <table>
         <thead>
             <tr><th>Email</th><th>Status</th><th>Jira Account ID</th><th>Credential Pribadi</th><th>Aksi</th></tr>
@@ -70,6 +84,29 @@
             body: body ? JSON.stringify(body) : undefined
         }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); });
     }
+
+    document.getElementById('broadcast-send').addEventListener('click', function () {
+        var textarea = document.getElementById('broadcast-text');
+        var resultEl = document.getElementById('broadcast-result');
+        var message = textarea.value.trim();
+        if (!message) { alert('Pesan tidak boleh kosong'); return; }
+        if (!confirm('Kirim pengumuman ini ke semua user aktif?')) { return; }
+
+        resultEl.className = 'broadcast-result';
+        resultEl.textContent = 'Mengirim...';
+        postJSON(BASE_PATH + '/dashboard/admin/broadcast', 'POST', { message: message }).then(function (r) {
+            if (!r.ok) {
+                resultEl.className = 'broadcast-result error';
+                resultEl.textContent = r.data.error || 'Gagal mengirim broadcast';
+                return;
+            }
+            var failed = r.data.failedEmails || [];
+            resultEl.className = failed.length ? 'broadcast-result error' : 'broadcast-result';
+            resultEl.textContent = 'Terkirim ke ' + r.data.sentCount + ' user' +
+                (failed.length ? ', gagal ke: ' + failed.join(', ') : '');
+            textarea.value = '';
+        });
+    });
 
     document.querySelectorAll('tbody tr').forEach(function (row) {
         var userID = row.getAttribute('data-user-id');

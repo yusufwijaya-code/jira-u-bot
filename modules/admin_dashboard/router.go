@@ -16,4 +16,5 @@ func Router(group *gin.RouterGroup, handler admin_dashboard_handler.AdminDashboa
 	group.POST("/users/:userID/jira-account-id", handler.EditJiraAccountID)
 	group.DELETE("/users/:userID/credential", handler.DeleteUserCredential)
 	group.DELETE("/users/:userID", handler.DeleteUser)
+	group.POST("/broadcast", handler.BroadcastMessage)
 }

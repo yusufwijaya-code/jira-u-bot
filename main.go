@@ -178,7 +178,7 @@ func main() {
 	)
 	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, &cfg)
 
-	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc)
+	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail)
 	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc, &cfg)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
