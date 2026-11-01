@@ -49,6 +49,18 @@ func (f *fakeJiraClientService) TransitionIssue(ctx context.Context, issueKey, t
 	return nil
 }
 
+func (f *fakeJiraClientService) SearchAllIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
+	return nil, nil
+}
+
+func (f *fakeJiraClientService) GetTransitionsAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.Transition, error) {
+	return nil, nil
+}
+
+func (f *fakeJiraClientService) TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error {
+	return nil
+}
+
 type fakeIssueSessionServiceForPoller struct {
 	sessions      map[string]*issue_session_dto.IssueSession
 	openCalls     []string
@@ -193,6 +205,10 @@ func (f *fakeRegistrationRepositoryForPoller) FindUserByJiraAccountID(ctx contex
 }
 
 func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForPoller) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
 	return nil
 }
 

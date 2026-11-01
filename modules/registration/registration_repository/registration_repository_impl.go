@@ -31,31 +31,25 @@ func (r *registrationRepositoryImpl) UpsertUser(ctx context.Context, name, email
 	return err
 }
 
+const userColumns = `userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId, reminderTierPreference`
+
 func (r *registrationRepositoryImpl) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
-	const query = `
-		SELECT userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId
-		FROM ms_user
-		WHERE email = ?
-	`
+	query := `SELECT ` + userColumns + ` FROM ms_user WHERE email = ?`
 	row := r.db.QueryRowContext(ctx, query, email)
 	return scanUser(row)
 }
 
 func (r *registrationRepositoryImpl) FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error) {
-	const query = `
-		SELECT userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId
-		FROM ms_user
-		WHERE jiraAccountId = ?
-	`
+	query := `SELECT ` + userColumns + ` FROM ms_user WHERE jiraAccountId = ?`
 	row := r.db.QueryRowContext(ctx, query, jiraAccountID)
 	return scanUser(row)
 }
 
 func scanUser(row *sql.Row) (*registration_dto.User, bool, error) {
 	var u registration_dto.User
-	var dmSpaceID, jiraAccountID sql.NullString
+	var dmSpaceID, jiraAccountID, reminderTierPreference sql.NullString
 	err := row.Scan(
-		&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID,
+		&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference,
 	)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
@@ -65,15 +59,14 @@ func scanUser(row *sql.Row) (*registration_dto.User, bool, error) {
 	}
 	u.GoogleChatDMSpaceID = dmSpaceID.String
 	u.JiraAccountID = jiraAccountID.String
+	if reminderTierPreference.Valid {
+		u.ReminderTierPreference = &reminderTierPreference.String
+	}
 	return &u, true, nil
 }
 
 func (r *registrationRepositoryImpl) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
-	const query = `
-		SELECT userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId
-		FROM ms_user
-		WHERE googleChatDMSpaceID IS NOT NULL AND googleChatDMSpaceID <> ''
-	`
+	query := `SELECT ` + userColumns + ` FROM ms_user WHERE googleChatDMSpaceID IS NOT NULL AND googleChatDMSpaceID <> ''`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -83,12 +76,15 @@ func (r *registrationRepositoryImpl) FindAllWithGoogleChatDMSpaceID(ctx context.
 	var users []registration_dto.User
 	for rows.Next() {
 		var u registration_dto.User
-		var dmSpaceID, jiraAccountID sql.NullString
-		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID); err != nil {
+		var dmSpaceID, jiraAccountID, reminderTierPreference sql.NullString
+		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference); err != nil {
 			return nil, err
 		}
 		u.GoogleChatDMSpaceID = dmSpaceID.String
 		u.JiraAccountID = jiraAccountID.String
+		if reminderTierPreference.Valid {
+			u.ReminderTierPreference = &reminderTierPreference.String
+		}
 		users = append(users, u)
 	}
 	return users, rows.Err()
@@ -103,5 +99,17 @@ func (r *registrationRepositoryImpl) UpdateGoogleChatDMSpaceID(ctx context.Conte
 		WHERE email = ?
 	`
 	_, err := r.db.ExecContext(ctx, query, spaceID, email)
+	return err
+}
+
+func (r *registrationRepositoryImpl) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
+	const query = `
+		UPDATE ms_user
+		SET reminderTierPreference = ?,
+		    editedBy = ?,
+		    editedDate = CURRENT_TIMESTAMP
+		WHERE email = ?
+	`
+	_, err := r.db.ExecContext(ctx, query, csv, email, email)
 	return err
 }

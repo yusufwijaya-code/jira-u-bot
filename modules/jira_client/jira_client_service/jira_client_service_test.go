@@ -2,6 +2,7 @@ package jira_client_service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"jira-u-bot/config"
+	"jira-u-bot/modules/jira_client/jira_client_dto"
 )
 
 func newTestConfig(baseURL string) *config.AppConfig {
@@ -450,4 +452,115 @@ func TestSearchCodeProcessIssues_ParsesCoreStoryPointEstimateField(t *testing.T)
 	if got := issues[0].Fields.EffectiveStoryPoints(); got == nil || *got != 3 {
 		t.Errorf("EffectiveStoryPoints() = %v, want 3 — Story Point Estimate must be recognized even when Story Points is empty", got)
 	}
+}
+
+func TestSearchAllIssuesByAssignee_NoStatusFilterInJQL(t *testing.T) {
+	var gotJQL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotJQL = r.URL.Query().Get("jql")
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{
+			{"key": "OMS-1", "fields": map[string]any{"status": map[string]any{"name": "To Do"}, "issuetype": map[string]any{"name": "Story"}}},
+			{"key": "OMS-2", "fields": map[string]any{"status": map[string]any{"name": "Done"}, "issuetype": map[string]any{"name": "Story"}}},
+		}})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+	issues, err := svc.SearchAllIssuesByAssignee(context.Background(), nil, "acc-123")
+	if err != nil {
+		t.Fatalf("SearchAllIssuesByAssignee returned error: %v", err)
+	}
+	if strings.Contains(gotJQL, "status") {
+		t.Errorf("jql = %q, must NOT filter by status (spec AC3.1 — My Board shows every status)", gotJQL)
+	}
+	if !strings.Contains(gotJQL, `assignee = "acc-123"`) {
+		t.Errorf("jql = %q, want it scoped to assignee acc-123", gotJQL)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("len(issues) = %d, want 2", len(issues))
+	}
+}
+
+func TestSearchAllIssuesByAssignee_UsesCentralCredentialWhenNil(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	cfg := newTestConfig(server.URL)
+	svc := NewJiraClientService(cfg)
+	if _, err := svc.SearchAllIssuesByAssignee(context.Background(), nil, "acc-123"); err != nil {
+		t.Fatalf("SearchAllIssuesByAssignee returned error: %v", err)
+	}
+
+	wantAuth := "Basic " + basicAuthHeaderForTest(cfg.JiraEmail, cfg.JiraAPIToken)
+	if gotAuth != wantAuth {
+		t.Errorf("Authorization = %q, want central credential %q", gotAuth, wantAuth)
+	}
+}
+
+func TestSearchAllIssuesByAssignee_UsesPersonalCredentialWhenProvided(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+	cred := &jira_client_dto.Credential{Email: "dev@esb.co.id", APIToken: "personal-token"}
+	if _, err := svc.SearchAllIssuesByAssignee(context.Background(), cred, "acc-123"); err != nil {
+		t.Fatalf("SearchAllIssuesByAssignee returned error: %v", err)
+	}
+
+	wantAuth := "Basic " + basicAuthHeaderForTest(cred.Email, cred.APIToken)
+	if gotAuth != wantAuth {
+		t.Errorf("Authorization = %q, want personal credential %q — must not fall back to central when cred is provided", gotAuth, wantAuth)
+	}
+}
+
+func TestTransitionIssueAs_UsesPersonalCredentialWhenProvided(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	svc := NewJiraClientService(newTestConfig(server.URL))
+	cred := &jira_client_dto.Credential{Email: "dev@esb.co.id", APIToken: "personal-token"}
+	if err := svc.TransitionIssueAs(context.Background(), cred, "OMS-1", "5"); err != nil {
+		t.Fatalf("TransitionIssueAs returned error: %v", err)
+	}
+
+	wantAuth := "Basic " + basicAuthHeaderForTest(cred.Email, cred.APIToken)
+	if gotAuth != wantAuth {
+		t.Errorf("Authorization = %q, want personal credential %q", gotAuth, wantAuth)
+	}
+}
+
+func TestGetTransitionsAs_UsesCentralCredentialWhenNil(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		json.NewEncoder(w).Encode(map[string]any{"transitions": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	cfg := newTestConfig(server.URL)
+	svc := NewJiraClientService(cfg)
+	if _, err := svc.GetTransitionsAs(context.Background(), nil, "OMS-1"); err != nil {
+		t.Fatalf("GetTransitionsAs returned error: %v", err)
+	}
+
+	wantAuth := "Basic " + basicAuthHeaderForTest(cfg.JiraEmail, cfg.JiraAPIToken)
+	if gotAuth != wantAuth {
+		t.Errorf("Authorization = %q, want central credential %q", gotAuth, wantAuth)
+	}
+}
+
+func basicAuthHeaderForTest(username, password string) string {
+	return base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 }

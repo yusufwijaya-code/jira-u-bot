@@ -105,3 +105,12 @@ type TransitionRequest struct {
 type TransitionID struct {
 	ID string `json:"id"`
 }
+
+// Credential is a per-user Jira Basic Auth pair (Tech Spec "Dashboard Jira
+// Manage", Chapter 9e) — passed to the *As methods on JiraClientService to
+// act as that user instead of the central service account. A nil
+// *Credential means "use the central credential" throughout this package.
+type Credential struct {
+	Email    string
+	APIToken string
+}

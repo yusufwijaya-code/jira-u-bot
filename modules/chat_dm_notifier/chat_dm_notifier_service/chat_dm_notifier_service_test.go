@@ -62,6 +62,10 @@ func (f *fakeRegistrationRepositoryForDM) UpdateGoogleChatDMSpaceID(ctx context.
 	return nil
 }
 
+func (f *fakeRegistrationRepositoryForDM) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
+	return nil
+}
+
 func TestResolveDMSpace_CallsSpacesSetupWhenNotCached(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

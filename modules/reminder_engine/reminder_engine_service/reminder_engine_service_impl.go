@@ -3,6 +3,7 @@ package reminder_engine_service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"jira-u-bot/modules/business_hours/business_hours_dto"
@@ -186,7 +187,8 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 	remaining := budgetSeconds - elapsedSeconds
 	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
 
-	for _, tier := range e.ApplicableTiers(budgetSeconds) {
+	tiers := e.preferredTiers(ctx, assigneeEmail, e.ApplicableTiers(budgetSeconds))
+	for _, tier := range tiers {
 		if remaining > tierDurationSeconds(tier) {
 			continue // threshold not reached yet for this tier
 		}
@@ -221,6 +223,34 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 	}
 
 	return nil
+}
+
+// preferredTiers implements spec AC2.3 (Tech Spec "Dashboard Jira Manage"):
+// filters applicableTiers down to assigneeEmail's chosen subset, if they've
+// ever set one. ReminderTierPreference == nil (never set, the common case
+// for every user today) returns applicableTiers unchanged — this is the
+// ONLY place preference is consulted; sendOverageIfDue never calls this,
+// so the overage tier is always sent regardless of preference.
+func (e *reminderEngineServiceImpl) preferredTiers(ctx context.Context, assigneeEmail string, applicableTiers []string) []string {
+	user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail)
+	if err != nil || !found || user.ReminderTierPreference == nil {
+		return applicableTiers
+	}
+
+	allowed := map[string]bool{}
+	for _, t := range strings.Split(*user.ReminderTierPreference, ",") {
+		if t != "" {
+			allowed[t] = true
+		}
+	}
+
+	var filtered []string
+	for _, tier := range applicableTiers {
+		if allowed[tier] {
+			filtered = append(filtered, tier)
+		}
+	}
+	return filtered
 }
 
 func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {

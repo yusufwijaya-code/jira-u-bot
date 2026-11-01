@@ -3,6 +3,7 @@ package chat_interactive_service
 import (
 	"context"
 	"fmt"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
@@ -14,7 +15,9 @@ import (
 	"jira-u-bot/modules/issue_session/issue_session_dto"
 	"jira-u-bot/modules/issue_session/issue_session_repository"
 	"jira-u-bot/modules/issue_session/issue_session_service"
+	"jira-u-bot/modules/jira_client/jira_client_dto"
 	"jira-u-bot/modules/jira_client/jira_client_service"
+	"jira-u-bot/modules/jira_credential/jira_credential_service"
 	"jira-u-bot/modules/registration/registration_repository"
 )
 
@@ -49,6 +52,7 @@ type chatInteractiveServiceImpl struct {
 	businessHours    business_hours_service.BusinessHoursService
 	holidayCalendar  business_hours_dto.HolidayCalendar
 	jiraClient       jira_client_service.JiraClientService
+	jiraCredential   jira_credential_service.JiraCredentialService
 }
 
 func NewChatInteractiveService(
@@ -57,6 +61,7 @@ func NewChatInteractiveService(
 	businessHours business_hours_service.BusinessHoursService,
 	holidayCalendar business_hours_dto.HolidayCalendar,
 	jiraClient jira_client_service.JiraClientService,
+	jiraCredential jira_credential_service.JiraCredentialService,
 ) ChatInteractiveService {
 	return &chatInteractiveServiceImpl{
 		registrationRepo: registrationRepo,
@@ -64,6 +69,7 @@ func NewChatInteractiveService(
 		businessHours:    businessHours,
 		holidayCalendar:  holidayCalendar,
 		jiraClient:       jiraClient,
+		jiraCredential:   jiraCredential,
 	}
 }
 
@@ -111,7 +117,21 @@ func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmai
 		return fmt.Sprintf("Tiket %s bukan tiket kamu — cuma assignee tiket yang bisa geser statusnya 🙏", issueKey)
 	}
 
-	transitions, err := s.jiraClient.GetTransitions(ctx, issueKey)
+	// Resolve the sender's personal Jira credential if they've set one up
+	// (Tech Spec "Dashboard Jira Manage", AC4.3/AC5.3) — a resolve error
+	// (e.g. decrypt failure) falls back to the central credential rather
+	// than blocking the transition, same resilience contract as
+	// user_dashboard_service.GetMyBoard.
+	var cred *jira_client_dto.Credential
+	if s.jiraCredential != nil {
+		var credErr error
+		cred, credErr = s.jiraCredential.ResolveCredential(ctx, senderEmail)
+		if credErr != nil {
+			log.Printf("chat_interactive_service: ResolveCredential(%s) failed, falling back to central credential: %v", senderEmail, credErr)
+		}
+	}
+
+	transitions, err := s.jiraClient.GetTransitionsAs(ctx, cred, issueKey)
 	if err != nil {
 		return fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", issueKey)
 	}
@@ -127,7 +147,7 @@ func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmai
 		return fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", issueKey, targetStatusName)
 	}
 
-	if err := s.jiraClient.TransitionIssue(ctx, issueKey, matchedID); err != nil {
+	if err := s.jiraClient.TransitionIssueAs(ctx, cred, issueKey, matchedID); err != nil {
 		return fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", issueKey, targetStatusName)
 	}
 

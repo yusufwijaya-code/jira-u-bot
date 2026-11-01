@@ -21,6 +21,12 @@ type fakeJiraClientServiceForChat struct {
 	transitionsErr  error
 	transitionErr   error
 	transitionCalls []string // "issueKey|transitionID"
+
+	// lastTransitionsCred/lastTransitionCred capture whichever credential
+	// GetTransitionsAs/TransitionIssueAs were called with — nil means "the
+	// central credential" (Chapter 9d tests assert on these).
+	lastTransitionsCred *jira_client_dto.Credential
+	lastTransitionCred  *jira_client_dto.Credential
 }
 
 func (f *fakeJiraClientServiceForChat) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -43,6 +49,21 @@ func (f *fakeJiraClientServiceForChat) TransitionIssue(ctx context.Context, issu
 	return f.transitionErr
 }
 
+func (f *fakeJiraClientServiceForChat) SearchAllIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
+	return nil, nil
+}
+
+func (f *fakeJiraClientServiceForChat) GetTransitionsAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.Transition, error) {
+	f.lastTransitionsCred = cred
+	return f.transitions, f.transitionsErr
+}
+
+func (f *fakeJiraClientServiceForChat) TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error {
+	f.lastTransitionCred = cred
+	f.transitionCalls = append(f.transitionCalls, issueKey+"|"+transitionID)
+	return f.transitionErr
+}
+
 type fakeRegistrationRepoForChat struct {
 	users map[string]registration_dto.User
 }
@@ -61,6 +82,10 @@ func (f *fakeRegistrationRepoForChat) FindUserByJiraAccountID(ctx context.Contex
 	return nil, false, nil
 }
 func (f *fakeRegistrationRepoForChat) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForChat) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
 	return nil
 }
 func (f *fakeRegistrationRepoForChat) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
@@ -102,11 +127,34 @@ func (f *fakeIssueSessionRepoForChat) FindActiveByAssigneeEmail(ctx context.Cont
 	return f.byAssignee[email], nil
 }
 
+// fakeJiraCredentialServiceForChat backs Chapter 9d tests — Credential !=
+// nil for every email simulates "this user has a personal key set up".
+type fakeJiraCredentialServiceForChat struct {
+	credByEmail map[string]*jira_client_dto.Credential
+}
+
+func (f *fakeJiraCredentialServiceForChat) ResolveCredential(ctx context.Context, email string) (*jira_client_dto.Credential, error) {
+	return f.credByEmail[email], nil
+}
+func (f *fakeJiraCredentialServiceForChat) UpsertCredential(ctx context.Context, userID int64, jiraEmail, apiToken string) error {
+	return nil
+}
+func (f *fakeJiraCredentialServiceForChat) DeleteCredential(ctx context.Context, userID int64) error {
+	return nil
+}
+func (f *fakeJiraCredentialServiceForChat) MaskedPreview(ctx context.Context, userID int64) (string, bool, error) {
+	return "", false, nil
+}
+
 func newTestService(registered map[string]registration_dto.User, issueRepo *fakeIssueSessionRepoForChat) ChatInteractiveService {
 	return newTestServiceWithJira(registered, issueRepo, &fakeJiraClientServiceForChat{})
 }
 
 func newTestServiceWithJira(registered map[string]registration_dto.User, issueRepo *fakeIssueSessionRepoForChat, jiraClient *fakeJiraClientServiceForChat) ChatInteractiveService {
+	return newTestServiceWithCredential(registered, issueRepo, jiraClient, &fakeJiraCredentialServiceForChat{})
+}
+
+func newTestServiceWithCredential(registered map[string]registration_dto.User, issueRepo *fakeIssueSessionRepoForChat, jiraClient *fakeJiraClientServiceForChat, jiraCredential *fakeJiraCredentialServiceForChat) ChatInteractiveService {
 	if issueRepo == nil {
 		issueRepo = &fakeIssueSessionRepoForChat{byAssignee: map[string][]issue_session_dto.IssueSession{}, byKey: map[string]issue_session_dto.IssueSession{}}
 	}
@@ -116,6 +164,7 @@ func newTestServiceWithJira(registered map[string]registration_dto.User, issueRe
 		business_hours_service.NewBusinessHoursService(),
 		business_hours_dto.HolidayCalendar{},
 		jiraClient,
+		jiraCredential,
 	)
 }
 
@@ -357,6 +406,51 @@ func TestRouteCommand_GeserTransitionsToMatchingStatus(t *testing.T) {
 	}
 	if !strings.Contains(got, "OMS-12561") || !strings.Contains(got, "To Do") {
 		t.Errorf("RouteCommand() = %q, want confirmation mentioning OMS-12561 and To Do", got)
+	}
+}
+
+func TestRouteCommand_GeserUsesPersonalCredentialWhenSet(t *testing.T) {
+	repo := &fakeIssueSessionRepoForChat{
+		byAssignee: map[string][]issue_session_dto.IssueSession{},
+		byKey: map[string]issue_session_dto.IssueSession{
+			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
+		},
+	}
+	jiraClient := &fakeJiraClientServiceForChat{
+		transitions: []jira_client_dto.Transition{{ID: "5", To: jira_client_dto.Status{Name: "To Do"}}},
+	}
+	personalCred := &jira_client_dto.Credential{Email: "dev@esb.co.id", APIToken: "personal-token"}
+	jiraCredential := &fakeJiraCredentialServiceForChat{credByEmail: map[string]*jira_client_dto.Credential{
+		"dev@esb.co.id": personalCred,
+	}}
+	svc := newTestServiceWithCredential(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient, jiraCredential)
+
+	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+
+	if jiraClient.lastTransitionsCred != personalCred {
+		t.Errorf("GetTransitionsAs called with cred=%v, want the sender's personal credential (spec AC5.3)", jiraClient.lastTransitionsCred)
+	}
+	if jiraClient.lastTransitionCred != personalCred {
+		t.Errorf("TransitionIssueAs called with cred=%v, want the sender's personal credential (spec AC4.3)", jiraClient.lastTransitionCred)
+	}
+}
+
+func TestRouteCommand_GeserFallsBackToCentralCredentialWhenNotSet(t *testing.T) {
+	repo := &fakeIssueSessionRepoForChat{
+		byAssignee: map[string][]issue_session_dto.IssueSession{},
+		byKey: map[string]issue_session_dto.IssueSession{
+			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
+		},
+	}
+	jiraClient := &fakeJiraClientServiceForChat{
+		transitions: []jira_client_dto.Transition{{ID: "5", To: jira_client_dto.Status{Name: "To Do"}}},
+	}
+	svc := newTestServiceWithCredential(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient, &fakeJiraCredentialServiceForChat{})
+
+	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+
+	if jiraClient.lastTransitionCred != nil {
+		t.Errorf("TransitionIssueAs called with cred=%v, want nil (fallback to central credential, spec AC5.4)", jiraClient.lastTransitionCred)
 	}
 }
 

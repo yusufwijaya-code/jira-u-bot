@@ -27,6 +27,9 @@ var cursorSubsecondPrecisionSQL string
 //go:embed 0005_add_dashboard_auth_tables.sql
 var addDashboardAuthTablesSQL string
 
+//go:embed 0006_add_reminder_tier_preference.sql
+var addReminderTierPreferenceSQL string
+
 func Apply(db *sql.DB) error {
 	if _, err := db.Exec(initSQL); err != nil {
 		return err
@@ -47,8 +50,12 @@ func Apply(db *sql.DB) error {
 	}
 	// Both CREATE TABLE IF NOT EXISTS statements — naturally idempotent,
 	// same as addChatCommandPollCursorSQL above.
-	_, err := db.Exec(addDashboardAuthTablesSQL)
-	return err
+	if _, err := db.Exec(addDashboardAuthTablesSQL); err != nil {
+		return err
+	}
+	// ADD COLUMN — needs the same duplicate-column tolerance as
+	// applyAddJiraAccountID (MySQL 8.0.43 has no "ADD COLUMN IF NOT EXISTS").
+	return addColumnIfNotExists(db, addReminderTierPreferenceSQL)
 }
 
 // applyAddJiraAccountID runs 0002_add_jira_account_id.sql's ALTER TABLE —

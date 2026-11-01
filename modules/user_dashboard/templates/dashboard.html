@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard - Jira U Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=REM:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root { --blue:#1286e1; --blue-dark:#0e65a9; --text:#333; --text-muted:#6c6c6c; --border:#e6e6e6; --bg:#f7fafc; --success:#15803d; --error:#b91c1c; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:'REM',ui-sans-serif,system-ui,sans-serif; color:var(--text); background:var(--bg); }
+    header { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; background:#fff; border-bottom:1px solid var(--border); }
+    header .brand { font-weight:700; color:var(--blue-dark); }
+    header nav a { color:var(--text-muted); text-decoration:none; margin-left:16px; font-size:0.9rem; }
+    header nav a:hover { color:var(--blue); }
+    main { max-width:1100px; margin:0 auto; padding:24px; }
+    section { background:#fff; border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:20px; }
+    h2 { font-size:1rem; margin:0 0 14px; color:var(--blue-dark); }
+    .tiers { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:14px; }
+    .tiers label { display:flex; align-items:center; gap:6px; font-size:0.9rem; background:var(--bg); padding:6px 12px; border-radius:999px; cursor:pointer; }
+    button { font-family:inherit; font-size:0.85rem; font-weight:600; border:none; border-radius:999px; padding:8px 16px; cursor:pointer; background:var(--blue); color:#fff; }
+    button.secondary { background:#fff; color:var(--error); border:1px solid var(--error); }
+    button:disabled { opacity:0.6; cursor:not-allowed; }
+    .cred-form input { padding:10px 12px; border:1.5px solid var(--border); border-radius:10px; font-family:inherit; margin-right:8px; }
+    .cred-status { font-size:0.9rem; color:var(--text-muted); }
+    .columns { display:flex; gap:16px; overflow-x:auto; }
+    .column { flex:0 0 260px; background:var(--bg); border-radius:12px; padding:12px; }
+    .column h3 { font-size:0.85rem; margin:0 0 10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; }
+    .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; }
+    .card .key { font-weight:700; font-size:0.85rem; color:var(--blue-dark); }
+    .card .summary { font-size:0.85rem; margin:4px 0 8px; }
+    .card .budget { font-size:0.75rem; color:var(--text-muted); line-height:1.5; margin-bottom:8px; }
+    .card .actions button { font-size:0.75rem; padding:5px 10px; margin-right:6px; }
+    .msg { font-size:0.85rem; margin-top:10px; min-height:1.2em; }
+    .msg.success { color:var(--success); }
+    .msg.error { color:var(--error); }
+    .instructions { font-size:0.8rem; color:var(--text-muted); margin-top:10px; line-height:1.6; }
+    .instructions a { color:var(--blue); }
+</style>
+</head>
+<body>
+<header>
+    <span class="brand">🤖 Jira U Bot Dashboard</span>
+    <nav>
+        <span>{{.Email}}</span>
+        <a href="/dashboard/team">Team</a>
+        <a href="/dashboard/overdue">Overdue</a>
+        <a href="/auth/logout">Logout</a>
+    </nav>
+</header>
+<main>
+    <section>
+        <h2>Reminder Preference</h2>
+        <form id="preference-form">
+            <div class="tiers">
+                {{range .TierCheckboxes}}
+                <label><input type="checkbox" name="tiers" value="{{.Code}}" {{if .Checked}}checked{{end}}> {{.Label}}</label>
+                {{end}}
+            </div>
+            <button type="submit">Simpan Preference</button>
+        </form>
+        <p class="msg" id="preference-msg"></p>
+    </section>
+
+    <section>
+        <h2>Jira API Key Pribadi</h2>
+        {{if .HasCredential}}
+        <p class="cred-status">Aktif — token berakhiran <strong>{{.CredentialMasked}}</strong></p>
+        <button class="secondary" id="delete-credential-btn">Hapus Credential</button>
+        {{else}}
+        <form id="credential-form" class="cred-form">
+            <input type="email" name="jiraEmail" placeholder="Email Jira kamu" required>
+            <input type="password" name="apiToken" placeholder="API Token" required>
+            <button type="submit">Simpan</button>
+        </form>
+        <p class="instructions">Belum punya token? Buat di <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener">id.atlassian.com/manage-profile/security/api-tokens</a> → "Create API token" → copy ke sini.</p>
+        {{end}}
+        <p class="msg" id="credential-msg"></p>
+    </section>
+
+    <section>
+        <h2>My Board</h2>
+        <div class="columns">
+            {{range .Board.Columns}}
+            <div class="column">
+                <h3>{{.Status}} ({{len .Cards}})</h3>
+                {{range .Cards}}
+                <div class="card" data-issue-key="{{.IssueKey}}">
+                    <div class="key">{{.IssueKey}}</div>
+                    <div class="summary">{{.Summary}}</div>
+                    {{if .HasBudgetDetail}}
+                    <div class="budget">{{.StoryPoints}} SP · elapsed {{.ElapsedLabel}}<br>sisa {{.RemainingLabel}}</div>
+                    {{end}}
+                    <div class="actions">
+                        <button data-target="todo">→ Todo</button>
+                        <button data-target="code-review">→ Code Review</button>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+        <p class="msg" id="board-msg"></p>
+    </section>
+</main>
+
+<script>
+(function () {
+    function postJSON(url, method, body) {
+        return fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: body ? JSON.stringify(body) : undefined
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); });
+    }
+
+    var prefForm = document.getElementById('preference-form');
+    if (prefForm) {
+        prefForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var tiers = Array.prototype.slice.call(prefForm.querySelectorAll('input[name=tiers]:checked')).map(function (el) { return el.value; });
+            var msg = document.getElementById('preference-msg');
+            postJSON('/api/dashboard/preference', 'POST', { tiers: tiers }).then(function (r) {
+                msg.className = 'msg ' + (r.ok ? 'success' : 'error');
+                msg.textContent = r.ok ? 'Preference tersimpan ✅' : (r.data.error || 'Gagal menyimpan');
+            });
+        });
+    }
+
+    var credForm = document.getElementById('credential-form');
+    if (credForm) {
+        credForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var msg = document.getElementById('credential-msg');
+            postJSON('/api/dashboard/credential', 'POST', {
+                jiraEmail: credForm.jiraEmail.value,
+                apiToken: credForm.apiToken.value
+            }).then(function (r) {
+                if (r.ok) { location.reload(); return; }
+                msg.className = 'msg error';
+                msg.textContent = r.data.error || 'Gagal menyimpan credential';
+            });
+        });
+    }
+
+    var deleteBtn = document.getElementById('delete-credential-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function () {
+            postJSON('/api/dashboard/credential', 'DELETE').then(function (r) {
+                if (r.ok) { location.reload(); }
+            });
+        });
+    }
+
+    document.querySelectorAll('.card .actions button').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var card = btn.closest('.card');
+            var issueKey = card.getAttribute('data-issue-key');
+            var target = btn.getAttribute('data-target');
+            var msg = document.getElementById('board-msg');
+            btn.disabled = true;
+            postJSON('/api/dashboard/tickets/' + encodeURIComponent(issueKey) + '/transition', 'POST', { target: target }).then(function (r) {
+                btn.disabled = false;
+                msg.className = 'msg ' + (r.ok ? 'success' : 'error');
+                msg.textContent = r.data.message || r.data.error || '';
+                if (r.ok) { setTimeout(function () { location.reload(); }, 1200); }
+            });
+        });
+    });
+})();
+</script>
+</body>
+</html>

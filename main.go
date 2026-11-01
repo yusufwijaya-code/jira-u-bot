@@ -27,12 +27,16 @@ import (
 	"jira-u-bot/modules/issue_session/issue_session_repository"
 	"jira-u-bot/modules/issue_session/issue_session_service"
 	"jira-u-bot/modules/jira_client/jira_client_service"
+	"jira-u-bot/modules/jira_credential/jira_credential_repository"
+	"jira-u-bot/modules/jira_credential/jira_credential_service"
 	"jira-u-bot/modules/poller/poller_service"
 	"jira-u-bot/modules/registration/registration_repository"
 	"jira-u-bot/modules/registration/registration_service"
 	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
 	"jira-u-bot/modules/reminder_log/reminder_log_repository"
 	"jira-u-bot/modules/reminder_log/reminder_log_service"
+	"jira-u-bot/modules/user_dashboard/user_dashboard_handler"
+	"jira-u-bot/modules/user_dashboard/user_dashboard_service"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -110,7 +114,10 @@ func main() {
 
 	jiraClientSvc := jira_client_service.NewJiraClientService(&cfg)
 
-	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, jiraClientSvc)
+	jiraCredentialRepo := jira_credential_repository.NewJiraCredentialRepository(db)
+	jiraCredentialSvc := jira_credential_service.NewJiraCredentialService(&cfg, jiraCredentialRepo, registrationRepo)
+
+	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, jiraClientSvc, jiraCredentialSvc)
 
 	notifierSvc := google_chat_notifier_service.NewGoogleChatNotifierService(&cfg)
 
@@ -161,7 +168,13 @@ func main() {
 	authSessionRepo := auth_session_repository.NewAuthSessionRepository(db)
 	authSvc := auth_service.NewAuthService(&cfg, registrationService, registrationRepo, authSessionRepo)
 	authHandler := auth_handler.NewAuthHandler(authSvc)
-	router := SetupRouter(&cfg, authSvc, authHandler)
+
+	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
+		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar,
+	)
+	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc)
+
+	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

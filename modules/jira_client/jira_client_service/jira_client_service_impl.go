@@ -22,8 +22,19 @@ func NewJiraClientService(cfg *config.AppConfig) JiraClientService {
 }
 
 func (s *jiraClientServiceImpl) authHeaders() map[string]string {
+	return s.authHeadersFor(nil)
+}
+
+// authHeadersFor builds the Basic Auth header for cred, falling back to the
+// central credential when cred is nil — the single place every *As method
+// (Chapter 9d/9b) and the plain methods above share for header construction.
+func (s *jiraClientServiceImpl) authHeadersFor(cred *jira_client_dto.Credential) map[string]string {
+	email, token := s.cfg.JiraEmail, s.cfg.JiraAPIToken
+	if cred != nil {
+		email, token = cred.Email, cred.APIToken
+	}
 	return map[string]string{
-		"Authorization": basicAuthHeader(s.cfg.JiraEmail, s.cfg.JiraAPIToken),
+		"Authorization": basicAuthHeader(email, token),
 		"Accept":        "application/json",
 	}
 }
@@ -137,6 +148,53 @@ func (s *jiraClientServiceImpl) TransitionIssue(ctx context.Context, issueKey, t
 	)
 	if err != nil {
 		return fmt.Errorf("jira_client: TransitionIssue(%s, %s) failed: %w", issueKey, transitionID, err)
+	}
+	return nil
+}
+
+// SearchAllIssuesByAssignee is SearchCodeProcessIssues' sibling with no
+// status filter — the "Code Process"-only JQL is NOT reused here (My Board
+// needs every status), and this method is intentionally separate from the
+// poller's query so changing one never risks the other's behavior.
+func (s *jiraClientServiceImpl) SearchAllIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
+	jql := fmt.Sprintf(`project in (CORE, OMS) AND assignee = "%s" ORDER BY updated DESC`, accountID)
+	params := url.Values{}
+	params.Set("jql", jql)
+	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID+","+jira_client_dto.StoryPointFieldIDCore+","+jira_client_dto.StoryPointFieldIDCoreEstimate)
+	params.Set("maxResults", "100")
+
+	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
+
+	result, err := curl_helper.CurlRequest[jira_client_dto.SearchResponse](
+		ctx, reqURL, s.authHeadersFor(cred), nil, http.MethodGet, 10000, true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("jira_client: SearchAllIssuesByAssignee(%s) failed: %w", accountID, err)
+	}
+	return result.Issues, nil
+}
+
+func (s *jiraClientServiceImpl) GetTransitionsAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.Transition, error) {
+	reqURL := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", s.cfg.JiraBaseURL, issueKey)
+
+	result, err := curl_helper.CurlRequest[jira_client_dto.TransitionsResponse](
+		ctx, reqURL, s.authHeadersFor(cred), nil, http.MethodGet, 10000, true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("jira_client: GetTransitionsAs(%s) failed: %w", issueKey, err)
+	}
+	return result.Transitions, nil
+}
+
+func (s *jiraClientServiceImpl) TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error {
+	reqURL := fmt.Sprintf("%s/rest/api/3/issue/%s/transitions", s.cfg.JiraBaseURL, issueKey)
+	body := jira_client_dto.TransitionRequest{Transition: jira_client_dto.TransitionID{ID: transitionID}}
+
+	_, err := curl_helper.CurlRequest[struct{}](
+		ctx, reqURL, s.authHeadersFor(cred), body, http.MethodPost, 10000, false,
+	)
+	if err != nil {
+		return fmt.Errorf("jira_client: TransitionIssueAs(%s, %s) failed: %w", issueKey, transitionID, err)
 	}
 	return nil
 }

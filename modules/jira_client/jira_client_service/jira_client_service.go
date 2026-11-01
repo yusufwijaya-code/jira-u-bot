@@ -33,4 +33,18 @@ type JiraClientService interface {
 	// TransitionIssue executes transitionID (one of the IDs returned by
 	// GetTransitions) against issueKey.
 	TransitionIssue(ctx context.Context, issueKey, transitionID string) error
+	// SearchAllIssuesByAssignee returns EVERY OMS/CORE issue assigned to
+	// accountID, regardless of status — unlike SearchCodeProcessIssues,
+	// this is not limited to "Code Process" (Tech Spec "Dashboard Jira
+	// Manage", Chapter 9b, My Board). cred == nil uses the central
+	// credential; a non-nil cred acts as that user instead (Open Question
+	// #2 — only used for a user's own board, never the background poller).
+	SearchAllIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error)
+	// GetTransitionsAs is GetTransitions, acting as cred instead of the
+	// central credential when cred is non-nil (Chapter 9d).
+	GetTransitionsAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.Transition, error)
+	// TransitionIssueAs is TransitionIssue, acting as cred instead of the
+	// central credential when cred is non-nil (Chapter 9d) — this is what
+	// makes a transition show up in Jira as the real user's own activity.
+	TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error
 }

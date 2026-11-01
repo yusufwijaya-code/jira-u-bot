@@ -81,6 +81,10 @@ func (f *fakeRegistrationRepository) UpdateGoogleChatDMSpaceID(ctx context.Conte
 	return nil
 }
 
+func (f *fakeRegistrationRepository) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
+	return nil
+}
+
 func (f *fakeRegistrationRepository) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
 }
@@ -232,6 +236,120 @@ func TestEvaluateAndSend_NoTierDueYetSendsNothing(t *testing.T) {
 
 	if len(notifier.sentMessages) != 0 {
 		t.Errorf("len(sentMessages) = %d, want 0 — no tier threshold has been crossed yet", len(notifier.sentMessages))
+	}
+}
+
+// --- EvaluateAndSend: reminder tier preference (Tech Spec "Dashboard Jira Manage", AC2.1-AC2.3) ---
+
+func TestEvaluateAndSend_FiltersOutTierNotInPreference(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|2h"] = true
+	reminderLog.sentTiers["OMS-1|1h"] = true
+	notifier := &fakeGoogleChatNotifierService{}
+	preference := "15m" // 30m is NOT in this user's preference
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
+		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: &preference},
+	}}
+
+	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        3,
+		AccumulatedSeconds: 9100, // remaining = 1700s -> due for 30m, not yet due for 15m
+		AssigneeEmail:      "anwar@esb.co.id",
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 0 {
+		t.Errorf("len(sentMessages) = %d, want 0 — 30m is due but not in this user's preference, and 15m isn't due yet", len(notifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_SendsTierThatIsInPreference(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|2h"] = true
+	reminderLog.sentTiers["OMS-1|1h"] = true
+	notifier := &fakeGoogleChatNotifierService{}
+	preference := "30m"
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
+		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: &preference},
+	}}
+
+	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        3,
+		AccumulatedSeconds: 9100, // remaining = 1700s -> due for 30m
+		AssigneeEmail:      "anwar@esb.co.id",
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "30m" {
+		t.Errorf("sentMessages = %+v, want one message with Tier=30m (it IS in the preference)", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_NilPreferenceSendsAllTiersUnfiltered(t *testing.T) {
+	// Regression guard: a user who never set a preference (the default for
+	// every user today) must keep getting every applicable tier, unchanged
+	// from pre-preference behavior.
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|2h"] = true
+	reminderLog.sentTiers["OMS-1|1h"] = true
+	notifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
+		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: nil},
+	}}
+
+	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        3,
+		AccumulatedSeconds: 9100,
+		AssigneeEmail:      "anwar@esb.co.id",
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "30m" {
+		t.Errorf("sentMessages = %+v, want the 30m tier sent same as before preference existed (spec AC2.2)", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_OverageIgnoresPreference(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	emptyPreference := "" // deliberately unchecked ALL tiers
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
+		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: &emptyPreference},
+	}}
+
+	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        1,     // budget = 3600s
+		AccumulatedSeconds: 4000,  // already over budget
+		AssigneeEmail:      "anwar@esb.co.id",
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 1 || !notifier.sentMessages[0].IsOverage {
+		t.Errorf("sentMessages = %+v, want the overage notice to still send even with every tier unchecked (spec AC2.3)", notifier.sentMessages)
 	}
 }
 

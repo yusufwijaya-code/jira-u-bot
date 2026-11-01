@@ -137,6 +137,10 @@ func (f *fakeRegistrationRepoForAuth) UpdateGoogleChatDMSpaceID(ctx context.Cont
 	return nil
 }
 
+func (f *fakeRegistrationRepoForAuth) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
+	return nil
+}
+
 func (f *fakeRegistrationRepoForAuth) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
 }

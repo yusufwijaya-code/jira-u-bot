@@ -18,4 +18,11 @@ type User struct {
 	// against an issue's assignee, since Jira hides emailAddress on
 	// assignee objects org-wide but accountId is always present.
 	JiraAccountID string
+	// ReminderTierPreference is a CSV of the tier codes (reminder_log_dto
+	// Tier2h/Tier1h/Tier30m/Tier15m/Tier5m/Tier1m) this user wants to
+	// receive — nil means "never set, send all tiers" (unchanged legacy
+	// behavior), "" (non-nil, empty) means "deliberately unchecked all of
+	// them". Does not affect the overage tier, which always sends
+	// (Tech Spec "Dashboard Jira Manage", AC2.2/AC2.3).
+	ReminderTierPreference *string
 }
