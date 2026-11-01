@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin - Jira U Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=REM:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root { --blue:#1286e1; --blue-dark:#0e65a9; --text:#333; --text-muted:#6c6c6c; --border:#e6e6e6; --bg:#f7fafc; --success:#15803d; --error:#b91c1c; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:'REM',ui-sans-serif,system-ui,sans-serif; color:var(--text); background:var(--bg); }
+    header { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; background:#fff; border-bottom:1px solid var(--border); }
+    header .brand { font-weight:700; color:var(--blue-dark); }
+    header nav a { color:var(--text-muted); text-decoration:none; margin-left:16px; font-size:0.9rem; }
+    main { max-width:1100px; margin:0 auto; padding:24px; }
+    table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+    th, td { text-align:left; padding:10px 14px; font-size:0.85rem; border-bottom:1px solid var(--border); }
+    th { background:var(--bg); color:var(--text-muted); text-transform:uppercase; font-size:0.72rem; letter-spacing:0.04em; }
+    tr:last-child td { border-bottom:none; }
+    .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.72rem; font-weight:600; }
+    .badge.active { background:#dcfce7; color:var(--success); }
+    .badge.inactive { background:#fef2f2; color:var(--error); }
+    .accid-input { width:140px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-family:inherit; font-size:0.78rem; }
+    button { font-family:inherit; font-size:0.75rem; font-weight:600; border:none; border-radius:999px; padding:6px 12px; cursor:pointer; background:var(--blue); color:#fff; margin-right:4px; }
+    button.danger { background:#fff; color:var(--error); border:1px solid var(--error); }
+    button.secondary { background:#fff; color:var(--text-muted); border:1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+    <span class="brand">🤖 Jira U Bot — Admin</span>
+    <nav>
+        <span>{{.Email}}</span>
+        <a href="/dashboard">My Board</a>
+        <a href="/auth/logout">Logout</a>
+    </nav>
+</header>
+<main>
+    <table>
+        <thead>
+            <tr><th>Email</th><th>Status</th><th>Jira Account ID</th><th>Credential Pribadi</th><th>Aksi</th></tr>
+        </thead>
+        <tbody>
+            {{range .Users}}
+            <tr data-user-id="{{.UserID}}">
+                <td>{{.Email}}</td>
+                <td><span class="badge {{if .FlagActive}}active{{else}}inactive{{end}}">{{if .FlagActive}}Aktif{{else}}Nonaktif{{end}}</span></td>
+                <td><input class="accid-input" type="text" value="{{.JiraAccountID}}" data-field="jiraAccountId"></td>
+                <td>{{if .HasCredential}}{{.CredentialMasked}}{{else}}<span style="color:var(--text-muted)">belum setup</span>{{end}}</td>
+                <td>
+                    <button data-action="toggle" data-active="{{if .FlagActive}}false{{else}}true{{end}}">{{if .FlagActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
+                    <button data-action="save-accid" class="secondary">Simpan ID</button>
+                    {{if .HasCredential}}<button data-action="delete-credential" class="danger">Hapus Credential</button>{{end}}
+                    <button data-action="delete-user" class="danger">Hapus</button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</main>
+
+<script>
+(function () {
+    function postJSON(url, method, body) {
+        return fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: body ? JSON.stringify(body) : undefined
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); });
+    }
+
+    document.querySelectorAll('tbody tr').forEach(function (row) {
+        var userID = row.getAttribute('data-user-id');
+
+        row.querySelector('[data-action=toggle]').addEventListener('click', function () {
+            var active = this.getAttribute('data-active') === 'true';
+            postJSON('/dashboard/admin/users/' + userID + '/active', 'POST', { active: active }).then(function (r) {
+                if (r.ok) { location.reload(); } else { alert(r.data.error || 'Gagal'); }
+            });
+        });
+
+        row.querySelector('[data-action=save-accid]').addEventListener('click', function () {
+            var val = row.querySelector('[data-field=jiraAccountId]').value;
+            postJSON('/dashboard/admin/users/' + userID + '/jira-account-id', 'POST', { jiraAccountId: val }).then(function (r) {
+                if (!r.ok) { alert(r.data.error || 'Gagal'); }
+            });
+        });
+
+        var deleteCredBtn = row.querySelector('[data-action=delete-credential]');
+        if (deleteCredBtn) {
+            deleteCredBtn.addEventListener('click', function () {
+                if (!confirm('Hapus credential pribadi user ini?')) { return; }
+                postJSON('/dashboard/admin/users/' + userID + '/credential', 'DELETE').then(function (r) {
+                    if (r.ok) { location.reload(); } else { alert(r.data.error || 'Gagal'); }
+                });
+            });
+        }
+
+        row.querySelector('[data-action=delete-user]').addEventListener('click', function () {
+            if (!confirm('Hapus user ini secara permanen? Tidak bisa dibatalkan.')) { return; }
+            postJSON('/dashboard/admin/users/' + userID, 'DELETE').then(function (r) {
+                if (r.ok) { location.reload(); } else { alert(r.data.error || 'Gagal'); }
+            });
+        });
+    });
+})();
+</script>
+</body>
+</html>

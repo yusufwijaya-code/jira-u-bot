@@ -94,6 +94,22 @@ func (f *fakeRegistrationRepoForDashboard) UpdateReminderTierPreference(ctx cont
 	f.updatedPreferenceCSV = csv
 	return nil
 }
+
+func (f *fakeRegistrationRepoForDashboard) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
+func (f *fakeRegistrationRepoForDashboard) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForDashboard) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForDashboard) DeleteByID(ctx context.Context, userID int64) error {
+	return nil
+}
 func (f *fakeRegistrationRepoForDashboard) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
 }

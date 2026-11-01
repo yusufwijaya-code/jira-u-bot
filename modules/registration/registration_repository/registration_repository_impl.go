@@ -113,3 +113,54 @@ func (r *registrationRepositoryImpl) UpdateReminderTierPreference(ctx context.Co
 	_, err := r.db.ExecContext(ctx, query, csv, email, email)
 	return err
 }
+
+func (r *registrationRepositoryImpl) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	query := `SELECT ` + userColumns + ` FROM ms_user ORDER BY createdDate DESC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []registration_dto.User
+	for rows.Next() {
+		var u registration_dto.User
+		var dmSpaceID, jiraAccountID, reminderTierPreference sql.NullString
+		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference); err != nil {
+			return nil, err
+		}
+		u.GoogleChatDMSpaceID = dmSpaceID.String
+		u.JiraAccountID = jiraAccountID.String
+		if reminderTierPreference.Valid {
+			u.ReminderTierPreference = &reminderTierPreference.String
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (r *registrationRepositoryImpl) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	const query = `
+		UPDATE ms_user
+		SET flagActive = ?, editedBy = 'admin', editedDate = CURRENT_TIMESTAMP
+		WHERE userID = ?
+	`
+	_, err := r.db.ExecContext(ctx, query, active, userID)
+	return err
+}
+
+func (r *registrationRepositoryImpl) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	const query = `
+		UPDATE ms_user
+		SET jiraAccountId = ?, editedBy = 'admin', editedDate = CURRENT_TIMESTAMP
+		WHERE userID = ?
+	`
+	_, err := r.db.ExecContext(ctx, query, jiraAccountID, userID)
+	return err
+}
+
+func (r *registrationRepositoryImpl) DeleteByID(ctx context.Context, userID int64) error {
+	const query = `DELETE FROM ms_user WHERE userID = ?`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	return err
+}

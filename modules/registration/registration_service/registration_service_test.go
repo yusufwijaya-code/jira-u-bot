@@ -82,6 +82,22 @@ func (f *fakeRegistrationRepositoryForService) UpdateReminderTierPreference(ctx 
 	return nil
 }
 
+func (f *fakeRegistrationRepositoryForService) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
+func (f *fakeRegistrationRepositoryForService) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForService) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForService) DeleteByID(ctx context.Context, userID int64) error {
+	return nil
+}
+
 func (f *fakeRegistrationRepositoryForService) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
 }

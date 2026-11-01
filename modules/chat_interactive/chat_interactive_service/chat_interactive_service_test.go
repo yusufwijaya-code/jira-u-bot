@@ -88,6 +88,22 @@ func (f *fakeRegistrationRepoForChat) UpdateGoogleChatDMSpaceID(ctx context.Cont
 func (f *fakeRegistrationRepoForChat) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
 	return nil
 }
+
+func (f *fakeRegistrationRepoForChat) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
+func (f *fakeRegistrationRepoForChat) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForChat) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForChat) DeleteByID(ctx context.Context, userID int64) error {
+	return nil
+}
 func (f *fakeRegistrationRepoForChat) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
 }

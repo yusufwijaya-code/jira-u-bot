@@ -170,7 +170,8 @@ func (f *fakeReminderEngineService) NotifyReturnedToTodo(ctx context.Context, is
 // team decision made after seeing the bot flood Google Chat with reminders
 // for every CORE/OMS ticket regardless of assignee).
 type fakeRegistrationRepositoryForPoller struct {
-	registeredEmails map[string]bool
+	registeredEmails  map[string]bool
+	deactivatedEmails map[string]bool
 }
 
 func newFakeRegistrationRepositoryForPoller(registeredEmails ...string) *fakeRegistrationRepositoryForPoller {
@@ -201,7 +202,7 @@ func (f *fakeRegistrationRepositoryForPoller) FindUserByJiraAccountID(ctx contex
 	if !f.registeredEmails[jiraAccountID] {
 		return nil, false, nil
 	}
-	return &registration_dto.User{Email: jiraAccountID}, true, nil
+	return &registration_dto.User{Email: jiraAccountID, FlagActive: !f.deactivatedEmails[jiraAccountID]}, true, nil
 }
 
 func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
@@ -209,6 +210,22 @@ func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx cont
 }
 
 func (f *fakeRegistrationRepositoryForPoller) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForPoller) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
+func (f *fakeRegistrationRepositoryForPoller) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForPoller) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForPoller) DeleteByID(ctx context.Context, userID int64) error {
 	return nil
 }
 
@@ -538,6 +555,29 @@ func TestBackfillActiveSessions_SkipsIneligibleIssue(t *testing.T) {
 
 	if len(issueSession.openAtCalls) != 0 {
 		t.Errorf("openAtCalls = %v, want none — unregistered assignee must not be backfilled either", issueSession.openAtCalls)
+	}
+}
+
+func TestBackfillActiveSessions_SkipsDeactivatedUser(t *testing.T) {
+	// Tech Spec "Dashboard Jira Manage", Chapter 10a bug fix: a user
+	// deactivated via the Admin Dashboard must stop being tracked, not just
+	// lose login access. registeredEmails alone used to be sufficient for
+	// eligibility (FindUserByJiraAccountID never checked flagActive).
+	jiraClient := &fakeJiraClientService{
+		issues: []jira_client_dto.Issue{assignedIssue("OMS-1", "off@esb.co.id", 3)},
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	reminderEngine := &fakeReminderEngineService{}
+	registrationRepo := newFakeRegistrationRepositoryForPoller("off@esb.co.id")
+	registrationRepo.deactivatedEmails = map[string]bool{"off@esb.co.id": true}
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
+
+	if err := poller.backfillActiveSessions(context.Background()); err != nil {
+		t.Fatalf("backfillActiveSessions returned error: %v", err)
+	}
+
+	if len(issueSession.openAtCalls) != 0 {
+		t.Errorf("openAtCalls = %v, want none — a deactivated user's ticket must not be tracked (spec AC6.2)", issueSession.openAtCalls)
 	}
 }
 

@@ -66,6 +66,22 @@ func (f *fakeRegistrationRepositoryForDM) UpdateReminderTierPreference(ctx conte
 	return nil
 }
 
+func (f *fakeRegistrationRepositoryForDM) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
+func (f *fakeRegistrationRepositoryForDM) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForDM) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepositoryForDM) DeleteByID(ctx context.Context, userID int64) error {
+	return nil
+}
+
 func TestResolveDMSpace_CallsSpacesSetupWhenNotCached(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

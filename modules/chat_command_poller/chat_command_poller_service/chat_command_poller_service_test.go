@@ -64,6 +64,22 @@ func (f *fakeRegistrationRepoForPoller) UpdateGoogleChatDMSpaceID(ctx context.Co
 func (f *fakeRegistrationRepoForPoller) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
 	return nil
 }
+
+func (f *fakeRegistrationRepoForPoller) FindAll(ctx context.Context) ([]registration_dto.User, error) {
+	return nil, nil
+}
+
+func (f *fakeRegistrationRepoForPoller) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForPoller) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
+	return nil
+}
+
+func (f *fakeRegistrationRepoForPoller) DeleteByID(ctx context.Context, userID int64) error {
+	return nil
+}
 func (f *fakeRegistrationRepoForPoller) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
 	return f.users, nil
 }

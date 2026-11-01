@@ -73,6 +73,13 @@ func (p *pollerServiceImpl) resolveEligibility(ctx context.Context, issue jira_c
 	if err != nil || !found {
 		return "", false
 	}
+	// Tech Spec "Dashboard Jira Manage", Chapter 10a bug fix: a deactivated
+	// user (admin toggle, AC6.2) must stop being tracked/reminded, not just
+	// lose login access — FindUserByJiraAccountID doesn't filter on
+	// flagActive itself, so this has to be checked here.
+	if !user.FlagActive {
+		return "", false
+	}
 	return user.Email, true
 }
 

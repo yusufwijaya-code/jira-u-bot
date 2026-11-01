@@ -4,6 +4,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"jira-u-bot/config"
+	"jira-u-bot/modules/admin_dashboard"
+	"jira-u-bot/modules/admin_dashboard/admin_dashboard_handler"
 	"jira-u-bot/modules/auth"
 	"jira-u-bot/modules/auth/auth_handler"
 	"jira-u-bot/modules/auth/auth_middleware"
@@ -17,6 +19,7 @@ func SetupRouter(
 	authSvc auth_service.AuthService,
 	authHandler auth_handler.AuthHandler,
 	userDashboardHandler user_dashboard_handler.UserDashboardHandler,
+	adminDashboardHandler admin_dashboard_handler.AdminDashboardHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -33,10 +36,9 @@ func SetupRouter(
 	dashboardAPI.Use(auth_middleware.AuthMiddleware(authSvc))
 	user_dashboard.Router(dashboardPages, dashboardAPI, userDashboardHandler)
 
-	// Admin Dashboard (Chapter 10) — placeholder until then.
-	dashboardPages.GET("/admin", auth_middleware.AdminMiddleware(cfg), func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok", "message": "logged in as admin — Admin Dashboard lands in Chapter 10"})
-	})
+	dashboardAdmin := dashboardPages.Group("/admin")
+	dashboardAdmin.Use(auth_middleware.AdminMiddleware(cfg))
+	admin_dashboard.Router(dashboardAdmin, adminDashboardHandler)
 
 	return r
 }

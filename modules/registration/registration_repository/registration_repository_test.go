@@ -190,3 +190,99 @@ func TestFindUserByJiraAccountID_NotFoundReturnsFalseNoError(t *testing.T) {
 		t.Error("user should be nil when not found")
 	}
 }
+
+// --- Admin Dashboard (Tech Spec "Dashboard Jira Manage", Chapter 10a) ---
+
+func TestFindAll_IncludesNewlyCreatedUser(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-findall@esb.co.id") })
+
+	if err := repo.UpsertUser(ctx, "TestMySQL FindAll", "testmysql-findall@esb.co.id", "acc-findall"); err != nil {
+		t.Fatalf("UpsertUser returned error: %v", err)
+	}
+
+	users, err := repo.FindAll(ctx)
+	if err != nil {
+		t.Fatalf("FindAll returned error: %v", err)
+	}
+	var found bool
+	for _, u := range users {
+		if u.Email == "testmysql-findall@esb.co.id" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("FindAll did not include the newly created user")
+	}
+}
+
+func TestUpdateFlagActive_TogglesActiveStatus(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-toggle@esb.co.id") })
+
+	if err := repo.UpsertUser(ctx, "TestMySQL Toggle", "testmysql-toggle@esb.co.id", "acc-toggle"); err != nil {
+		t.Fatalf("UpsertUser returned error: %v", err)
+	}
+	user, _, _ := repo.FindUserByEmail(ctx, "testmysql-toggle@esb.co.id")
+
+	if err := repo.UpdateFlagActive(ctx, user.UserID, false); err != nil {
+		t.Fatalf("UpdateFlagActive returned error: %v", err)
+	}
+
+	updated, found, err := repo.FindUserByEmail(ctx, "testmysql-toggle@esb.co.id")
+	if err != nil || !found {
+		t.Fatalf("FindUserByEmail after UpdateFlagActive: found=%v err=%v", found, err)
+	}
+	if updated.FlagActive {
+		t.Error("FlagActive = true, want false after UpdateFlagActive(false)")
+	}
+}
+
+func TestUpdateJiraAccountID_UpdatesExistingUser(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM ms_user WHERE email = ?`, "testmysql-accid@esb.co.id") })
+
+	if err := repo.UpsertUser(ctx, "TestMySQL AccID", "testmysql-accid@esb.co.id", "acc-old"); err != nil {
+		t.Fatalf("UpsertUser returned error: %v", err)
+	}
+	user, _, _ := repo.FindUserByEmail(ctx, "testmysql-accid@esb.co.id")
+
+	if err := repo.UpdateJiraAccountID(ctx, user.UserID, "acc-new"); err != nil {
+		t.Fatalf("UpdateJiraAccountID returned error: %v", err)
+	}
+
+	updated, _, _ := repo.FindUserByEmail(ctx, "testmysql-accid@esb.co.id")
+	if updated.JiraAccountID != "acc-new" {
+		t.Errorf("JiraAccountID = %q, want %q", updated.JiraAccountID, "acc-new")
+	}
+}
+
+func TestDeleteByID_RemovesUser(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewRegistrationRepository(db)
+	ctx := context.Background()
+	// No t.Cleanup needed — DeleteByID is exactly what this test verifies.
+
+	if err := repo.UpsertUser(ctx, "TestMySQL Delete", "testmysql-delete@esb.co.id", "acc-delete"); err != nil {
+		t.Fatalf("UpsertUser returned error: %v", err)
+	}
+	user, _, _ := repo.FindUserByEmail(ctx, "testmysql-delete@esb.co.id")
+
+	if err := repo.DeleteByID(ctx, user.UserID); err != nil {
+		t.Fatalf("DeleteByID returned error: %v", err)
+	}
+
+	_, found, err := repo.FindUserByEmail(ctx, "testmysql-delete@esb.co.id")
+	if err != nil {
+		t.Fatalf("FindUserByEmail returned error: %v", err)
+	}
+	if found {
+		t.Error("expected user to be gone after DeleteByID")
+	}
+}

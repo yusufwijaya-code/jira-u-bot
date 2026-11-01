@@ -24,4 +24,11 @@ type RegistrationRepository interface {
 	// UpdateReminderTierPreference sets the CSV of tiers email wants to
 	// receive — csv may be "" (deliberately all unchecked, spec AC2.1).
 	UpdateReminderTierPreference(ctx context.Context, email, csv string) error
+	// FindAll lists every registered user — Admin Dashboard (spec AC6.1).
+	FindAll(ctx context.Context) ([]registration_dto.User, error)
+	UpdateFlagActive(ctx context.Context, userID int64, active bool) error
+	UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error
+	// DeleteByID permanently removes a user (spec AC6.5) — tr_usersession
+	// and tr_usercredential cascade via ON DELETE CASCADE.
+	DeleteByID(ctx context.Context, userID int64) error
 }

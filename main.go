@@ -14,6 +14,8 @@ import (
 	"jira-u-bot/base/helpers/shutdown"
 	"jira-u-bot/config"
 	"jira-u-bot/migrations"
+	"jira-u-bot/modules/admin_dashboard/admin_dashboard_handler"
+	"jira-u-bot/modules/admin_dashboard/admin_dashboard_service"
 	"jira-u-bot/modules/auth/auth_handler"
 	"jira-u-bot/modules/auth/auth_service"
 	"jira-u-bot/modules/auth/auth_session_repository"
@@ -174,7 +176,10 @@ func main() {
 	)
 	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc)
 
-	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler)
+	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc)
+	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
+
+	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
