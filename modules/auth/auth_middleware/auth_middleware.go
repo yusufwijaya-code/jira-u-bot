@@ -21,18 +21,19 @@ const sessionCookieName = "session_token"
 // user — resolved fresh from the DB every request (not cached in the
 // cookie), so a deactivated-mid-session user is blocked on their very next
 // request.
-func AuthMiddleware(authService auth_service.AuthService) gin.HandlerFunc {
+func AuthMiddleware(authService auth_service.AuthService, cfg *config.AppConfig) gin.HandlerFunc {
+	loginURL := cfg.BasePath + "/auth/google/login"
 	return func(c *gin.Context) {
 		token, err := c.Cookie(sessionCookieName)
 		if err != nil || token == "" {
-			c.Redirect(http.StatusFound, "/auth/google/login")
+			c.Redirect(http.StatusFound, loginURL)
 			c.Abort()
 			return
 		}
 
 		session, found, err := authService.FindSession(c.Request.Context(), token)
 		if err != nil || !found || !session.FlagActive {
-			c.Redirect(http.StatusFound, "/auth/google/login")
+			c.Redirect(http.StatusFound, loginURL)
 			c.Abort()
 			return
 		}

@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://labcup.tech/jira-notif/register
+      url: https://labcup.tech/jira-notif/dashboard
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -35,5 +35,5 @@ jobs:
 
       - name: Health check
         run: |
-          curl -sf --retry 5 --retry-delay 3 --retry-all-errors https://labcup.tech/ping -o /dev/null
+          curl -sf --retry 5 --retry-delay 3 --retry-all-errors https://labcup.tech/jira-notif/ping -o /dev/null
           echo "jira-u-bot OK"

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_dto"
 	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/chat_interactive/chat_interactive_service"
@@ -33,6 +34,7 @@ type tierCheckbox struct {
 }
 
 type dashboardPageData struct {
+	BasePath         string
 	Email            string
 	Board            user_dashboard_dto.Board
 	TierCheckboxes   []tierCheckbox
@@ -41,19 +43,22 @@ type dashboardPageData struct {
 }
 
 type teamPageData struct {
-	Email string
-	View  user_dashboard_dto.TeamView
+	BasePath string
+	Email    string
+	View     user_dashboard_dto.TeamView
 }
 
 type overduePageData struct {
-	Email string
-	Items []user_dashboard_dto.OverdueItem
+	BasePath string
+	Email    string
+	Items    []user_dashboard_dto.OverdueItem
 }
 
 type userDashboardHandlerImpl struct {
 	dashboardSvc    user_dashboard_service.UserDashboardService
 	chatInteractive chat_interactive_service.ChatInteractiveService
 	jiraCredential  jira_credential_service.JiraCredentialService
+	basePath        string
 
 	dashboardTemplate *template.Template
 	teamTemplate      *template.Template
@@ -64,11 +69,13 @@ func NewUserDashboardHandler(
 	dashboardSvc user_dashboard_service.UserDashboardService,
 	chatInteractive chat_interactive_service.ChatInteractiveService,
 	jiraCredential jira_credential_service.JiraCredentialService,
+	cfg *config.AppConfig,
 ) UserDashboardHandler {
 	return &userDashboardHandlerImpl{
 		dashboardSvc:      dashboardSvc,
 		chatInteractive:   chatInteractive,
 		jiraCredential:    jiraCredential,
+		basePath:          cfg.BasePath,
 		dashboardTemplate: template.Must(template.ParseFS(userdashboardtemplates.FS, "dashboard.html")),
 		teamTemplate:      template.Must(template.ParseFS(userdashboardtemplates.FS, "team.html")),
 		overdueTemplate:   template.Must(template.ParseFS(userdashboardtemplates.FS, "overdue.html")),
@@ -113,6 +120,7 @@ func (h *userDashboardHandlerImpl) Dashboard(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
 	h.dashboardTemplate.Execute(c.Writer, dashboardPageData{
+		BasePath:         h.basePath,
 		Email:            user.Email,
 		Board:            board,
 		TierCheckboxes:   checkboxes,
@@ -129,7 +137,7 @@ func (h *userDashboardHandlerImpl) TeamView(c *gin.Context) {
 	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
-	h.teamTemplate.Execute(c.Writer, teamPageData{Email: currentUser(c).Email, View: view})
+	h.teamTemplate.Execute(c.Writer, teamPageData{BasePath: h.basePath, Email: currentUser(c).Email, View: view})
 }
 
 func (h *userDashboardHandlerImpl) OverdueView(c *gin.Context) {
@@ -140,7 +148,7 @@ func (h *userDashboardHandlerImpl) OverdueView(c *gin.Context) {
 	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
-	h.overdueTemplate.Execute(c.Writer, overduePageData{Email: currentUser(c).Email, Items: items})
+	h.overdueTemplate.Execute(c.Writer, overduePageData{BasePath: h.basePath, Email: currentUser(c).Email, Items: items})
 }
 
 type updatePreferenceRequest struct {

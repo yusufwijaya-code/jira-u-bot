@@ -9,11 +9,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/admin_dashboard/admin_dashboard_dto"
 	"jira-u-bot/modules/admin_dashboard/admin_dashboard_service"
 	"jira-u-bot/modules/auth/auth_dto"
 	"jira-u-bot/modules/auth/auth_middleware"
 )
+
+func testCfg() *config.AppConfig {
+	return &config.AppConfig{AdminEmail: "yusuf.wijaya@esb.co.id", BasePath: "/jira-notif"}
+}
 
 type fakeAdminDashboardService struct {
 	users             []admin_dashboard_dto.UserRow
@@ -68,7 +73,7 @@ func TestUserList_RendersUsers(t *testing.T) {
 	svc := &fakeAdminDashboardService{users: []admin_dashboard_dto.UserRow{
 		{UserID: 2, Email: "dev@esb.co.id", FlagActive: true},
 	}}
-	handler := NewAdminDashboardHandler(svc)
+	handler := NewAdminDashboardHandler(svc, testCfg())
 
 	w, c := newAdminTestContext("GET", "/dashboard/admin", "", nil)
 	handler.UserList(c)
@@ -80,7 +85,7 @@ func TestUserList_RendersUsers(t *testing.T) {
 
 func TestToggleActive_CallsServiceWithActingAndTargetID(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc)
+	handler := NewAdminDashboardHandler(svc, testCfg())
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/users/2/active", `{"active":false}`, gin.Params{{Key: "userID", Value: "2"}})
 	handler.ToggleActive(c)
@@ -95,7 +100,7 @@ func TestToggleActive_CallsServiceWithActingAndTargetID(t *testing.T) {
 
 func TestToggleActive_ReturnsBadRequestOnSelfLockout(t *testing.T) {
 	svc := &fakeAdminDashboardService{setActiveErr: admin_dashboard_service.ErrCannotModifySelf}
-	handler := NewAdminDashboardHandler(svc)
+	handler := NewAdminDashboardHandler(svc, testCfg())
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/users/1/active", `{"active":false}`, gin.Params{{Key: "userID", Value: "1"}})
 	handler.ToggleActive(c)
@@ -107,7 +112,7 @@ func TestToggleActive_ReturnsBadRequestOnSelfLockout(t *testing.T) {
 
 func TestEditJiraAccountID_UpdatesService(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc)
+	handler := NewAdminDashboardHandler(svc, testCfg())
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/users/2/jira-account-id", `{"jiraAccountId":"acc-new"}`, gin.Params{{Key: "userID", Value: "2"}})
 	handler.EditJiraAccountID(c)
@@ -119,7 +124,7 @@ func TestEditJiraAccountID_UpdatesService(t *testing.T) {
 
 func TestDeleteUser_DelegatesToService(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc)
+	handler := NewAdminDashboardHandler(svc, testCfg())
 
 	w, c := newAdminTestContext("DELETE", "/dashboard/admin/users/2", "", gin.Params{{Key: "userID", Value: "2"}})
 	handler.DeleteUser(c)
@@ -131,7 +136,7 @@ func TestDeleteUser_DelegatesToService(t *testing.T) {
 
 func TestDeleteUserCredential_DelegatesToService(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc)
+	handler := NewAdminDashboardHandler(svc, testCfg())
 
 	w, c := newAdminTestContext("DELETE", "/dashboard/admin/users/2/credential", "", gin.Params{{Key: "userID", Value: "2"}})
 	handler.DeleteUserCredential(c)

@@ -9,10 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_dto"
 	"jira-u-bot/modules/auth/auth_service"
 	"jira-u-bot/modules/registration/registration_dto"
 )
+
+func testCfg() *config.AppConfig {
+	return &config.AppConfig{BasePath: "/jira-notif"}
+}
 
 type fakeAuthServiceForHandler struct {
 	authCodeURL string
@@ -63,7 +68,7 @@ func newTestContext() (*httptest.ResponseRecorder, *gin.Context) {
 
 func TestLogin_SetsStateCookieAndRedirectsToGoogle(t *testing.T) {
 	svc := &fakeAuthServiceForHandler{authCodeURL: "https://accounts.google.com/o/oauth2/auth?client_id=x"}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	c.Request = httptest.NewRequest("GET", "/auth/google/login", nil)
@@ -90,11 +95,28 @@ func TestLogin_SetsStateCookieAndRedirectsToGoogle(t *testing.T) {
 	if !strings.Contains(location, "state="+stateCookie.Value) {
 		t.Errorf("Location %q does not contain the same state as the cookie %q", location, stateCookie.Value)
 	}
+	if stateCookie.Path != "/jira-notif" {
+		t.Errorf("state cookie Path = %q, want /jira-notif — a root-scoped cookie would collide with other apps on the same domain", stateCookie.Path)
+	}
+}
+
+func TestCallback_RendersLoginLinkWithBasePath(t *testing.T) {
+	svc := &fakeAuthServiceForHandler{}
+	handler := NewAuthHandler(svc, testCfg())
+
+	w, c := newTestContext()
+	c.Request = httptest.NewRequest("GET", "/jira-notif/auth/google/callback?code=abc&state=xyz", nil)
+
+	handler.Callback(c)
+
+	if !strings.Contains(w.Body.String(), `href="/jira-notif/auth/google/login"`) {
+		t.Errorf("body = %q, want the retry link to include BasePath", w.Body.String())
+	}
 }
 
 func TestCallback_RejectsMissingStateCookie(t *testing.T) {
 	svc := &fakeAuthServiceForHandler{}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	c.Request = httptest.NewRequest("GET", "/auth/google/callback?code=abc&state=xyz", nil)
@@ -111,7 +133,7 @@ func TestCallback_RejectsMissingStateCookie(t *testing.T) {
 
 func TestCallback_RejectsStateMismatch(t *testing.T) {
 	svc := &fakeAuthServiceForHandler{}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	req := httptest.NewRequest("GET", "/auth/google/callback?code=abc&state=wrong-state", nil)
@@ -127,7 +149,7 @@ func TestCallback_RejectsStateMismatch(t *testing.T) {
 
 func TestCallback_RejectsWrongDomain(t *testing.T) {
 	svc := &fakeAuthServiceForHandler{verifyErr: auth_service.ErrDomainNotAllowed}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	req := httptest.NewRequest("GET", "/auth/google/callback?code=abc&state=s1", nil)
@@ -147,7 +169,7 @@ func TestCallback_SucceedsAndIssuesSession(t *testing.T) {
 		getOrCreateUser: &registration_dto.User{UserID: 5, Email: "dev@esb.co.id", FlagActive: true},
 		issuedToken:     "session-token-xyz",
 	}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	req := httptest.NewRequest("GET", "/auth/google/callback?code=abc&state=s1", nil)
@@ -159,8 +181,8 @@ func TestCallback_SucceedsAndIssuesSession(t *testing.T) {
 	if w.Code != http.StatusFound {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusFound)
 	}
-	if loc := w.Header().Get("Location"); loc != "/dashboard" {
-		t.Errorf("Location = %q, want /dashboard (spec AC1.5)", loc)
+	if loc := w.Header().Get("Location"); loc != "/jira-notif/dashboard" {
+		t.Errorf("Location = %q, want /jira-notif/dashboard (spec AC1.5, BasePath-aware)", loc)
 	}
 
 	var sessionCookie *http.Cookie
@@ -179,7 +201,7 @@ func TestCallback_RejectsDeactivatedUser(t *testing.T) {
 		verifyClaims:   &auth_dto.GoogleClaims{Email: "off@esb.co.id", EmailVerified: true, Name: "Off"},
 		getOrCreateErr: auth_service.ErrUserDeactivated,
 	}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	req := httptest.NewRequest("GET", "/auth/google/callback?code=abc&state=s1", nil)
@@ -195,7 +217,7 @@ func TestCallback_RejectsDeactivatedUser(t *testing.T) {
 
 func TestLogout_ClearsCookieAndRedirects(t *testing.T) {
 	svc := &fakeAuthServiceForHandler{}
-	handler := NewAuthHandler(svc)
+	handler := NewAuthHandler(svc, testCfg())
 
 	w, c := newTestContext()
 	req := httptest.NewRequest("GET", "/auth/logout", nil)
@@ -204,8 +226,8 @@ func TestLogout_ClearsCookieAndRedirects(t *testing.T) {
 
 	handler.Logout(c)
 
-	if w.Code != http.StatusFound || w.Header().Get("Location") != "/auth/google/login" {
-		t.Errorf("status=%d location=%q, want 302 to /auth/google/login (spec AC1.9)", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/google/login" {
+		t.Errorf("status=%d location=%q, want 302 to /jira-notif/auth/google/login (spec AC1.9, BasePath-aware)", w.Code, w.Header().Get("Location"))
 	}
 	if svc.logoutCalledWith != "session-to-kill" {
 		t.Errorf("Logout called with %q, want %q", svc.logoutCalledWith, "session-to-kill")

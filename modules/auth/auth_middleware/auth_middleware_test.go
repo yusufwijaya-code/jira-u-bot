@@ -47,12 +47,16 @@ func runMiddleware(t *testing.T, mw gin.HandlerFunc, req *http.Request) (*httpte
 	return w, c
 }
 
-func TestAuthMiddleware_RedirectsWhenNoCookie(t *testing.T) {
-	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{})
-	w, c := runMiddleware(t, mw, httptest.NewRequest("GET", "/dashboard", nil))
+func testCfg() *config.AppConfig {
+	return &config.AppConfig{AdminEmail: "yusuf.wijaya@esb.co.id", BasePath: "/jira-notif"}
+}
 
-	if w.Code != http.StatusFound || w.Header().Get("Location") != "/auth/google/login" {
-		t.Errorf("status=%d location=%q, want redirect to /auth/google/login (spec AC1.7)", w.Code, w.Header().Get("Location"))
+func TestAuthMiddleware_RedirectsWhenNoCookie(t *testing.T) {
+	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{}, testCfg())
+	w, c := runMiddleware(t, mw, httptest.NewRequest("GET", "/jira-notif/dashboard", nil))
+
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/google/login" {
+		t.Errorf("status=%d location=%q, want redirect to /jira-notif/auth/google/login (spec AC1.7, BasePath-aware)", w.Code, w.Header().Get("Location"))
 	}
 	if !c.IsAborted() {
 		t.Error("expected the middleware chain to be aborted")
@@ -60,14 +64,14 @@ func TestAuthMiddleware_RedirectsWhenNoCookie(t *testing.T) {
 }
 
 func TestAuthMiddleware_RedirectsWhenSessionNotFound(t *testing.T) {
-	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{found: false})
-	req := httptest.NewRequest("GET", "/dashboard", nil)
+	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{found: false}, testCfg())
+	req := httptest.NewRequest("GET", "/jira-notif/dashboard", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "unknown-token"})
 
 	w, _ := runMiddleware(t, mw, req)
 
-	if w.Code != http.StatusFound || w.Header().Get("Location") != "/auth/google/login" {
-		t.Errorf("status=%d location=%q, want redirect to /auth/google/login", w.Code, w.Header().Get("Location"))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/jira-notif/auth/google/login" {
+		t.Errorf("status=%d location=%q, want redirect to /jira-notif/auth/google/login", w.Code, w.Header().Get("Location"))
 	}
 }
 
@@ -75,8 +79,8 @@ func TestAuthMiddleware_RedirectsWhenUserDeactivated(t *testing.T) {
 	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{
 		found:   true,
 		session: &auth_dto.Session{SessionID: "s1", UserID: 1, Email: "off@esb.co.id", FlagActive: false, ExpiresAt: time.Now().Add(time.Hour)},
-	})
-	req := httptest.NewRequest("GET", "/dashboard", nil)
+	}, testCfg())
+	req := httptest.NewRequest("GET", "/jira-notif/dashboard", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "s1"})
 
 	w, _ := runMiddleware(t, mw, req)
@@ -88,8 +92,8 @@ func TestAuthMiddleware_RedirectsWhenUserDeactivated(t *testing.T) {
 
 func TestAuthMiddleware_AllowsValidSession(t *testing.T) {
 	session := &auth_dto.Session{SessionID: "s1", UserID: 1, Email: "dev@esb.co.id", FlagActive: true, ExpiresAt: time.Now().Add(time.Hour)}
-	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{found: true, session: session})
-	req := httptest.NewRequest("GET", "/dashboard", nil)
+	mw := AuthMiddleware(&fakeAuthServiceForMiddleware{found: true, session: session}, testCfg())
+	req := httptest.NewRequest("GET", "/jira-notif/dashboard", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "s1"})
 
 	_, c := runMiddleware(t, mw, req)
@@ -109,7 +113,7 @@ func TestAdminMiddleware_ForbidsNonAdmin(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Set(CurrentUserKey, auth_dto.Session{Email: "someone@esb.co.id"})
 
-	AdminMiddleware(&config.AppConfig{AdminEmail: "yusuf.wijaya@esb.co.id"})(c)
+	AdminMiddleware(testCfg())(c)
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want %d (spec AC1.8)", w.Code, http.StatusForbidden)
@@ -123,7 +127,7 @@ func TestAdminMiddleware_FailsClosedWhenRunWithoutAuthMiddleware(t *testing.T) {
 	// CurrentUserKey deliberately not set — simulates AdminMiddleware being
 	// mounted without AuthMiddleware running first.
 
-	AdminMiddleware(&config.AppConfig{AdminEmail: "yusuf.wijaya@esb.co.id"})(c)
+	AdminMiddleware(testCfg())(c)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d — must fail closed, not panic", w.Code, http.StatusInternalServerError)
@@ -136,7 +140,7 @@ func TestAdminMiddleware_AllowsAdmin(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Set(CurrentUserKey, auth_dto.Session{Email: "yusuf.wijaya@esb.co.id"})
 
-	AdminMiddleware(&config.AppConfig{AdminEmail: "yusuf.wijaya@esb.co.id"})(c)
+	AdminMiddleware(testCfg())(c)
 
 	if c.IsAborted() {
 		t.Error("expected the chain to continue for the admin email")

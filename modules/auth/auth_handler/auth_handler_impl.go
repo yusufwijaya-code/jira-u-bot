@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_service"
 	authtemplates "jira-u-bot/modules/auth/templates"
 	"jira-u-bot/modules/registration/registration_service"
@@ -22,17 +23,28 @@ const (
 )
 
 type loginPageData struct {
-	Error string
+	BasePath string
+	Error    string
 }
 
 type authHandlerImpl struct {
 	authService   auth_service.AuthService
+	basePath      string
 	loginTemplate *template.Template
 }
 
-func NewAuthHandler(authService auth_service.AuthService) AuthHandler {
+func NewAuthHandler(authService auth_service.AuthService, cfg *config.AppConfig) AuthHandler {
 	loginTmpl := template.Must(template.ParseFS(authtemplates.FS, "login.html"))
-	return &authHandlerImpl{authService: authService, loginTemplate: loginTmpl}
+	return &authHandlerImpl{authService: authService, basePath: cfg.BasePath, loginTemplate: loginTmpl}
+}
+
+// cookiePath scopes every cookie this handler sets to cfg.BasePath instead
+// of domain root "/" — labcup.tech hosts several repos behind one vhost,
+// each under its own prefix; a root-scoped cookie would be sent to every
+// other app's backend too and, worse, a same-named cookie set by another
+// app at "/" would silently clobber this one in the browser's cookie jar.
+func (h *authHandlerImpl) cookiePath() string {
+	return h.basePath
 }
 
 func (h *authHandlerImpl) Login(c *gin.Context) {
@@ -43,7 +55,7 @@ func (h *authHandlerImpl) Login(c *gin.Context) {
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(stateCookieName, state, stateCookieMaxAge, "/", "", true, true)
+	c.SetCookie(stateCookieName, state, stateCookieMaxAge, h.cookiePath(), "", true, true)
 	c.Redirect(http.StatusFound, h.authService.AuthCodeURL(state))
 }
 
@@ -53,7 +65,7 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	// single-use, and leaving it around after a failed/successful attempt
 	// just extends its (short) window for no benefit.
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(stateCookieName, "", -1, "/", "", true, true)
+	c.SetCookie(stateCookieName, "", -1, h.cookiePath(), "", true, true)
 
 	if cookieErr != nil || cookieState == "" || cookieState != c.Query("state") {
 		h.renderLoginError(c, "Sesi login tidak valid atau kedaluwarsa, coba lagi")
@@ -93,8 +105,8 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(sessionCookieName, token, sessionCookieMaxAge, "/", "", true, true)
-	c.Redirect(http.StatusFound, "/dashboard")
+	c.SetCookie(sessionCookieName, token, sessionCookieMaxAge, h.cookiePath(), "", true, true)
+	c.Redirect(http.StatusFound, h.basePath+"/dashboard")
 }
 
 func (h *authHandlerImpl) Logout(c *gin.Context) {
@@ -102,14 +114,14 @@ func (h *authHandlerImpl) Logout(c *gin.Context) {
 		h.authService.Logout(c.Request.Context(), token)
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(sessionCookieName, "", -1, "/", "", true, true)
-	c.Redirect(http.StatusFound, "/auth/google/login")
+	c.SetCookie(sessionCookieName, "", -1, h.cookiePath(), "", true, true)
+	c.Redirect(http.StatusFound, h.basePath+"/auth/google/login")
 }
 
 func (h *authHandlerImpl) renderLoginError(c *gin.Context, message string) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
-	h.loginTemplate.Execute(c.Writer, loginPageData{Error: message})
+	h.loginTemplate.Execute(c.Writer, loginPageData{BasePath: h.basePath, Error: message})
 }
 
 // randomState generates the CSRF state parameter (spec AC1.2/security) —

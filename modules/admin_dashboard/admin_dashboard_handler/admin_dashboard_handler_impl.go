@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/admin_dashboard/admin_dashboard_dto"
 	"jira-u-bot/modules/admin_dashboard/admin_dashboard_service"
 	admintemplates "jira-u-bot/modules/admin_dashboard/templates"
@@ -16,18 +17,21 @@ import (
 )
 
 type adminPageData struct {
-	Email string
-	Users []admin_dashboard_dto.UserRow
+	BasePath string
+	Email    string
+	Users    []admin_dashboard_dto.UserRow
 }
 
 type adminDashboardHandlerImpl struct {
 	svc      admin_dashboard_service.AdminDashboardService
+	basePath string
 	template *template.Template
 }
 
-func NewAdminDashboardHandler(svc admin_dashboard_service.AdminDashboardService) AdminDashboardHandler {
+func NewAdminDashboardHandler(svc admin_dashboard_service.AdminDashboardService, cfg *config.AppConfig) AdminDashboardHandler {
 	return &adminDashboardHandlerImpl{
 		svc:      svc,
+		basePath: cfg.BasePath,
 		template: template.Must(template.ParseFS(admintemplates.FS, "admin.html")),
 	}
 }
@@ -44,7 +48,7 @@ func (h *adminDashboardHandlerImpl) UserList(c *gin.Context) {
 	}
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
-	h.template.Execute(c.Writer, adminPageData{Email: currentUser(c).Email, Users: users})
+	h.template.Execute(c.Writer, adminPageData{BasePath: h.basePath, Email: currentUser(c).Email, Users: users})
 }
 
 func userIDParam(c *gin.Context) (int64, bool) {

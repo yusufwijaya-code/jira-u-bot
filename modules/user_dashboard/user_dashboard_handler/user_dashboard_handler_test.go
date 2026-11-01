@@ -9,12 +9,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_dto"
 	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/jira_client/jira_client_dto"
 	"jira-u-bot/modules/jira_credential/jira_credential_service"
 	"jira-u-bot/modules/user_dashboard/user_dashboard_dto"
 )
+
+func testCfg() *config.AppConfig {
+	return &config.AppConfig{BasePath: "/jira-notif"}
+}
 
 type fakeUserDashboardService struct {
 	board            user_dashboard_dto.Board
@@ -98,7 +103,7 @@ func TestDashboard_RendersBoardAndPreference(t *testing.T) {
 	svc := &fakeUserDashboardService{board: user_dashboard_dto.Board{Columns: []user_dashboard_dto.BoardColumn{
 		{Status: "To Do", Cards: []user_dashboard_dto.Card{{IssueKey: "OMS-1", Summary: "Test ticket"}}},
 	}}}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
 
 	w, c := newTestContextWithUser("GET", "/dashboard", "")
 	handler.Dashboard(c)
@@ -117,7 +122,7 @@ func TestDashboard_RendersBoardAndPreference(t *testing.T) {
 
 func TestUpdatePreference_PersistsSelectedTiers(t *testing.T) {
 	svc := &fakeUserDashboardService{}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/preference", `{"tiers":["1h","15m"]}`)
 	handler.UpdatePreference(c)
@@ -132,7 +137,7 @@ func TestUpdatePreference_PersistsSelectedTiers(t *testing.T) {
 
 func TestUpdatePreference_EmptyArrayPersistsAsEmptyString(t *testing.T) {
 	svc := &fakeUserDashboardService{}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/preference", `{"tiers":[]}`)
 	handler.UpdatePreference(c)
@@ -144,7 +149,7 @@ func TestUpdatePreference_EmptyArrayPersistsAsEmptyString(t *testing.T) {
 
 func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
 	chat := &fakeChatInteractiveForHandler{response: "✅ OMS-1 berhasil digeser ke Code Review"}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, chat, &fakeJiraCredentialForHandler{})
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, chat, &fakeJiraCredentialForHandler{}, testCfg())
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"target":"code-review"}`)
 	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
@@ -166,7 +171,7 @@ func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
 
 func TestSaveCredential_CallsUpsert(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/credential", `{"jiraEmail":"dev@esb.co.id","apiToken":"my-token"}`)
 	handler.SaveCredential(c)
@@ -178,7 +183,7 @@ func TestSaveCredential_CallsUpsert(t *testing.T) {
 
 func TestSaveCredential_RejectsMissingFields(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/credential", `{"jiraEmail":""}`)
 	handler.SaveCredential(c)
@@ -190,7 +195,7 @@ func TestSaveCredential_RejectsMissingFields(t *testing.T) {
 
 func TestSaveCredential_ReturnsServiceUnavailableWhenKeyNotConfigured(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{upsertErr: jira_credential_service.ErrEncryptionKeyNotConfigured}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/credential", `{"jiraEmail":"dev@esb.co.id","apiToken":"tok"}`)
 	handler.SaveCredential(c)
@@ -202,7 +207,7 @@ func TestSaveCredential_ReturnsServiceUnavailableWhenKeyNotConfigured(t *testing
 
 func TestDeleteCredential_CallsDelete(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
 
 	w, c := newTestContextWithUser("DELETE", "/api/dashboard/credential", "")
 	handler.DeleteCredential(c)

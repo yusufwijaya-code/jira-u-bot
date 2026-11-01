@@ -43,9 +43,9 @@
     <span class="brand">🤖 Jira U Bot Dashboard</span>
     <nav>
         <span>{{.Email}}</span>
-        <a href="/dashboard/team">Team</a>
-        <a href="/dashboard/overdue">Overdue</a>
-        <a href="/auth/logout">Logout</a>
+        <a href="{{.BasePath}}/dashboard/team">Team</a>
+        <a href="{{.BasePath}}/dashboard/overdue">Overdue</a>
+        <a href="{{.BasePath}}/auth/logout">Logout</a>
     </nav>
 </header>
 <main>
@@ -106,6 +106,8 @@
 
 <script>
 (function () {
+    var BASE_PATH = "{{.BasePath}}";
+
     function postJSON(url, method, body) {
         return fetch(url, {
             method: method,
@@ -120,7 +122,7 @@
             e.preventDefault();
             var tiers = Array.prototype.slice.call(prefForm.querySelectorAll('input[name=tiers]:checked')).map(function (el) { return el.value; });
             var msg = document.getElementById('preference-msg');
-            postJSON('/api/dashboard/preference', 'POST', { tiers: tiers }).then(function (r) {
+            postJSON(BASE_PATH + '/api/dashboard/preference', 'POST', { tiers: tiers }).then(function (r) {
                 msg.className = 'msg ' + (r.ok ? 'success' : 'error');
                 msg.textContent = r.ok ? 'Preference tersimpan ✅' : (r.data.error || 'Gagal menyimpan');
             });
@@ -132,7 +134,7 @@
         credForm.addEventListener('submit', function (e) {
             e.preventDefault();
             var msg = document.getElementById('credential-msg');
-            postJSON('/api/dashboard/credential', 'POST', {
+            postJSON(BASE_PATH + '/api/dashboard/credential', 'POST', {
                 jiraEmail: credForm.jiraEmail.value,
                 apiToken: credForm.apiToken.value
             }).then(function (r) {
@@ -146,7 +148,7 @@
     var deleteBtn = document.getElementById('delete-credential-btn');
     if (deleteBtn) {
         deleteBtn.addEventListener('click', function () {
-            postJSON('/api/dashboard/credential', 'DELETE').then(function (r) {
+            postJSON(BASE_PATH + '/api/dashboard/credential', 'DELETE').then(function (r) {
                 if (r.ok) { location.reload(); }
             });
         });
@@ -159,7 +161,7 @@
             var target = btn.getAttribute('data-target');
             var msg = document.getElementById('board-msg');
             btn.disabled = true;
-            postJSON('/api/dashboard/tickets/' + encodeURIComponent(issueKey) + '/transition', 'POST', { target: target }).then(function (r) {
+            postJSON(BASE_PATH + '/api/dashboard/tickets/' + encodeURIComponent(issueKey) + '/transition', 'POST', { target: target }).then(function (r) {
                 btn.disabled = false;
                 msg.className = 'msg ' + (r.ok ? 'success' : 'error');
                 msg.textContent = r.data.message || r.data.error || '';

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_dto"
 	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/sprint_report/sprint_report_dto"
@@ -24,6 +25,7 @@ var templateFuncs = template.FuncMap{
 const defaultCapPercent float64 = 12
 
 type reportPageData struct {
+	BasePath         string
 	Email            string
 	AvailableSprints []string
 	SelectedSprints  map[string]bool
@@ -34,12 +36,14 @@ type reportPageData struct {
 
 type sprintReportHandlerImpl struct {
 	svc      sprint_report_service.SprintReportService
+	basePath string
 	template *template.Template
 }
 
-func NewSprintReportHandler(svc sprint_report_service.SprintReportService) SprintReportHandler {
+func NewSprintReportHandler(svc sprint_report_service.SprintReportService, cfg *config.AppConfig) SprintReportHandler {
 	return &sprintReportHandlerImpl{
 		svc:      svc,
+		basePath: cfg.BasePath,
 		template: template.Must(template.New("report.html").Funcs(templateFuncs).ParseFS(sprintreporttemplates.FS, "report.html")),
 	}
 }
@@ -68,6 +72,7 @@ func (h *sprintReportHandlerImpl) Report(c *gin.Context) {
 	}
 
 	data := reportPageData{
+		BasePath:         h.basePath,
 		Email:            user.Email,
 		AvailableSprints: availableSprints,
 		SelectedSprints:  selectedSet,

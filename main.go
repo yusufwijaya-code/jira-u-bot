@@ -171,18 +171,18 @@ func main() {
 
 	authSessionRepo := auth_session_repository.NewAuthSessionRepository(db)
 	authSvc := auth_service.NewAuthService(&cfg, registrationService, registrationRepo, authSessionRepo)
-	authHandler := auth_handler.NewAuthHandler(authSvc)
+	authHandler := auth_handler.NewAuthHandler(authSvc, &cfg)
 
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
 		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar,
 	)
-	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc)
+	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, &cfg)
 
 	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc)
-	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
+	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc, &cfg)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
-	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc)
+	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc, &cfg)
 
 	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler)
 

@@ -9,10 +9,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_dto"
 	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/sprint_report/sprint_report_dto"
 )
+
+func testCfg() *config.AppConfig {
+	return &config.AppConfig{BasePath: "/jira-notif"}
+}
 
 type fakeSprintReportService struct {
 	availableSprints []string
@@ -41,7 +46,7 @@ func newReportTestContext(target string) (*httptest.ResponseRecorder, *gin.Conte
 
 func TestReport_ShowsSprintPickerWithoutSelection(t *testing.T) {
 	svc := &fakeSprintReportService{availableSprints: []string{"Sprint 20", "Sprint 19"}}
-	handler := NewSprintReportHandler(svc)
+	handler := NewSprintReportHandler(svc, testCfg())
 
 	w, c := newReportTestContext("/dashboard/report")
 	handler.Report(c)
@@ -69,7 +74,7 @@ func TestReport_GeneratesReportWithSelectedSprintsAndDefaultCap(t *testing.T) {
 			TotalCount:                1,
 		},
 	}
-	handler := NewSprintReportHandler(svc)
+	handler := NewSprintReportHandler(svc, testCfg())
 
 	w, c := newReportTestContext("/dashboard/report?sprint=Sprint+20")
 	handler.Report(c)
@@ -91,7 +96,7 @@ func TestReport_GeneratesReportWithSelectedSprintsAndDefaultCap(t *testing.T) {
 
 func TestReport_RespectsCustomCapParam(t *testing.T) {
 	svc := &fakeSprintReportService{availableSprints: []string{"Sprint 20"}}
-	handler := NewSprintReportHandler(svc)
+	handler := NewSprintReportHandler(svc, testCfg())
 
 	w, c := newReportTestContext("/dashboard/report?sprint=Sprint+20&cap=20")
 	handler.Report(c)
@@ -106,7 +111,7 @@ func TestReport_RespectsCustomCapParam(t *testing.T) {
 
 func TestReport_MultipleSprintsSelected(t *testing.T) {
 	svc := &fakeSprintReportService{availableSprints: []string{"Sprint 19", "Sprint 20"}}
-	handler := NewSprintReportHandler(svc)
+	handler := NewSprintReportHandler(svc, testCfg())
 
 	w, c := newReportTestContext("/dashboard/report?sprint=Sprint+19&sprint=Sprint+20")
 	handler.Report(c)
