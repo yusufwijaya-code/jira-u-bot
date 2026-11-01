@@ -146,6 +146,33 @@ func deadlineWithinDay(dayStart, dayEnd time.Time, remaining int64, cal business
 	return consumed, false, time.Time{}
 }
 
+// IsWithinBusinessHours checks t's own weekday/holiday/time-of-day against
+// the same morning/afternoon segments ElapsedBusinessSeconds sums over — t
+// counts only if it falls strictly inside one of them (lunch, evenings,
+// weekends, and holidays are all excluded, same as the elapsed-time calc).
+func (s *businessHoursServiceImpl) IsWithinBusinessHours(t time.Time, cal business_hours_dto.HolidayCalendar) bool {
+	t = t.In(jakartaLocation)
+
+	weekday := t.Weekday()
+	if weekday == time.Saturday || weekday == time.Sunday {
+		return false
+	}
+	if cal.IsHoliday(t) {
+		return false
+	}
+
+	y, m, d := t.Date()
+	loc := t.Location()
+	morningStart := time.Date(y, m, d, workStartHour, workStartMinute, 0, 0, loc)
+	morningEnd := time.Date(y, m, d, lunchStartHour, 0, 0, 0, loc)
+	afternoonStart := time.Date(y, m, d, lunchEndHour, 0, 0, 0, loc)
+	afternoonEnd := time.Date(y, m, d, workEndHour, workEndMinute, 0, 0, loc)
+
+	inMorning := !t.Before(morningStart) && t.Before(morningEnd)
+	inAfternoon := !t.Before(afternoonStart) && t.Before(afternoonEnd)
+	return inMorning || inAfternoon
+}
+
 // overlapSeconds returns the length, in seconds, of the intersection of
 // [aStart, aEnd) and [bStart, bEnd). Returns 0 if they don't overlap.
 func overlapSeconds(aStart, aEnd, bStart, bEnd time.Time) int64 {

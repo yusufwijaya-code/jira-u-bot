@@ -142,6 +142,16 @@ func (e *reminderEngineServiceImpl) resolveAssigneeDisplayName(ctx context.Conte
 }
 
 func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+	// The poller runs every 10s around the clock, so without this gate an
+	// overaged ticket would keep re-sending every 5 minutes all night/
+	// weekend/holiday too. Skipping here (instead of touching
+	// LastOverageReminderDate) leaves "due" exactly as-is, so the very next
+	// in-hours poll cycle sends immediately rather than waiting out another
+	// 5-minute window.
+	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
+		return nil
+	}
+
 	due := session.LastOverageReminderDate == nil || time.Since(*session.LastOverageReminderDate) >= overageRepeatInterval
 	if !due {
 		return nil

@@ -114,13 +114,31 @@ func (f *fakeGoogleChatNotifierService) SendReminder(ctx context.Context, msg go
 	return nil
 }
 
+// fakeBusinessHoursGate wraps the real BusinessHoursService (for accurate
+// ElapsedBusinessSeconds/DeadlineAfterBusinessSeconds math) but pins
+// IsWithinBusinessHours to a fixed value, so tests unrelated to the
+// off-hours overage gate don't become flaky depending on the wall-clock
+// time the suite happens to run at.
+type fakeBusinessHoursGate struct {
+	business_hours_service.BusinessHoursService
+	within bool
+}
+
+func (f *fakeBusinessHoursGate) IsWithinBusinessHours(t time.Time, cal business_hours_dto.HolidayCalendar) bool {
+	return f.within
+}
+
+func newAlwaysOpenBusinessHours() business_hours_service.BusinessHoursService {
+	return &fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: true}
+}
+
 // --- helpers ---
 
 func newTestEngine(reminderLog *fakeReminderLogService, issueSession *fakeIssueSessionService, registrationRepo *fakeRegistrationRepository, notifier *fakeGoogleChatNotifierService) ReminderEngineService {
 	return NewReminderEngineService(
 		"https://esb-id.atlassian.net",
 		business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(),
+		newAlwaysOpenBusinessHours(),
 		reminderLog,
 		issueSession,
 		registrationRepo,
@@ -451,6 +469,70 @@ func TestEvaluateAndSend_OverageAfterFiveMinutesResends(t *testing.T) {
 	}
 }
 
+func TestEvaluateAndSend_OverageSkipsSendOutsideBusinessHours(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		&fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: false},
+		reminderLog, issueSession, registrationRepo, notifier, nil, "",
+	)
+
+	old := time.Now().Add(-6 * time.Minute)
+	session := issue_session_dto.IssueSession{
+		IssueKey:                "OMS-1",
+		StoryPoints:             3,
+		AccumulatedSeconds:      12000,
+		LastOverageReminderDate: &old, // well past the 5-minute repeat interval
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 0 {
+		t.Errorf("len(sentMessages) = %d, want 0 — outside business hours, overage reminders must not fire (would otherwise spam all night/weekend)", len(notifier.sentMessages))
+	}
+	if len(issueSession.updateOverageCalls) != 0 {
+		t.Errorf("UpdateLastOverageReminder call count = %d, want 0 — skipping outside business hours must not touch the timestamp, so the next in-hours cycle sends immediately", len(issueSession.updateOverageCalls))
+	}
+}
+
+func TestEvaluateAndSend_OverageResumesAsSoonAsBusinessHoursReturn(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		newAlwaysOpenBusinessHours(),
+		reminderLog, issueSession, registrationRepo, notifier, nil, "",
+	)
+
+	// LastOverageReminderDate stays nil because the off-hours gate above
+	// never let a send reach the point of recording one — simulates a
+	// ticket that sat overaged through an entire night/weekend with zero
+	// sends, now evaluated on the first in-hours poll cycle.
+	session := issue_session_dto.IssueSession{
+		IssueKey:                "OMS-1",
+		StoryPoints:             3,
+		AccumulatedSeconds:      12000,
+		LastOverageReminderDate: nil,
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 1 {
+		t.Errorf("len(sentMessages) = %d, want 1 — business hours have returned, the overdue overage reminder must send immediately", len(notifier.sentMessages))
+	}
+}
+
 // --- EvaluateAndSend: assignee name resolution (AC3.3) ---
 
 func TestEvaluateAndSend_UsesRegisteredNameWhenAssigneeHasRegistered(t *testing.T) {
@@ -541,7 +623,7 @@ func TestEvaluateAndSend_SelfAssigneeAlwaysUsesWebhookNotifier(t *testing.T) {
 
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -571,7 +653,7 @@ func TestEvaluateAndSend_TeammateAssigneeUsesDMNotifierWhenConfigured(t *testing
 
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -600,7 +682,7 @@ func TestEvaluateAndSend_TeammateAssigneeFallsBackToWebhookWhenDMNotifierNil(t *
 
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -627,7 +709,7 @@ func TestNotifyIfEarlyCompletion_SendsNoticeWhenElapsedBelowBudget(t *testing.T)
 	}}
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -664,7 +746,7 @@ func TestNotifyIfEarlyCompletion_SkipsWhenElapsedAtOrAboveBudget(t *testing.T) {
 	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -686,7 +768,7 @@ func TestNotifyIfEarlyCompletion_RoutesSelfToWebhookAndTeammateToDM(t *testing.T
 	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -714,7 +796,7 @@ func TestNotifyReturnedToTodo_AlwaysSendsRegardlessOfElapsedVsBudget(t *testing.
 	}}
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -750,7 +832,7 @@ func TestNotifyReturnedToTodo_RoutesSelfToWebhookAndTeammateToDM(t *testing.T) {
 	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
 	)
 
@@ -786,7 +868,7 @@ func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T)
 
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		business_hours_service.NewBusinessHoursService(), reminderLog, issueSession,
+		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
 	)
 

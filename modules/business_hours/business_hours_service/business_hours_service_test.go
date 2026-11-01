@@ -306,3 +306,74 @@ func TestLoadHolidayCalendar_ReadsDatesFromJSONFile(t *testing.T) {
 		t.Error("2026-01-02 should not be a holiday")
 	}
 }
+
+func TestIsWithinBusinessHours_TrueDuringMorningAndAfternoonSegments(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	morning := time.Date(2026, 10, 26, 9, 0, 0, 0, loc)    // Monday 09:00
+	afternoon := time.Date(2026, 10, 26, 14, 0, 0, 0, loc) // Monday 14:00
+
+	if !svc.IsWithinBusinessHours(morning, cal) {
+		t.Error("09:00 on a Monday should be within business hours")
+	}
+	if !svc.IsWithinBusinessHours(afternoon, cal) {
+		t.Error("14:00 on a Monday should be within business hours")
+	}
+}
+
+func TestIsWithinBusinessHours_FalseDuringLunchBreak(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	lunch := time.Date(2026, 10, 26, 12, 30, 0, 0, loc) // Monday 12:30
+
+	if svc.IsWithinBusinessHours(lunch, cal) {
+		t.Error("12:30 (lunch break) should not be within business hours")
+	}
+}
+
+func TestIsWithinBusinessHours_FalseBeforeOpenAndAfterClose(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	beforeOpen := time.Date(2026, 10, 26, 7, 0, 0, 0, loc)  // Monday 07:00
+	afterClose := time.Date(2026, 10, 26, 20, 0, 0, 0, loc) // Monday 20:00
+
+	if svc.IsWithinBusinessHours(beforeOpen, cal) {
+		t.Error("07:00 should not be within business hours")
+	}
+	if svc.IsWithinBusinessHours(afterClose, cal) {
+		t.Error("20:00 should not be within business hours")
+	}
+}
+
+func TestIsWithinBusinessHours_FalseOnWeekend(t *testing.T) {
+	loc := mustLoadLocation(t)
+	svc := NewBusinessHoursService()
+	cal := business_hours_dto.HolidayCalendar{}
+
+	saturday := time.Date(2026, 10, 31, 10, 0, 0, 0, loc) // Saturday 10:00
+
+	if svc.IsWithinBusinessHours(saturday, cal) {
+		t.Error("Saturday 10:00 should not be within business hours")
+	}
+}
+
+func TestIsWithinBusinessHours_FalseOnHoliday(t *testing.T) {
+	svc := NewBusinessHoursService()
+
+	cal, err := svc.LoadHolidayCalendar("testdata/holidays_sample.json")
+	if err != nil {
+		t.Fatalf("LoadHolidayCalendar returned error: %v", err)
+	}
+
+	holidayAt10am := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC) // 2026-01-01 is a holiday per testdata
+
+	if svc.IsWithinBusinessHours(holidayAt10am, cal) {
+		t.Error("2026-01-01 10:00 should not be within business hours (holiday)")
+	}
+}
