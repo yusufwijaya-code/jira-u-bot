@@ -1,0 +1,9 @@
+<form [formGroup]="form" (ngSubmit)="onSubmit()">
+  <div class="tiers">
+    <label *ngFor="let opt of tierOptions">
+      <input type="checkbox" [formControlName]="opt.code" /> {{ opt.label }}
+    </label>
+  </div>
+  <button type="submit" [disabled]="submitting">Simpan Preference</button>
+</form>
+<p class="msg" [class.success]="message && !message.isError" [class.error]="message?.isError">{{ message?.text }}</p>
