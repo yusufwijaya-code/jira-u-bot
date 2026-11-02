@@ -52,6 +52,15 @@ func (h *adminDashboardHandlerImpl) UserList(c *gin.Context) {
 	h.template.Execute(c.Writer, adminPageData{BasePath: h.basePath, Email: currentUser(c).Email, Users: users})
 }
 
+func (h *adminDashboardHandlerImpl) ListUsers(c *gin.Context) {
+	users, err := h.svc.ListUsers(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memuat daftar user, coba lagi"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"users": users})
+}
+
 func userIDParam(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("userID"), 10, 64)
 	return id, err == nil

@@ -2,6 +2,7 @@ package admin_dashboard_handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +23,7 @@ func testCfg() *config.AppConfig {
 
 type fakeAdminDashboardService struct {
 	users                []admin_dashboard_dto.UserRow
+	err                  error
 	setActiveErr         error
 	lastSetActiveArgs    [3]int64 // acting, target, active(as 0/1)
 	deleteUserErr        error
@@ -34,7 +36,7 @@ type fakeAdminDashboardService struct {
 }
 
 func (f *fakeAdminDashboardService) ListUsers(ctx context.Context) ([]admin_dashboard_dto.UserRow, error) {
-	return f.users, nil
+	return f.users, f.err
 }
 func (f *fakeAdminDashboardService) SetActive(ctx context.Context, actingUserID, targetUserID int64, active bool) error {
 	activeInt := int64(0)
@@ -195,5 +197,34 @@ func TestBroadcastMessage_ReturnsServiceUnavailableWhenDMNotConfigured(t *testin
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestListUsers_ReturnsUsersAsJSON(t *testing.T) {
+	svc := &fakeAdminDashboardService{users: []admin_dashboard_dto.UserRow{
+		{UserID: 2, Email: "dev@esb.co.id", FlagActive: true, HasCredential: true, CredentialMasked: "••••ab3f"},
+	}}
+	handler := NewAdminDashboardHandler(svc, testCfg())
+
+	w, c := newAdminTestContext("GET", "/api/dashboard/admin/users", "", nil)
+	handler.ListUsers(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"email":"dev@esb.co.id"`) || !strings.Contains(w.Body.String(), `"credentialMasked":"••••ab3f"`) {
+		t.Errorf("body missing user row: %s", w.Body.String())
+	}
+}
+
+func TestListUsers_ReturnsServerErrorWhenServiceFails(t *testing.T) {
+	svc := &fakeAdminDashboardService{err: errors.New("db down")}
+	handler := NewAdminDashboardHandler(svc, testCfg())
+
+	w, c := newAdminTestContext("GET", "/api/dashboard/admin/users", "", nil)
+	handler.ListUsers(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
 	}
 }

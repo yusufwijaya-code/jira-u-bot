@@ -6,15 +6,20 @@ import (
 	"jira-u-bot/modules/admin_dashboard/admin_dashboard_handler"
 )
 
-// Router mounts the Admin Dashboard under group — the caller is
-// responsible for applying AuthMiddleware AND AdminMiddleware to group
-// before passing it here (spec AC6.6), same division of responsibility as
-// auth.Router/user_dashboard.Router not knowing about sessions/roles.
-func Router(group *gin.RouterGroup, handler admin_dashboard_handler.AdminDashboardHandler) {
-	group.GET("", handler.UserList)
-	group.POST("/users/:userID/active", handler.ToggleActive)
-	group.POST("/users/:userID/jira-account-id", handler.EditJiraAccountID)
-	group.DELETE("/users/:userID/credential", handler.DeleteUserCredential)
-	group.DELETE("/users/:userID", handler.DeleteUser)
-	group.POST("/broadcast", handler.BroadcastMessage)
+// Router mounts the Admin Dashboard's HTML page and JSON actions on
+// actionGroup (unchanged paths under the old /dashboard/admin/* prefix)
+// and the new JSON user list on apiGroup (new GET /api/dashboard/admin/users
+// path, Tech Spec "Angular Dashboard Revamp", Repository 1 Chapter 5) — the
+// caller is responsible for applying AuthMiddleware/AuthMiddlewareAPI AND
+// AdminMiddleware to both groups before passing them here, same division
+// of responsibility as before.
+func Router(actionGroup *gin.RouterGroup, apiGroup *gin.RouterGroup, handler admin_dashboard_handler.AdminDashboardHandler) {
+	actionGroup.GET("", handler.UserList)
+	actionGroup.POST("/users/:userID/active", handler.ToggleActive)
+	actionGroup.POST("/users/:userID/jira-account-id", handler.EditJiraAccountID)
+	actionGroup.DELETE("/users/:userID/credential", handler.DeleteUserCredential)
+	actionGroup.DELETE("/users/:userID", handler.DeleteUser)
+	actionGroup.POST("/broadcast", handler.BroadcastMessage)
+
+	apiGroup.GET("/users", handler.ListUsers)
 }

@@ -6,14 +6,14 @@ import "time"
 // "Dashboard Jira Manage", AC6.1) — CredentialMasked is only meaningful
 // when HasCredential is true, and is never the full token (AC6.4).
 type UserRow struct {
-	UserID           int64
-	Email            string
-	UserName         string
-	FlagActive       bool
-	CreatedDate      time.Time
-	JiraAccountID    string
-	HasCredential    bool
-	CredentialMasked string
+	UserID           int64     `json:"userId"`
+	Email            string    `json:"email"`
+	UserName         string    `json:"userName"`
+	FlagActive       bool      `json:"flagActive"`
+	CreatedDate      time.Time `json:"createdDate"`
+	JiraAccountID    string    `json:"jiraAccountId"`
+	HasCredential    bool      `json:"hasCredential"`
+	CredentialMasked string    `json:"credentialMasked"`
 }
 
 // BroadcastResult reports the outcome of BroadcastMessage — FailedEmails is

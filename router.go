@@ -62,7 +62,11 @@ func SetupRouter(
 
 	dashboardAdmin := dashboardPages.Group("/admin")
 	dashboardAdmin.Use(auth_middleware.AdminMiddleware(cfg))
-	admin_dashboard.Router(dashboardAdmin, adminDashboardHandler)
+
+	apiDashboardAdmin := dashboardAPI.Group("/admin")
+	apiDashboardAdmin.Use(auth_middleware.AdminMiddleware(cfg))
+
+	admin_dashboard.Router(dashboardAdmin, apiDashboardAdmin, adminDashboardHandler)
 
 	return r
 }
