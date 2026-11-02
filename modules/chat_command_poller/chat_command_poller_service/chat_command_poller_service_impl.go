@@ -107,18 +107,23 @@ func (p *chatCommandPollerServiceImpl) processSpace(ctx context.Context, user re
 
 	sort.Slice(messages, func(i, j int) bool { return messages[i].createTime.Before(messages[j].createTime) })
 
-	latest := cursor
+	if !cursorFound {
+		// First-ever poll for this space: never replay pre-existing history
+		// as commands — just establish the starting point at the newest
+		// message seen so far.
+		latest := messages[len(messages)-1].createTime
+		if err := p.cursorRepo.UpdateCursor(ctx, space, latest); err != nil {
+			log.Printf("chat_command_poller: UpdateCursor(%s) failed: %v", space, err)
+		}
+		return
+	}
+
 	for _, msg := range messages {
-		if msg.createTime.After(latest) {
-			latest = msg.createTime
+		if !msg.createTime.After(cursor) {
+			continue // already processed in a previous cycle
 		}
 
 		switch {
-		case !cursorFound:
-			// First-ever poll for this space: never replay pre-existing
-			// history as commands, just establish the starting point.
-		case !msg.createTime.After(cursor):
-			// Already processed in a previous cycle.
 		case msg.senderName == p.selfUserID:
 			// Our own sent message (a prior reply, or the operator typing).
 		case !strings.HasPrefix(strings.TrimSpace(msg.text), commandPrefix):
@@ -129,10 +134,18 @@ func (p *chatCommandPollerServiceImpl) processSpace(ctx context.Context, user re
 				log.Printf("chat_command_poller: SendPlainTextDM(%s) failed: %v", user.Email, err)
 			}
 		}
-	}
 
-	if err := p.cursorRepo.UpdateCursor(ctx, space, latest); err != nil {
-		log.Printf("chat_command_poller: UpdateCursor(%s) failed: %v", space, err)
+		// Advance the cursor right after handling THIS message, not batched
+		// once at the end of the whole cycle — confirmed live: if the
+		// process restarts (or this write itself transiently fails)
+		// between two replies in the same batch, a single end-of-batch
+		// cursor update would leave EVERY already-replied message in this
+		// cycle unmarked, so the next cycle replays and double-sends the
+		// whole batch. Per-message persistence bounds a replay to at most
+		// the one message whose cursor write didn't make it.
+		if err := p.cursorRepo.UpdateCursor(ctx, space, msg.createTime); err != nil {
+			log.Printf("chat_command_poller: UpdateCursor(%s) failed: %v", space, err)
+		}
 	}
 }
 

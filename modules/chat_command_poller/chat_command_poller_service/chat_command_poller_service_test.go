@@ -88,6 +88,14 @@ type fakeCursorRepoForPoller struct {
 	cursors      map[string]time.Time
 	updateCalls  map[string]time.Time
 	getCursorErr error
+	// updateCallLog records every UpdateCursor call (in order), unlike
+	// updateCalls which only keeps the latest per space — needed to assert
+	// the cursor advances per-message, not once per batch.
+	updateCallLog []time.Time
+	// failUpdateAt, if > 0, makes the Nth UpdateCursor call (1-indexed,
+	// across the whole test) fail and not persist — simulates a transient
+	// DB write failure (or a process restart) partway through a batch.
+	failUpdateAt int
 }
 
 func newFakeCursorRepoForPoller() *fakeCursorRepoForPoller {
@@ -103,6 +111,10 @@ func (f *fakeCursorRepoForPoller) GetCursor(ctx context.Context, spaceID string)
 }
 
 func (f *fakeCursorRepoForPoller) UpdateCursor(ctx context.Context, spaceID string, lastProcessed time.Time) error {
+	f.updateCallLog = append(f.updateCallLog, lastProcessed)
+	if f.failUpdateAt > 0 && len(f.updateCallLog) == f.failUpdateAt {
+		return errors.New("simulated cursor persist failure")
+	}
 	f.updateCalls[spaceID] = lastProcessed
 	f.cursors[spaceID] = lastProcessed
 	return nil
@@ -423,5 +435,86 @@ func TestPollOnce_ProcessesEachUsersSpaceIndependently(t *testing.T) {
 
 	if len(chatInteractive.calls) != 2 {
 		t.Fatalf("RouteCommand calls = %v, want 2 (one per user's space)", chatInteractive.calls)
+	}
+}
+
+func TestPollOnce_AdvancesCursorPerMessageNotOncePerBatch(t *testing.T) {
+	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
+	msg1Time := cursor.Add(1 * time.Minute)
+	msg2Time := cursor.Add(2 * time.Minute)
+	server := newMessagesServer(t, map[string][]messageFixture{
+		"spaces/ABC": {
+			{senderName: "users/OTHER", text: "/u-geser<CORE-1>:code-review", createTime: msg1Time},
+			{senderName: "users/OTHER", text: "/u-geser<CORE-2>:code-review", createTime: msg2Time},
+		},
+	}, nil)
+	defer server.Close()
+
+	cursorRepo := newFakeCursorRepoForPoller()
+	cursorRepo.cursors["spaces/ABC"] = cursor
+	chatInteractive := &fakeChatInteractiveServiceForPoller{}
+	dmSender := &fakeDMSenderForPoller{}
+	registrationRepo := &fakeRegistrationRepoForPoller{users: []registration_dto.User{
+		{Email: "teammate@esb.co.id", GoogleChatDMSpaceID: "spaces/ABC"},
+	}}
+	svc := newTestPoller(&fakeChatOAuthServiceForPoller{token: "tok"}, registrationRepo, cursorRepo, chatInteractive, dmSender, selfUserID)
+
+	withTestServer(server, func() {
+		if err := svc.pollOnce(context.Background()); err != nil {
+			t.Fatalf("pollOnce returned error: %v", err)
+		}
+	})
+
+	if len(cursorRepo.updateCallLog) != 2 {
+		t.Fatalf("UpdateCursor call count = %d, want 2 — the cursor must advance after EACH message, not once at the end of the batch (a crash/restart between two replies would otherwise replay the whole batch and double-send, reproducing a real production incident)", len(cursorRepo.updateCallLog))
+	}
+	if !cursorRepo.updateCallLog[0].Equal(msg1Time) || !cursorRepo.updateCallLog[1].Equal(msg2Time) {
+		t.Errorf("UpdateCursor call sequence = %v, want [%v, %v] in order", cursorRepo.updateCallLog, msg1Time, msg2Time)
+	}
+}
+
+func TestPollOnce_CursorPersistFailureOnlyReplaysUnpersistedTail(t *testing.T) {
+	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
+	msg1Time := cursor.Add(1 * time.Minute)
+	msg2Time := cursor.Add(2 * time.Minute)
+	server := newMessagesServer(t, map[string][]messageFixture{
+		"spaces/ABC": {
+			{senderName: "users/OTHER", text: "/u-geser<CORE-1>:code-review", createTime: msg1Time},
+			{senderName: "users/OTHER", text: "/u-geser<CORE-2>:code-review", createTime: msg2Time},
+		},
+	}, nil)
+	defer server.Close()
+
+	cursorRepo := newFakeCursorRepoForPoller()
+	cursorRepo.cursors["spaces/ABC"] = cursor
+	cursorRepo.failUpdateAt = 2 // simulate msg2's cursor write failing (transient DB hiccup / restart)
+	chatInteractive := &fakeChatInteractiveServiceForPoller{}
+	dmSender := &fakeDMSenderForPoller{}
+	registrationRepo := &fakeRegistrationRepoForPoller{users: []registration_dto.User{
+		{Email: "teammate@esb.co.id", GoogleChatDMSpaceID: "spaces/ABC"},
+	}}
+	svc := newTestPoller(&fakeChatOAuthServiceForPoller{token: "tok"}, registrationRepo, cursorRepo, chatInteractive, dmSender, selfUserID)
+
+	withTestServer(server, func() {
+		if err := svc.pollOnce(context.Background()); err != nil {
+			t.Fatalf("first pollOnce returned error: %v", err)
+		}
+	})
+	if len(chatInteractive.calls) != 2 {
+		t.Fatalf("after first pollOnce, RouteCommand calls = %v, want 2 (both messages replied to once)", chatInteractive.calls)
+	}
+
+	cursorRepo.failUpdateAt = 0 // the transient failure is over now (e.g. service back up)
+	withTestServer(server, func() {
+		if err := svc.pollOnce(context.Background()); err != nil {
+			t.Fatalf("second pollOnce returned error: %v", err)
+		}
+	})
+
+	if len(chatInteractive.calls) != 3 {
+		t.Fatalf("after second pollOnce, RouteCommand calls = %v, want 3 total — only msg2 (whose cursor write failed) should replay, msg1's cursor was already safely persisted before the failure", chatInteractive.calls)
+	}
+	if chatInteractive.calls[2] != "teammate@esb.co.id|/u-geser<CORE-2>:code-review" {
+		t.Errorf("the replayed call = %q, want it to be the CORE-2 message", chatInteractive.calls[2])
 	}
 }
