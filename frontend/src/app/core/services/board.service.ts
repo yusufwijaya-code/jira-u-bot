@@ -25,6 +25,15 @@ export interface BoardResponse {
   credential: { hasCredential: boolean; maskedPreview: string };
 }
 
+export interface TeamGroup {
+  assigneeEmail: string;
+  cards: Card[];
+}
+
+export interface TeamResponse {
+  groups: TeamGroup[];
+}
+
 export interface TransitionResponse {
   message: string;
 }
@@ -57,5 +66,9 @@ export class BoardService {
       `${environment.apiBasePath}/api/dashboard/tickets/${encodeURIComponent(issueKey)}/transition`,
       { target },
     );
+  }
+
+  getTeam(): Observable<TeamResponse> {
+    return this.http.get<TeamResponse>(`${environment.apiBasePath}/api/dashboard/team`);
   }
 }
