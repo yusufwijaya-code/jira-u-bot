@@ -56,7 +56,7 @@ func SetupRouter(
 	dashboardPages := base.Group("/dashboard")
 	dashboardPages.Use(auth_middleware.AuthMiddleware(authSvc, cfg))
 	dashboardAPI := base.Group("/api/dashboard")
-	dashboardAPI.Use(auth_middleware.AuthMiddleware(authSvc, cfg))
+	dashboardAPI.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
 	user_dashboard.Router(dashboardPages, dashboardAPI, userDashboardHandler)
 	sprint_report.Router(dashboardPages, sprintReportHandler)
 

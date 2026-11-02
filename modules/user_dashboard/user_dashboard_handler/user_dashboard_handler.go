@@ -3,7 +3,10 @@ package user_dashboard_handler
 import "github.com/gin-gonic/gin"
 
 type UserDashboardHandler interface {
-	Dashboard(c *gin.Context)
+	// GetBoard returns My Board as JSON — consumed by the Angular
+	// frontend's board.service.ts (Tech Spec "Angular Dashboard Revamp",
+	// Repository 1 Chapter 2).
+	GetBoard(c *gin.Context)
 	TeamView(c *gin.Context)
 	OverdueView(c *gin.Context)
 	UpdatePreference(c *gin.Context)

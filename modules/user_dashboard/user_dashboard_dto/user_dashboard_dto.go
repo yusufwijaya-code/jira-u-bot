@@ -5,26 +5,26 @@ package user_dashboard_dto
 // tr_issuesession row (Tech Spec "Dashboard Jira Manage", AC3.2); every
 // other status shows just IssueKey/Summary/Status.
 type Card struct {
-	IssueKey        string
-	Summary         string
-	Status          string
-	HasBudgetDetail bool
-	StoryPoints     float64
-	ElapsedLabel    string
-	RemainingLabel  string
-	DeadlineLabel   string
+	IssueKey        string  `json:"issueKey"`
+	Summary         string  `json:"summary"`
+	Status          string  `json:"status"`
+	HasBudgetDetail bool    `json:"hasBudgetDetail"`
+	StoryPoints     float64 `json:"storyPoints"`
+	ElapsedLabel    string  `json:"elapsedLabel"`
+	RemainingLabel  string  `json:"remainingLabel"`
+	DeadlineLabel   string  `json:"deadlineLabel"`
 }
 
 // BoardColumn groups Card by Jira status, in first-seen order from the
 // Jira API response (spec AC3.1 — no workflow-aware ordering, see Out of
 // Scope).
 type BoardColumn struct {
-	Status string
-	Cards  []Card
+	Status string `json:"status"`
+	Cards  []Card `json:"cards"`
 }
 
 type Board struct {
-	Columns []BoardColumn
+	Columns []BoardColumn `json:"columns"`
 }
 
 // TeamGroup is one assignee's active (Code Process) tickets — Chapter 9c,

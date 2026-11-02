@@ -2,6 +2,7 @@ package user_dashboard_handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -99,24 +100,59 @@ func newTestContextWithUser(method, path, body string) (*httptest.ResponseRecord
 	return w, c
 }
 
-func TestDashboard_RendersBoardAndPreference(t *testing.T) {
+func TestGetBoard_ReturnsBoardPreferenceAndCredentialAsJSON(t *testing.T) {
 	svc := &fakeUserDashboardService{board: user_dashboard_dto.Board{Columns: []user_dashboard_dto.BoardColumn{
-		{Status: "To Do", Cards: []user_dashboard_dto.Card{{IssueKey: "OMS-1", Summary: "Test ticket"}}},
+		{Status: "Code Process", Cards: []user_dashboard_dto.Card{
+			{IssueKey: "OMS-1", Summary: "Test ticket", Status: "Code Process", HasBudgetDetail: true, StoryPoints: 3, ElapsedLabel: "1 jam", RemainingLabel: "2 jam"},
+		}},
 	}}}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	cred := &fakeJiraCredentialForHandler{maskedPreview: "••••ab3f", maskedFound: true}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, cred, testCfg())
 
-	w, c := newTestContextWithUser("GET", "/dashboard", "")
-	handler.Dashboard(c)
+	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
+	handler.GetBoard(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "OMS-1") {
-		t.Error("response body missing the board ticket OMS-1")
+	if !strings.Contains(body, `"issueKey":"OMS-1"`) {
+		t.Errorf("body missing board ticket: %s", body)
 	}
-	if !strings.Contains(body, "T-2 jam") {
-		t.Error("response body missing the tier preference checkboxes")
+	if !strings.Contains(body, `"tiers":[`) {
+		t.Errorf("body missing tierPreference.tiers: %s", body)
+	}
+	if !strings.Contains(body, `"hasCredential":true`) || !strings.Contains(body, `"maskedPreview":"••••ab3f"`) {
+		t.Errorf("body missing credential info: %s", body)
+	}
+}
+
+func TestGetBoard_DefaultsAllTiersWhenPreferenceNeverSet(t *testing.T) {
+	svc := &fakeUserDashboardService{getPreference: nil}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
+	handler.GetBoard(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	for _, code := range []string{"2h", "1h", "30m", "15m", "5m", "1m"} {
+		if !strings.Contains(w.Body.String(), `"`+code+`"`) {
+			t.Errorf("body missing default tier %q: %s", code, w.Body.String())
+		}
+	}
+}
+
+func TestGetBoard_ReturnsServerErrorWhenServiceFails(t *testing.T) {
+	svc := &fakeUserDashboardService{boardErr: errors.New("jira down")}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
+	handler.GetBoard(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
 	}
 }
 

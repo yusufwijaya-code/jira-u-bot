@@ -11,10 +11,10 @@ import (
 // function doesn't apply auth itself, same division of responsibility as
 // auth.Router not knowing about sessions.
 func Router(dashboard *gin.RouterGroup, api *gin.RouterGroup, handler user_dashboard_handler.UserDashboardHandler) {
-	dashboard.GET("", handler.Dashboard)
 	dashboard.GET("/team", handler.TeamView)
 	dashboard.GET("/overdue", handler.OverdueView)
 
+	api.GET("/board", handler.GetBoard)
 	api.POST("/preference", handler.UpdatePreference)
 	api.POST("/tickets/:issueKey/transition", handler.TransitionTicket)
 	api.POST("/credential", handler.SaveCredential)

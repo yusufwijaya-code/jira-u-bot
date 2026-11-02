@@ -27,21 +27,6 @@ var tierOptions = []struct{ Code, Label string }{
 	{"1m", "T-1 menit"},
 }
 
-type tierCheckbox struct {
-	Code    string
-	Label   string
-	Checked bool
-}
-
-type dashboardPageData struct {
-	BasePath         string
-	Email            string
-	Board            user_dashboard_dto.Board
-	TierCheckboxes   []tierCheckbox
-	HasCredential    bool
-	CredentialMasked string
-}
-
 type teamPageData struct {
 	BasePath string
 	Email    string
@@ -60,9 +45,8 @@ type userDashboardHandlerImpl struct {
 	jiraCredential  jira_credential_service.JiraCredentialService
 	basePath        string
 
-	dashboardTemplate *template.Template
-	teamTemplate      *template.Template
-	overdueTemplate   *template.Template
+	teamTemplate    *template.Template
+	overdueTemplate *template.Template
 }
 
 func NewUserDashboardHandler(
@@ -72,13 +56,12 @@ func NewUserDashboardHandler(
 	cfg *config.AppConfig,
 ) UserDashboardHandler {
 	return &userDashboardHandlerImpl{
-		dashboardSvc:      dashboardSvc,
-		chatInteractive:   chatInteractive,
-		jiraCredential:    jiraCredential,
-		basePath:          cfg.BasePath,
-		dashboardTemplate: template.Must(template.ParseFS(userdashboardtemplates.FS, "dashboard.html")),
-		teamTemplate:      template.Must(template.ParseFS(userdashboardtemplates.FS, "team.html")),
-		overdueTemplate:   template.Must(template.ParseFS(userdashboardtemplates.FS, "overdue.html")),
+		dashboardSvc:    dashboardSvc,
+		chatInteractive: chatInteractive,
+		jiraCredential:  jiraCredential,
+		basePath:        cfg.BasePath,
+		teamTemplate:    template.Must(template.ParseFS(userdashboardtemplates.FS, "team.html")),
+		overdueTemplate: template.Must(template.ParseFS(userdashboardtemplates.FS, "overdue.html")),
 	}
 }
 
@@ -86,22 +69,22 @@ func currentUser(c *gin.Context) auth_dto.Session {
 	return c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session)
 }
 
-func (h *userDashboardHandlerImpl) Dashboard(c *gin.Context) {
+func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
 	user := currentUser(c)
 	ctx := c.Request.Context()
 
 	board, err := h.dashboardSvc.GetMyBoard(ctx, user.Email)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat board, coba lagi")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load board"})
 		return
 	}
 
 	savedPreference, err := h.dashboardSvc.GetReminderTierPreference(ctx, user.Email)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat preference, coba lagi")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load board"})
 		return
 	}
-	// nil (never set) means every tier is checked by default (spec AC2.2);
+	// nil (never set) means every tier is checked by default (spec AC5.2);
 	// a non-nil CSV (possibly "") means only the listed codes are checked.
 	preferredSet := map[string]bool{}
 	if savedPreference != nil {
@@ -109,23 +92,24 @@ func (h *userDashboardHandlerImpl) Dashboard(c *gin.Context) {
 			preferredSet[code] = true
 		}
 	}
-	checkboxes := make([]tierCheckbox, 0, len(tierOptions))
+	tiers := make([]string, 0, len(tierOptions))
 	for _, opt := range tierOptions {
-		checked := savedPreference == nil || preferredSet[opt.Code]
-		checkboxes = append(checkboxes, tierCheckbox{Code: opt.Code, Label: opt.Label, Checked: checked})
+		if savedPreference == nil || preferredSet[opt.Code] {
+			tiers = append(tiers, opt.Code)
+		}
 	}
 
 	credentialMasked, hasCredential, _ := h.jiraCredential.MaskedPreview(ctx, user.UserID)
 
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	h.dashboardTemplate.Execute(c.Writer, dashboardPageData{
-		BasePath:         h.basePath,
-		Email:            user.Email,
-		Board:            board,
-		TierCheckboxes:   checkboxes,
-		HasCredential:    hasCredential,
-		CredentialMasked: credentialMasked,
+	c.JSON(http.StatusOK, gin.H{
+		"columns": board.Columns,
+		"tierPreference": gin.H{
+			"tiers": tiers,
+		},
+		"credential": gin.H{
+			"hasCredential": hasCredential,
+			"maskedPreview": credentialMasked,
+		},
 	})
 }
 
