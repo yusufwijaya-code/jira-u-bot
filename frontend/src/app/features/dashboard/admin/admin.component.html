@@ -11,9 +11,19 @@
         <tr *ngFor="let user of users" [attr.data-user-id]="user.userId">
           <td>{{ user.email }}</td>
           <td><span class="status-badge" [class.active]="user.flagActive">{{ user.flagActive ? 'Aktif' : 'Nonaktif' }}</span></td>
-          <td>{{ user.jiraAccountId || '—' }}</td>
-          <td>{{ user.hasCredential ? 'Aktif' : '—' }}</td>
-          <td class="actions"></td>
+          <td>
+            <input type="text" [(ngModel)]="jiraAccountIdDrafts[user.userId]" [disabled]="rowActionInFlight[user.userId]" />
+            <button (click)="onSaveJiraAccountId(user)" [disabled]="rowActionInFlight[user.userId]">Simpan ID</button>
+          </td>
+          <td>
+            {{ user.hasCredential ? 'Aktif' : '—' }}
+            <button *ngIf="user.hasCredential" (click)="onDeleteCredential(user)" [disabled]="rowActionInFlight[user.userId]">Hapus Credential</button>
+          </td>
+          <td class="actions">
+            <button (click)="onToggleActive(user)" [disabled]="rowActionInFlight[user.userId]">{{ user.flagActive ? 'Nonaktifkan' : 'Aktifkan' }}</button>
+            <button class="secondary" (click)="onDeleteUser(user)" [disabled]="rowActionInFlight[user.userId]">Hapus</button>
+            <div class="msg error" *ngIf="rowMessage[user.userId]">{{ rowMessage[user.userId] }}</div>
+          </td>
         </tr>
       </tbody>
     </table>

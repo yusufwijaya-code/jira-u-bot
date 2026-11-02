@@ -8,7 +8,7 @@ describe('AdminComponent', () => {
   let adminService: jasmine.SpyObj<AdminService>;
 
   beforeEach(async () => {
-    adminService = jasmine.createSpyObj('AdminService', ['listUsers']);
+    adminService = jasmine.createSpyObj('AdminService', ['listUsers', 'toggleActive', 'editJiraAccountId', 'deleteCredential', 'deleteUser']);
 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
@@ -55,5 +55,104 @@ describe('AdminComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.msg.error').textContent).toContain('Gagal memuat daftar user, coba lagi');
+  });
+
+  it('toggles active status and reloads the list on success', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    adminService.toggleActive.and.returnValue(of({}));
+
+    fixture.nativeElement.querySelector('.actions button').click();
+
+    expect(adminService.toggleActive).toHaveBeenCalledWith(1, false);
+    expect(adminService.listUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a row-scoped error message when toggling active status fails', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    adminService.toggleActive.and.returnValue(throwError(() => ({ error: { error: 'Tidak bisa menonaktifkan diri sendiri' } })));
+
+    fixture.nativeElement.querySelector('.actions button').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.actions .msg.error').textContent).toContain('Tidak bisa menonaktifkan diri sendiri');
+  });
+
+  it('saves the Jira Account ID optimistically, without reloading the list', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: 'old-id', hasCredential: false, credentialMasked: '' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    adminService.editJiraAccountId.and.returnValue(of({}));
+
+    fixture.componentInstance['jiraAccountIdDrafts'][1] = 'new-id';
+    fixture.componentInstance['onSaveJiraAccountId'](user);
+
+    expect(adminService.editJiraAccountId).toHaveBeenCalledWith(1, 'new-id');
+    expect(adminService.listUsers).toHaveBeenCalledTimes(1);
+    expect(user.jiraAccountId).toBe('new-id');
+  });
+
+  it('only shows the Hapus Credential button when the user has a credential', () => {
+    const withCred = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    const withoutCred = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    adminService.listUsers.and.returnValue(of({ users: [withCred, withoutCred] }));
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('tbody tr');
+    expect(rows[0].textContent).toContain('Hapus Credential');
+    expect(rows[1].textContent).not.toContain('Hapus Credential');
+  });
+
+  it('asks for confirmation before deleting a credential, and does nothing if cancelled', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    spyOn(window, 'confirm').and.returnValue(false);
+
+    fixture.componentInstance['onDeleteCredential'](user);
+
+    expect(adminService.deleteCredential).not.toHaveBeenCalled();
+  });
+
+  it('deletes the credential and reloads the list on confirmation', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    spyOn(window, 'confirm').and.returnValue(true);
+    adminService.deleteCredential.and.returnValue(of({}));
+
+    fixture.componentInstance['onDeleteCredential'](user);
+
+    expect(adminService.deleteCredential).toHaveBeenCalledWith(1);
+    expect(adminService.listUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the self-lockout error message when deleting a user fails', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    spyOn(window, 'confirm').and.returnValue(true);
+    adminService.deleteUser.and.returnValue(throwError(() => ({ error: { error: 'Tidak bisa menghapus diri sendiri' } })));
+
+    fixture.componentInstance['onDeleteUser'](user);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.actions .msg.error').textContent).toContain('Tidak bisa menghapus diri sendiri');
+  });
+
+  it('disables every action button for a row while an action is in flight', () => {
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    adminService.listUsers.and.returnValue(of({ users: [user] }));
+    fixture.detectChanges();
+    adminService.toggleActive.and.returnValue(of({}));
+
+    fixture.componentInstance['rowActionInFlight'][1] = true;
+    fixture.detectChanges();
+
+    const buttons: HTMLButtonElement[] = Array.from(fixture.nativeElement.querySelectorAll('tbody tr button'));
+    expect(buttons.every((btn) => btn.disabled)).toBe(true);
   });
 });

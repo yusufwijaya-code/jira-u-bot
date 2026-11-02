@@ -25,4 +25,20 @@ export class AdminService {
   listUsers(): Observable<ListUsersResponse> {
     return this.http.get<ListUsersResponse>(`${environment.apiBasePath}/api/dashboard/admin/users`);
   }
+
+  toggleActive(userId: number, active: boolean): Observable<unknown> {
+    return this.http.post(`${environment.apiBasePath}/dashboard/admin/users/${userId}/active`, { active });
+  }
+
+  editJiraAccountId(userId: number, jiraAccountId: string): Observable<unknown> {
+    return this.http.post(`${environment.apiBasePath}/dashboard/admin/users/${userId}/jira-account-id`, { jiraAccountId });
+  }
+
+  deleteCredential(userId: number): Observable<unknown> {
+    return this.http.delete(`${environment.apiBasePath}/dashboard/admin/users/${userId}/credential`);
+  }
+
+  deleteUser(userId: number): Observable<unknown> {
+    return this.http.delete(`${environment.apiBasePath}/dashboard/admin/users/${userId}`);
+  }
 }
