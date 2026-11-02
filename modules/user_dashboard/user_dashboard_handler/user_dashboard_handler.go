@@ -7,6 +7,9 @@ type UserDashboardHandler interface {
 	// frontend's board.service.ts (Tech Spec "Angular Dashboard Revamp",
 	// Repository 1 Chapter 2).
 	GetBoard(c *gin.Context)
+	// GetTeam returns the Team view as JSON (Tech Spec "Angular Dashboard
+	// Revamp", Repository 1 Chapter 3).
+	GetTeam(c *gin.Context)
 	TeamView(c *gin.Context)
 	OverdueView(c *gin.Context)
 	UpdatePreference(c *gin.Context)

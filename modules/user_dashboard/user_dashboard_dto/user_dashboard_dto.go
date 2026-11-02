@@ -30,12 +30,12 @@ type Board struct {
 // TeamGroup is one assignee's active (Code Process) tickets — Chapter 9c,
 // equivalent to the bot's /u-team.
 type TeamGroup struct {
-	AssigneeEmail string
-	Cards         []Card
+	AssigneeEmail string `json:"assigneeEmail"`
+	Cards         []Card `json:"cards"`
 }
 
 type TeamView struct {
-	Groups []TeamGroup
+	Groups []TeamGroup `json:"groups"`
 }
 
 // OverdueItem is one active ticket whose elapsed time has passed its

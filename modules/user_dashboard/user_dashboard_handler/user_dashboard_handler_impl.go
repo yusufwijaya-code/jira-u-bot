@@ -113,6 +113,15 @@ func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
 	})
 }
 
+func (h *userDashboardHandlerImpl) GetTeam(c *gin.Context) {
+	view, err := h.dashboardSvc.GetTeamView(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team data"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"groups": view.Groups})
+}
+
 func (h *userDashboardHandlerImpl) TeamView(c *gin.Context) {
 	view, err := h.dashboardSvc.GetTeamView(c.Request.Context())
 	if err != nil {

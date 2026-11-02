@@ -15,6 +15,7 @@ func Router(dashboard *gin.RouterGroup, api *gin.RouterGroup, handler user_dashb
 	dashboard.GET("/overdue", handler.OverdueView)
 
 	api.GET("/board", handler.GetBoard)
+	api.GET("/team", handler.GetTeam)
 	api.POST("/preference", handler.UpdatePreference)
 	api.POST("/tickets/:issueKey/transition", handler.TransitionTicket)
 	api.POST("/credential", handler.SaveCredential)

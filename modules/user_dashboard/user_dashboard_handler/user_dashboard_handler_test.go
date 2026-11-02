@@ -26,6 +26,7 @@ type fakeUserDashboardService struct {
 	board            user_dashboard_dto.Board
 	boardErr         error
 	teamView         user_dashboard_dto.TeamView
+	teamViewErr      error
 	overdueItems     []user_dashboard_dto.OverdueItem
 	setPreferenceCSV string
 	setPreferenceErr error
@@ -36,7 +37,7 @@ func (f *fakeUserDashboardService) GetMyBoard(ctx context.Context, email string)
 	return f.board, f.boardErr
 }
 func (f *fakeUserDashboardService) GetTeamView(ctx context.Context) (user_dashboard_dto.TeamView, error) {
-	return f.teamView, nil
+	return f.teamView, f.teamViewErr
 }
 func (f *fakeUserDashboardService) GetOverdueView(ctx context.Context) ([]user_dashboard_dto.OverdueItem, error) {
 	return f.overdueItems, nil
@@ -250,5 +251,35 @@ func TestDeleteCredential_CallsDelete(t *testing.T) {
 
 	if w.Code != http.StatusOK || !cred.deleteCalled {
 		t.Errorf("status=%d deleteCalled=%v, want 200 and true", w.Code, cred.deleteCalled)
+	}
+}
+
+func TestGetTeam_ReturnsGroupsAsJSON(t *testing.T) {
+	svc := &fakeUserDashboardService{teamView: user_dashboard_dto.TeamView{Groups: []user_dashboard_dto.TeamGroup{
+		{AssigneeEmail: "teammate@esb.co.id", Cards: []user_dashboard_dto.Card{{IssueKey: "OMS-1", Summary: "Test"}}},
+	}}}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/team", "")
+	handler.GetTeam(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"assigneeEmail":"teammate@esb.co.id"`) {
+		t.Errorf("body missing group: %s", w.Body.String())
+	}
+}
+
+func TestGetTeam_ReturnsServerErrorWhenServiceFails(t *testing.T) {
+	svc := &fakeUserDashboardService{}
+	svc.teamViewErr = errors.New("db down")
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/team", "")
+	handler.GetTeam(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
 	}
 }
