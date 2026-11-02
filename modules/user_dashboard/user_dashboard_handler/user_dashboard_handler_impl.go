@@ -98,9 +98,11 @@ func (h *userDashboardHandlerImpl) Dashboard(c *gin.Context) {
 
 	savedPreference, err := h.dashboardSvc.GetReminderTierPreference(ctx, user.Email)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat board, coba lagi")
+		c.String(http.StatusInternalServerError, "Gagal memuat preference, coba lagi")
 		return
 	}
+	// nil (never set) means every tier is checked by default (spec AC5.2);
+	// a non-nil CSV (possibly "") means only the listed codes are checked.
 	preferredSet := map[string]bool{}
 	if savedPreference != nil {
 		for _, code := range strings.Split(*savedPreference, ",") {
