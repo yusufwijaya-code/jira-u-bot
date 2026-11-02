@@ -10,4 +10,15 @@ export class BoardService {
   updatePreference(tiers: string[]): Observable<{ status: string }> {
     return this.http.post<{ status: string }>(`${environment.apiBasePath}/api/dashboard/preference`, { tiers });
   }
+
+  saveCredential(jiraEmail: string, apiToken: string): Observable<{ status: string }> {
+    return this.http.post<{ status: string }>(`${environment.apiBasePath}/api/dashboard/credential`, {
+      jiraEmail,
+      apiToken,
+    });
+  }
+
+  deleteCredential(): Observable<{ status: string }> {
+    return this.http.delete<{ status: string }>(`${environment.apiBasePath}/api/dashboard/credential`);
+  }
 }
