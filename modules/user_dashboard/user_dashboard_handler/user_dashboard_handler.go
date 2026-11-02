@@ -3,6 +3,9 @@ package user_dashboard_handler
 import "github.com/gin-gonic/gin"
 
 type UserDashboardHandler interface {
+	// Dashboard renders the legacy My Board HTML page — stays alongside
+	// GetBoard until Plan C removes the old HTML routes.
+	Dashboard(c *gin.Context)
 	// GetBoard returns My Board as JSON — consumed by the Angular
 	// frontend's board.service.ts (Tech Spec "Angular Dashboard Revamp",
 	// Repository 1 Chapter 2).

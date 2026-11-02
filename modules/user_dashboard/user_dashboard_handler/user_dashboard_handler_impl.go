@@ -27,6 +27,21 @@ var tierOptions = []struct{ Code, Label string }{
 	{"1m", "T-1 menit"},
 }
 
+type tierCheckbox struct {
+	Code    string
+	Label   string
+	Checked bool
+}
+
+type dashboardPageData struct {
+	BasePath         string
+	Email            string
+	Board            user_dashboard_dto.Board
+	TierCheckboxes   []tierCheckbox
+	HasCredential    bool
+	CredentialMasked string
+}
+
 type teamPageData struct {
 	BasePath string
 	Email    string
@@ -45,8 +60,9 @@ type userDashboardHandlerImpl struct {
 	jiraCredential  jira_credential_service.JiraCredentialService
 	basePath        string
 
-	teamTemplate    *template.Template
-	overdueTemplate *template.Template
+	dashboardTemplate *template.Template
+	teamTemplate      *template.Template
+	overdueTemplate   *template.Template
 }
 
 func NewUserDashboardHandler(
@@ -56,17 +72,62 @@ func NewUserDashboardHandler(
 	cfg *config.AppConfig,
 ) UserDashboardHandler {
 	return &userDashboardHandlerImpl{
-		dashboardSvc:    dashboardSvc,
-		chatInteractive: chatInteractive,
-		jiraCredential:  jiraCredential,
-		basePath:        cfg.BasePath,
-		teamTemplate:    template.Must(template.ParseFS(userdashboardtemplates.FS, "team.html")),
-		overdueTemplate: template.Must(template.ParseFS(userdashboardtemplates.FS, "overdue.html")),
+		dashboardSvc:      dashboardSvc,
+		chatInteractive:   chatInteractive,
+		jiraCredential:    jiraCredential,
+		basePath:          cfg.BasePath,
+		dashboardTemplate: template.Must(template.ParseFS(userdashboardtemplates.FS, "dashboard.html")),
+		teamTemplate:      template.Must(template.ParseFS(userdashboardtemplates.FS, "team.html")),
+		overdueTemplate:   template.Must(template.ParseFS(userdashboardtemplates.FS, "overdue.html")),
 	}
 }
 
 func currentUser(c *gin.Context) auth_dto.Session {
 	return c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session)
+}
+
+func (h *userDashboardHandlerImpl) Dashboard(c *gin.Context) {
+	user := currentUser(c)
+	ctx := c.Request.Context()
+
+	board, err := h.dashboardSvc.GetMyBoard(ctx, user.Email)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Gagal memuat board, coba lagi")
+		return
+	}
+
+	savedPreference, err := h.dashboardSvc.GetReminderTierPreference(ctx, user.Email)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Gagal memuat board, coba lagi")
+		return
+	}
+	preferredSet := map[string]bool{}
+	if savedPreference != nil {
+		for _, code := range strings.Split(*savedPreference, ",") {
+			preferredSet[code] = true
+		}
+	}
+	checkboxes := make([]tierCheckbox, 0, len(tierOptions))
+	for _, opt := range tierOptions {
+		checkboxes = append(checkboxes, tierCheckbox{
+			Code:    opt.Code,
+			Label:   opt.Label,
+			Checked: savedPreference == nil || preferredSet[opt.Code],
+		})
+	}
+
+	credentialMasked, hasCredential, _ := h.jiraCredential.MaskedPreview(ctx, user.UserID)
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Status(http.StatusOK)
+	h.dashboardTemplate.Execute(c.Writer, dashboardPageData{
+		BasePath:         h.basePath,
+		Email:            user.Email,
+		Board:            board,
+		TierCheckboxes:   checkboxes,
+		HasCredential:    hasCredential,
+		CredentialMasked: credentialMasked,
+	})
 }
 
 func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
