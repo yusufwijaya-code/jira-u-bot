@@ -2,6 +2,7 @@ package sprint_report_handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,19 +21,25 @@ func testCfg() *config.AppConfig {
 }
 
 type fakeSprintReportService struct {
-	availableSprints []string
-	report           sprint_report_dto.Report
-	lastSprintNames  []string
-	lastCap          float64
+	availableSprints    []string
+	report              sprint_report_dto.Report
+	lastSprintNames     []string
+	lastCap             float64
+	lastSelectedSprints []string
+	lastCapPercent      float64
+	listErr             error
+	generateErr         error
 }
 
 func (f *fakeSprintReportService) ListAvailableSprints(ctx context.Context) ([]string, error) {
-	return f.availableSprints, nil
+	return f.availableSprints, f.listErr
 }
 func (f *fakeSprintReportService) GenerateReport(ctx context.Context, sprintNames []string, capPercent float64) (sprint_report_dto.Report, error) {
 	f.lastSprintNames = sprintNames
+	f.lastSelectedSprints = sprintNames
 	f.lastCap = capPercent
-	return f.report, nil
+	f.lastCapPercent = capPercent
+	return f.report, f.generateErr
 }
 
 func newReportTestContext(target string) (*httptest.ResponseRecorder, *gin.Context) {
@@ -121,5 +128,84 @@ func TestReport_MultipleSprintsSelected(t *testing.T) {
 	}
 	if len(svc.lastSprintNames) != 2 {
 		t.Errorf("GenerateReport called with sprintNames=%v, want 2 entries", svc.lastSprintNames)
+	}
+}
+
+func TestGetReport_WithoutSprintParamReturnsNullReport(t *testing.T) {
+	svc := &fakeSprintReportService{availableSprints: []string{"Sprint 42", "Sprint 43"}}
+	handler := NewSprintReportHandler(svc, testCfg())
+
+	w, c := newReportTestContext("/api/dashboard/report")
+	handler.GetReport(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"Sprint 42"`) {
+		t.Errorf("body missing availableSprints: %s", body)
+	}
+	if !strings.Contains(body, `"report":null`) {
+		t.Errorf("body = %q, want report:null when no sprint selected", body)
+	}
+}
+
+func TestGetReport_WithSprintParamGeneratesReport(t *testing.T) {
+	svc := &fakeSprintReportService{
+		availableSprints: []string{"Sprint 42"},
+		report:           sprint_report_dto.Report{SumEstimatedHours: 8, SumActualHours: 7.5},
+	}
+	handler := NewSprintReportHandler(svc, testCfg())
+
+	w, c := newReportTestContext("/api/dashboard/report?sprint=Sprint+42")
+	handler.GetReport(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"sumEstimatedHours":8`) {
+		t.Errorf("body missing generated report: %s", w.Body.String())
+	}
+	if svc.lastSelectedSprints == nil || svc.lastSelectedSprints[0] != "Sprint 42" {
+		t.Errorf("GenerateReport called with %v, want [Sprint 42]", svc.lastSelectedSprints)
+	}
+}
+
+func TestGetReport_InvalidCapFallsBackToDefault(t *testing.T) {
+	svc := &fakeSprintReportService{availableSprints: []string{"Sprint 42"}, report: sprint_report_dto.Report{}}
+	handler := NewSprintReportHandler(svc, testCfg())
+
+	w, c := newReportTestContext("/api/dashboard/report?sprint=Sprint+42&cap=notanumber")
+	handler.GetReport(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if svc.lastCapPercent != defaultCapPercent {
+		t.Errorf("GenerateReport called with cap=%v, want default %v", svc.lastCapPercent, defaultCapPercent)
+	}
+}
+
+func TestGetReport_ListAvailableSprintsErrorReturns500(t *testing.T) {
+	svc := &fakeSprintReportService{listErr: errors.New("jira down")}
+	handler := NewSprintReportHandler(svc, testCfg())
+
+	w, c := newReportTestContext("/api/dashboard/report")
+	handler.GetReport(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestGetReport_GenerateReportErrorReturns500(t *testing.T) {
+	svc := &fakeSprintReportService{availableSprints: []string{"Sprint 42"}, generateErr: errors.New("jira down")}
+	handler := NewSprintReportHandler(svc, testCfg())
+
+	w, c := newReportTestContext("/api/dashboard/report?sprint=Sprint+42")
+	handler.GetReport(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
 	}
 }

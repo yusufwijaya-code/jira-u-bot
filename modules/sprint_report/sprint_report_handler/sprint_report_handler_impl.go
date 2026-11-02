@@ -93,3 +93,38 @@ func (h *sprintReportHandlerImpl) Report(c *gin.Context) {
 	c.Status(http.StatusOK)
 	h.template.Execute(c.Writer, data)
 }
+
+func (h *sprintReportHandlerImpl) GetReport(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	availableSprints, err := h.svc.ListAvailableSprints(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load sprint list"})
+		return
+	}
+
+	selected := c.QueryArray("sprint")
+
+	capPercent := defaultCapPercent
+	if raw := c.Query("cap"); raw != "" {
+		if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
+			capPercent = parsed
+		}
+	}
+
+	var report interface{}
+	if len(selected) > 0 {
+		generated, err := h.svc.GenerateReport(ctx, selected, capPercent)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate report"})
+			return
+		}
+		report = generated
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"availableSprints": availableSprints,
+		"capPercent":       capPercent,
+		"report":           report,
+	})
+}
