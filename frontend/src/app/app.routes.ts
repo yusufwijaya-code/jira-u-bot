@@ -3,6 +3,7 @@ import { LoginComponent } from './features/login/login.component';
 import { DashboardShellComponent } from './layouts/dashboard-shell/dashboard-shell.component';
 import { BoardComponent } from './features/dashboard/board/board.component';
 import { TeamComponent } from './features/dashboard/team/team.component';
+import { OverdueComponent } from './features/dashboard/overdue/overdue.component';
 import { AuthGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
@@ -14,6 +15,7 @@ export const routes: Routes = [
     children: [
       { path: '', component: BoardComponent },
       { path: 'team', component: TeamComponent },
+      { path: 'overdue', component: OverdueComponent },
     ],
   },
   { path: '**', redirectTo: '' },

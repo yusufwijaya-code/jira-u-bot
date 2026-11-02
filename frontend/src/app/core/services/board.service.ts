@@ -34,6 +34,14 @@ export interface TeamResponse {
   groups: TeamGroup[];
 }
 
+export interface OverdueItem extends Card {
+  assigneeEmail: string;
+}
+
+export interface OverdueResponse {
+  items: OverdueItem[];
+}
+
 export interface TransitionResponse {
   message: string;
 }
@@ -70,5 +78,9 @@ export class BoardService {
 
   getTeam(): Observable<TeamResponse> {
     return this.http.get<TeamResponse>(`${environment.apiBasePath}/api/dashboard/team`);
+  }
+
+  getOverdue(): Observable<OverdueResponse> {
+    return this.http.get<OverdueResponse>(`${environment.apiBasePath}/api/dashboard/overdue`);
   }
 }
