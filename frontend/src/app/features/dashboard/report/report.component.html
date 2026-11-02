@@ -1,0 +1,38 @@
+<section>
+  <h2>Sprint Report</h2>
+  <p *ngIf="loading">Memuat...</p>
+  <div *ngIf="!loading">
+    <div class="sprint-picker">
+      <label *ngFor="let sprint of availableSprints">
+        <input type="checkbox" (change)="onSprintToggle(sprint, $event)" />
+        {{ sprint }}
+      </label>
+      <label>Cap % <input type="number" [(ngModel)]="capPercent" /></label>
+      <button (click)="onGenerate()" [disabled]="generating">Generate</button>
+    </div>
+    <p *ngIf="error" class="msg error">{{ error }}</p>
+
+    <div *ngIf="report">
+      <p class="summary">
+        Aggregate Deviation: {{ report.aggregateDeviationPercent }}% · Achievement: {{ report.achievementPercent }}% ·
+        {{ report.withinCount }} dari {{ report.totalCount }} tiket dalam cap
+      </p>
+      <table class="report-table">
+        <thead>
+          <tr><th>Sprint</th><th>Jira Key</th><th>Task</th><th>Est. jam</th><th>Actual jam</th><th>Deviation %</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of report.rows" [class.not-within]="!row.within">
+            <td>{{ row.sprintName }}</td>
+            <td>{{ row.issueKey }}</td>
+            <td>{{ row.task }}</td>
+            <td>{{ row.estimatedHours }}</td>
+            <td>{{ row.actualHours }}</td>
+            <td>{{ row.deviationPercent }}%</td>
+            <td>{{ row.within ? 'Within' : 'Over' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
