@@ -1,0 +1,13 @@
+<div class="login-page">
+  <div class="login-card">
+    <div class="brand-badge">🤖</div>
+    <h1>Jira U Bot Dashboard</h1>
+    <p class="subtitle">Login pakai akun Google kantor (&#64;esb.co.id) untuk lihat tiket, atur reminder, dan lainnya.</p>
+
+    <div class="alert alert-error" *ngIf="errorMessage">{{ errorMessage }}</div>
+
+    <a class="google-signin-btn" [href]="googleLoginHref">Sign in with Google</a>
+
+    <p class="footer-note">Khusus email &#64;esb.co.id</p>
+  </div>
+</div>

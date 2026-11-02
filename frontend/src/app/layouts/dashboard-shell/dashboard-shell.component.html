@@ -1,0 +1,15 @@
+<header class="shell-header">
+  <span class="brand">🤖 Jira U Bot Dashboard</span>
+  <nav>
+    <span>{{ (authService.currentUser$ | async)?.email }}</span>
+    <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">My Board</a>
+    <a routerLink="/dashboard/team" routerLinkActive="active">Team</a>
+    <a routerLink="/dashboard/overdue" routerLinkActive="active">Overdue</a>
+    <a *ngIf="(authService.currentUser$ | async)?.isAdmin" routerLink="/dashboard/admin" routerLinkActive="active">Admin</a>
+    <a routerLink="/dashboard/report" routerLinkActive="active">Sprint Report</a>
+    <a [href]="logoutHref">Logout</a>
+  </nav>
+</header>
+<main>
+  <router-outlet></router-outlet>
+</main>
