@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, input, output } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { NgIf } from '@angular/common';
 import { BoardService } from '../../../core/services/board.service';
 
@@ -14,7 +14,7 @@ export class JiraCredentialComponent implements OnInit {
   credentialMasked = input<string | null>(null);
   credentialChanged = output<void>();
 
-  protected form!: FormGroup;
+  protected form!: FormGroup<{ jiraEmail: FormControl<string>; apiToken: FormControl<string> }>;
   protected submitting = false;
   protected error: string | null = null;
 
@@ -25,7 +25,7 @@ export class JiraCredentialComponent implements OnInit {
     this.form = this.fb.group({
       jiraEmail: ['', [Validators.required, Validators.email]],
       apiToken: ['', Validators.required],
-    });
+    }) as FormGroup<{ jiraEmail: FormControl<string>; apiToken: FormControl<string> }>;
   }
 
   protected onSubmit(): void {
@@ -35,7 +35,8 @@ export class JiraCredentialComponent implements OnInit {
     this.submitting = true;
     this.error = null;
 
-    this.boardService.saveCredential(this.form.value.jiraEmail, this.form.value.apiToken).subscribe({
+    const value = this.form.getRawValue();
+    this.boardService.saveCredential(value.jiraEmail, value.apiToken).subscribe({
       next: () => {
         this.submitting = false;
         this.credentialChanged.emit();

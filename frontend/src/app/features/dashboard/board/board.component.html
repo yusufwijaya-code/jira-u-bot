@@ -1,0 +1,41 @@
+<app-reminder-preference [tiers]="tiers"></app-reminder-preference>
+<app-jira-credential
+  [hasCredential]="hasCredential"
+  [credentialMasked]="credentialMasked"
+  (credentialChanged)="onCredentialChanged()"
+></app-jira-credential>
+
+<section>
+  <h2>My Board</h2>
+  <p *ngIf="loading">Memuat...</p>
+  <p *ngIf="error" class="msg error">{{ error }}</p>
+  <div class="table-wrap" *ngIf="!loading && !error">
+    <table class="board">
+      <thead>
+        <tr><th>Status</th><th>Issue Key</th><th>Summary</th><th>SP</th><th>Elapsed</th><th>Sisa</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let card of cards" [attr.data-issue-key]="card.issueKey">
+          <td><span class="status-badge">{{ card.status }}</span></td>
+          <td class="key">{{ card.issueKey }}</td>
+          <td>{{ card.summary }}</td>
+          <ng-container *ngIf="card.hasBudgetDetail; else noBudget">
+            <td class="budget">{{ card.storyPoints }}</td>
+            <td class="budget">{{ card.elapsedLabel }}</td>
+            <td class="budget">{{ card.remainingLabel }}</td>
+          </ng-container>
+          <ng-template #noBudget>
+            <td class="budget">—</td>
+            <td class="budget">—</td>
+            <td class="budget">—</td>
+          </ng-template>
+          <td class="actions">
+            <button [disabled]="transitioningIssueKey === card.issueKey" (click)="onTransition(card.issueKey, 'todo')">→ Todo</button>
+            <button [disabled]="transitioningIssueKey === card.issueKey" (click)="onTransition(card.issueKey, 'code-review')">→ Code Review</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="msg" [class.success]="actionMessage && !actionMessage.isError" [class.error]="actionMessage?.isError">{{ actionMessage?.text }}</p>
+</section>
