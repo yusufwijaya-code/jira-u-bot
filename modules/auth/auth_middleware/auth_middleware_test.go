@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,5 +145,64 @@ func TestAdminMiddleware_AllowsAdmin(t *testing.T) {
 
 	if c.IsAborted() {
 		t.Error("expected the chain to continue for the admin email")
+	}
+}
+
+func TestAuthMiddlewareAPI_Returns401JSONWhenNoCookie(t *testing.T) {
+	mw := AuthMiddlewareAPI(&fakeAuthServiceForMiddleware{}, testCfg())
+	w, c := runMiddleware(t, mw, httptest.NewRequest("GET", "/jira-notif/api/dashboard/board", nil))
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"error":"unauthorized"`) {
+		t.Errorf("body = %q, want JSON error body, not a redirect", w.Body.String())
+	}
+	if !c.IsAborted() {
+		t.Error("expected the middleware chain to be aborted")
+	}
+}
+
+func TestAuthMiddlewareAPI_Returns401JSONWhenSessionNotFound(t *testing.T) {
+	mw := AuthMiddlewareAPI(&fakeAuthServiceForMiddleware{found: false}, testCfg())
+	req := httptest.NewRequest("GET", "/jira-notif/api/dashboard/board", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "unknown-token"})
+
+	w, _ := runMiddleware(t, mw, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestAuthMiddlewareAPI_Returns401JSONWhenUserDeactivated(t *testing.T) {
+	mw := AuthMiddlewareAPI(&fakeAuthServiceForMiddleware{
+		found:   true,
+		session: &auth_dto.Session{SessionID: "s1", UserID: 1, Email: "off@esb.co.id", FlagActive: false, ExpiresAt: time.Now().Add(time.Hour)},
+	}, testCfg())
+	req := httptest.NewRequest("GET", "/jira-notif/api/dashboard/board", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "s1"})
+
+	w, _ := runMiddleware(t, mw, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestAuthMiddlewareAPI_AllowsValidSession(t *testing.T) {
+	session := &auth_dto.Session{SessionID: "s1", UserID: 1, Email: "dev@esb.co.id", FlagActive: true, ExpiresAt: time.Now().Add(time.Hour)}
+	mw := AuthMiddlewareAPI(&fakeAuthServiceForMiddleware{found: true, session: session}, testCfg())
+	req := httptest.NewRequest("GET", "/jira-notif/api/dashboard/board", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "s1"})
+
+	_, c := runMiddleware(t, mw, req)
+
+	got, ok := c.Get(CurrentUserKey)
+	if !ok {
+		t.Fatal("expected CurrentUserKey to be set")
+	}
+	if got.(auth_dto.Session).Email != "dev@esb.co.id" {
+		t.Errorf("CurrentUserKey email = %q, want dev@esb.co.id", got.(auth_dto.Session).Email)
 	}
 }

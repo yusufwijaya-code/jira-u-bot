@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"jira-u-bot/config"
+	"jira-u-bot/modules/auth/auth_dto"
+	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/auth/auth_service"
 	authtemplates "jira-u-bot/modules/auth/templates"
 	"jira-u-bot/modules/registration/registration_service"
@@ -36,12 +38,18 @@ type loginPageData struct {
 type authHandlerImpl struct {
 	authService   auth_service.AuthService
 	basePath      string
+	adminEmail    string
 	loginTemplate *template.Template
 }
 
 func NewAuthHandler(authService auth_service.AuthService, cfg *config.AppConfig) AuthHandler {
 	loginTmpl := template.Must(template.ParseFS(authtemplates.FS, "login.html"))
-	return &authHandlerImpl{authService: authService, basePath: cfg.BasePath, loginTemplate: loginTmpl}
+	return &authHandlerImpl{
+		authService:   authService,
+		basePath:      cfg.BasePath,
+		adminEmail:    cfg.AdminEmail,
+		loginTemplate: loginTmpl,
+	}
 }
 
 // cookiePath scopes every cookie this handler sets to cfg.BasePath instead
@@ -59,6 +67,17 @@ func (h *authHandlerImpl) cookiePath() string {
 // sent into Google's consent flow by clicking the button themselves.
 func (h *authHandlerImpl) LoginPage(c *gin.Context) {
 	h.renderLoginPage(c, "")
+}
+
+// Me reports the current session's email and whether it belongs to the
+// admin account — consumed by the Angular frontend's session-check on app
+// load (Tech Spec "Angular Dashboard Revamp", Repository 1 Chapter 1).
+func (h *authHandlerImpl) Me(c *gin.Context) {
+	session := c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session)
+	c.JSON(http.StatusOK, gin.H{
+		"email":   session.Email,
+		"isAdmin": session.Email == h.adminEmail,
+	})
 }
 
 func (h *authHandlerImpl) Login(c *gin.Context) {

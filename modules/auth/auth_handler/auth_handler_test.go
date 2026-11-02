@@ -11,6 +11,7 @@ import (
 
 	"jira-u-bot/config"
 	"jira-u-bot/modules/auth/auth_dto"
+	"jira-u-bot/modules/auth/auth_middleware"
 	"jira-u-bot/modules/auth/auth_service"
 	"jira-u-bot/modules/registration/registration_dto"
 )
@@ -264,5 +265,38 @@ func TestLogout_ClearsCookieAndRedirects(t *testing.T) {
 	}
 	if sessionCookie == nil || sessionCookie.MaxAge >= 0 {
 		t.Error("expected session cookie to be cleared (MaxAge < 0)")
+	}
+}
+
+func TestMe_ReturnsEmailAndIsAdminFromSession(t *testing.T) {
+	svc := &fakeAuthServiceForHandler{}
+	handler := NewAuthHandler(svc, &config.AppConfig{BasePath: "/jira-notif", AdminEmail: "yusuf.wijaya@esb.co.id"})
+
+	w, c := newTestContext()
+	c.Request = httptest.NewRequest("GET", "/jira-notif/api/auth/me", nil)
+	c.Set(auth_middleware.CurrentUserKey, auth_dto.Session{Email: "yusuf.wijaya@esb.co.id", FlagActive: true})
+
+	handler.Me(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"email":"yusuf.wijaya@esb.co.id"`) || !strings.Contains(w.Body.String(), `"isAdmin":true`) {
+		t.Errorf("body = %q, want email + isAdmin:true", w.Body.String())
+	}
+}
+
+func TestMe_ReturnsIsAdminFalseForNonAdmin(t *testing.T) {
+	svc := &fakeAuthServiceForHandler{}
+	handler := NewAuthHandler(svc, &config.AppConfig{BasePath: "/jira-notif", AdminEmail: "yusuf.wijaya@esb.co.id"})
+
+	w, c := newTestContext()
+	c.Request = httptest.NewRequest("GET", "/jira-notif/api/auth/me", nil)
+	c.Set(auth_middleware.CurrentUserKey, auth_dto.Session{Email: "dev@esb.co.id", FlagActive: true})
+
+	handler.Me(c)
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"isAdmin":false`) {
+		t.Errorf("status=%d body=%q, want 200 and isAdmin:false", w.Code, w.Body.String())
 	}
 }

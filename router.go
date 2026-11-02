@@ -49,6 +49,10 @@ func SetupRouter(
 
 	auth.Router(base, authHandler)
 
+	apiAuth := base.Group("/api/auth")
+	apiAuth.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
+	apiAuth.GET("/me", authHandler.Me)
+
 	dashboardPages := base.Group("/dashboard")
 	dashboardPages.Use(auth_middleware.AuthMiddleware(authSvc, cfg))
 	dashboardAPI := base.Group("/api/dashboard")
