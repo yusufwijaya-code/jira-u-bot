@@ -226,6 +226,37 @@ func TestEvaluateAndSend_SendsFirstDueUnsentTier(t *testing.T) {
 	}
 }
 
+func TestEvaluateAndSend_TierSkipsSendOutsideBusinessHours(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|2h"] = true
+	reminderLog.sentTiers["OMS-1|1h"] = true
+	notifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
+		&fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: false},
+		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier, nil, "",
+	)
+
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        3,    // budget = 10800s
+		AccumulatedSeconds: 9100, // remaining = 1700s -> 30m tier is due
+	}
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+
+	if len(notifier.sentMessages) != 0 {
+		t.Errorf("len(sentMessages) = %d, want 0 — outside business hours, tier reminders must not fire (e.g. a threshold crossed right before closing time, only noticed by a later off-hours poll cycle)", len(notifier.sentMessages))
+	}
+	if reminderLog.sentTiers["OMS-1|30m"] {
+		t.Error("HasTierBeenSent must not be recorded when the send was skipped — otherwise the tier would never fire once business hours resume")
+	}
+}
+
 func TestEvaluateAndSend_DoesNotResendAlreadyLoggedTier(t *testing.T) {
 	reminderLog := newFakeReminderLogService()
 	reminderLog.sentTiers["OMS-1|2h"] = true

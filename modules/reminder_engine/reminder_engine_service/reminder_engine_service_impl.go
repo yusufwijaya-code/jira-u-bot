@@ -194,6 +194,18 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 }
 
 func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, assigneeEmail string, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string, startedAt time.Time) error {
+	// Elapsed itself freezes outside business hours (it's computed via
+	// business-hours-aware ElapsedBusinessSeconds), but which POLL CYCLE
+	// first notices a tier has been crossed is not — if that happens to
+	// land after hours (crossing right before close, or the poller only
+	// resuming later), the tier would otherwise fire immediately regardless
+	// of the clock. Safe to defer here exactly like sendOverageIfDue: no
+	// state (HasTierBeenSent) is touched before this point, so the next
+	// in-hours cycle re-evaluates and sends normally.
+	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
+		return nil
+	}
+
 	remaining := budgetSeconds - elapsedSeconds
 	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
 
