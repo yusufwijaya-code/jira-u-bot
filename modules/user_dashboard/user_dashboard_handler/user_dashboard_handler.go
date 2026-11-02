@@ -15,6 +15,9 @@ type UserDashboardHandler interface {
 	GetTeam(c *gin.Context)
 	TeamView(c *gin.Context)
 	OverdueView(c *gin.Context)
+	// GetOverdue returns the Overdue view as JSON (Tech Spec "Angular
+	// Dashboard Revamp", Repository 1 Chapter 4).
+	GetOverdue(c *gin.Context)
 	UpdatePreference(c *gin.Context)
 	TransitionTicket(c *gin.Context)
 	SaveCredential(c *gin.Context)

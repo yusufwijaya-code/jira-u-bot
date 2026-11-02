@@ -28,6 +28,7 @@ type fakeUserDashboardService struct {
 	teamView         user_dashboard_dto.TeamView
 	teamViewErr      error
 	overdueItems     []user_dashboard_dto.OverdueItem
+	overdueErr       error
 	setPreferenceCSV string
 	setPreferenceErr error
 	getPreference    *string
@@ -40,7 +41,7 @@ func (f *fakeUserDashboardService) GetTeamView(ctx context.Context) (user_dashbo
 	return f.teamView, f.teamViewErr
 }
 func (f *fakeUserDashboardService) GetOverdueView(ctx context.Context) ([]user_dashboard_dto.OverdueItem, error) {
-	return f.overdueItems, nil
+	return f.overdueItems, f.overdueErr
 }
 func (f *fakeUserDashboardService) SetReminderTierPreference(ctx context.Context, email, csv string) error {
 	f.setPreferenceCSV = csv
@@ -278,6 +279,36 @@ func TestGetTeam_ReturnsServerErrorWhenServiceFails(t *testing.T) {
 
 	w, c := newTestContextWithUser("GET", "/api/dashboard/team", "")
 	handler.GetTeam(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestGetOverdue_ReturnsItemsAsJSON(t *testing.T) {
+	svc := &fakeUserDashboardService{overdueItems: []user_dashboard_dto.OverdueItem{
+		{Card: user_dashboard_dto.Card{IssueKey: "OMS-1", Summary: "Test"}, AssigneeEmail: "teammate@esb.co.id"},
+	}}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/overdue", "")
+	handler.GetOverdue(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"issueKey":"OMS-1"`) || !strings.Contains(w.Body.String(), `"assigneeEmail":"teammate@esb.co.id"`) {
+		t.Errorf("body missing overdue item: %s", w.Body.String())
+	}
+}
+
+func TestGetOverdue_ReturnsServerErrorWhenServiceFails(t *testing.T) {
+	svc := &fakeUserDashboardService{}
+	svc.overdueErr = errors.New("db down")
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/overdue", "")
+	handler.GetOverdue(c)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", w.Code)

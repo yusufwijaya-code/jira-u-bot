@@ -42,5 +42,5 @@ type TeamView struct {
 // budget — Chapter 9c, equivalent to the bot's /u-overdue.
 type OverdueItem struct {
 	Card
-	AssigneeEmail string
+	AssigneeEmail string `json:"assigneeEmail"`
 }

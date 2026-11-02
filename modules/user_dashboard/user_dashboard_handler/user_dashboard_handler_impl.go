@@ -205,6 +205,15 @@ func (h *userDashboardHandlerImpl) OverdueView(c *gin.Context) {
 	h.overdueTemplate.Execute(c.Writer, overduePageData{BasePath: h.basePath, Email: currentUser(c).Email, Items: items})
 }
 
+func (h *userDashboardHandlerImpl) GetOverdue(c *gin.Context) {
+	items, err := h.dashboardSvc.GetOverdueView(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load overdue data"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 type updatePreferenceRequest struct {
 	Tiers []string `json:"tiers"`
 }
