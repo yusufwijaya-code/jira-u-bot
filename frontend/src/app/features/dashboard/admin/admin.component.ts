@@ -2,11 +2,12 @@ import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgFor, NgIf } from '@angular/common';
 import { AdminService, UserRow } from '../../../core/services/admin.service';
+import { BroadcastComponent } from './broadcast.component';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule],
+  imports: [NgFor, NgIf, FormsModule, BroadcastComponent],
   templateUrl: './admin.component.html',
 })
 export class AdminComponent implements OnInit {

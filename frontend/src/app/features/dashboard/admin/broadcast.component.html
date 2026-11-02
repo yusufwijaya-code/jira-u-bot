@@ -1,0 +1,6 @@
+<section class="broadcast">
+  <h2>Broadcast Message</h2>
+  <textarea [(ngModel)]="message" placeholder="Tulis pengumuman fitur baru / update di sini..." [disabled]="submitting"></textarea>
+  <button (click)="onSend()" [disabled]="!canSend">Kirim</button>
+  <p class="msg" [class.error]="result?.isError" *ngIf="result">{{ result.text }}</p>
+</section>

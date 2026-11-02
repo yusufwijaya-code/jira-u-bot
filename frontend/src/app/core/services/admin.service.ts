@@ -18,6 +18,11 @@ export interface ListUsersResponse {
   users: UserRow[];
 }
 
+export interface BroadcastResponse {
+  sentCount: number;
+  failedEmails: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   private http = inject(HttpClient);
@@ -40,5 +45,9 @@ export class AdminService {
 
   deleteUser(userId: number): Observable<unknown> {
     return this.http.delete(`${environment.apiBasePath}/dashboard/admin/users/${userId}`);
+  }
+
+  broadcast(message: string): Observable<BroadcastResponse> {
+    return this.http.post<BroadcastResponse>(`${environment.apiBasePath}/dashboard/admin/broadcast`, { message });
   }
 }
