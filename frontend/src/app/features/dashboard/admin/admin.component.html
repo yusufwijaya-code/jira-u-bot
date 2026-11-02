@@ -1,0 +1,21 @@
+<section>
+  <h2>Admin — Daftar User</h2>
+  <p *ngIf="loading">Memuat...</p>
+  <p *ngIf="error" class="msg error">{{ error }}</p>
+  <div class="table-wrap" *ngIf="!loading && !error">
+    <table class="admin-users">
+      <thead>
+        <tr><th>Email</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th>Aksi</th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let user of users" [attr.data-user-id]="user.userId">
+          <td>{{ user.email }}</td>
+          <td><span class="status-badge" [class.active]="user.flagActive">{{ user.flagActive ? 'Aktif' : 'Nonaktif' }}</span></td>
+          <td>{{ user.jiraAccountId || '—' }}</td>
+          <td>{{ user.hasCredential ? 'Aktif' : '—' }}</td>
+          <td class="actions"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
