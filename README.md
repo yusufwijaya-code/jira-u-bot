@@ -26,7 +26,7 @@
     - **Mute & jam tenang** — mute 1 jam / 2 jam / sampai besok 08:30, dan jam tenang harian (WIB); reminder yang jatuh tempo saat itu dilewati (`tr_reminderlog.deliveryStatus = skipped`), notif lewat budget langsung lanjut setelahnya. Badge 🔕 muncul di topbar saat mute aktif
     - Kalau beberapa tier terlewati sekaligus, hanya tier paling relevan yang dikirim
   - **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
-  - **Foto profil** user diambil dari Jira (proxy `GET /api/dashboard/me/avatar`, cache 24 jam; tanpa foto → huruf inisial)
+  - **Foto profil** = foto akun Google (claim `picture` Sign-In, disimpan di `ms_user_picture` tiap login; proxy `GET /api/dashboard/me/avatar`, cache 24 jam; belum pernah login / tanpa foto → huruf inisial)
   - **Admin panel** (khusus `ADMIN_EMAIL`, route `/admin` dengan shell & sidebar sendiri, di-lazy-load; `/dashboard/admin` lama di-redirect). Tombol **Dashboard Utama** di topbar kembali ke `/dashboard`:
     - **Dashboard** — statistik user + daftar pintas user tanpa credential & user nonaktif
     - **User** — cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user; klik baris → **detail user**: semua pengaturan dinamis milik user itu (notifikasi default & per board, mute global & per board, isi/ganti/hapus Jira credential) memakai komponen Pengaturan yang sama. Endpoint: `/api/dashboard/admin/users/:userID/{settings,settings/notification,settings/mute,credential,boards,avatar}`, bentuk request/respons identik dengan endpoint user (`SettingsHandler` bersama)
@@ -71,5 +71,5 @@
 - `modules/auth` — Google Sign-In, session, auto-registrasi, middleware auth/admin
 - `modules/user_dashboard` — board, overdue, team, preference & credential setup
 - `modules/admin_dashboard` — manajemen user untuk admin, termasuk pengaturan user lain (`AdminTarget`) dan DM pemberitahuan perubahan
-- `modules/user_avatar` — proxy foto profil Jira user (host avatar dibatasi: situs Jira, CDN Atlassian, Gravatar)
+- `modules/user_avatar` — foto profil Google user: disimpan saat login, di-proxy (hanya `https://*.googleusercontent.com`, tanpa kredensial)
 - `modules/sprint_report` — generate report Estimated vs Actual Time per sprint
