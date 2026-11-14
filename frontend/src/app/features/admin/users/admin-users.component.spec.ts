@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { AdminComponent } from './admin.component';
+import { AdminUsersComponent } from './admin-users.component';
 import { AdminService, ListUsersResponse } from '../../../core/services/admin.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
+import { Router, provideRouter } from '@angular/router';
 
-describe('AdminComponent', () => {
-  let fixture: ComponentFixture<AdminComponent>;
+describe('AdminUsersComponent', () => {
+  let fixture: ComponentFixture<AdminUsersComponent>;
   let adminService: jasmine.SpyObj<AdminService>;
   let confirmService: jasmine.SpyObj<ConfirmService>;
 
@@ -14,14 +15,15 @@ describe('AdminComponent', () => {
     confirmService = jasmine.createSpyObj('ConfirmService', ['ask']);
 
     await TestBed.configureTestingModule({
-      imports: [AdminComponent],
+      imports: [AdminUsersComponent],
       providers: [
+        provideRouter([]),
         { provide: AdminService, useValue: adminService },
         { provide: ConfirmService, useValue: confirmService },
       ],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(AdminComponent);
+    fixture = TestBed.createComponent(AdminUsersComponent);
   });
 
   it('renders one row per user with status badge and Jira Account ID', () => {
@@ -176,13 +178,31 @@ describe('AdminComponent', () => {
     expect(rows[0].textContent).toContain('bob@esb.co.id');
   });
 
-  it('shows summary stats for total, active and credential counts', () => {
-    const a = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
-    const b = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: false, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
-    adminService.listUsers.and.returnValue(of({ users: [a, b] }));
-    fixture.detectChanges();
+  describe('navigation to the user detail', () => {
+    const user = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    let navigate: jasmine.Spy;
 
-    const values = Array.from(fixture.nativeElement.querySelectorAll('.stat-value')).map((el: any) => el.textContent.trim());
-    expect(values).toEqual(['2', '1', '1']);
+    beforeEach(() => {
+      navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      adminService.listUsers.and.returnValue(of({ users: [user] }));
+      fixture.detectChanges();
+    });
+
+    it('opens the detail page when the row is clicked', () => {
+      (fixture.nativeElement.querySelector('.user-cell') as HTMLElement).click();
+      expect(navigate).toHaveBeenCalledWith(['/admin/users', 2]);
+    });
+
+    it('does not navigate when a row action is clicked', () => {
+      adminService.toggleActive.and.returnValue(of({}));
+      (fixture.nativeElement.querySelector('.actions button') as HTMLButtonElement).click();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('has an Atur link to the detail page', () => {
+      const link = fixture.nativeElement.querySelector('.actions a') as HTMLAnchorElement;
+      expect(link.textContent).toContain('Atur');
+      expect(link.getAttribute('href')).toBe('/admin/users/2');
+    });
   });
 });

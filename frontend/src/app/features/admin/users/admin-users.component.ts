@@ -5,15 +5,15 @@ import { AdminService, UserRow } from '../../../core/services/admin.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
-import { BroadcastComponent } from './broadcast.component';
+import { Router, RouterLink } from '@angular/router';
 
 @Component({
-  selector: 'app-admin',
+  selector: 'app-admin-users',
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule, IconComponent, BroadcastComponent],
-  templateUrl: './admin.component.html',
+  imports: [NgFor, NgIf, FormsModule, RouterLink, IconComponent],
+  templateUrl: './admin-users.component.html',
 })
-export class AdminComponent implements OnInit {
+export class AdminUsersComponent implements OnInit {
   protected users: UserRow[] = [];
   protected loading = true;
   protected error: string | null = null;
@@ -25,6 +25,7 @@ export class AdminComponent implements OnInit {
   private adminService = inject(AdminService);
   private confirm = inject(ConfirmService);
   private toast = inject(ToastService);
+  private router = inject(Router);
 
   ngOnInit(): void {
     this.loadUsers();
@@ -35,12 +36,9 @@ export class AdminComponent implements OnInit {
     return q ? this.users.filter((u) => u.email.toLowerCase().includes(q)) : this.users;
   }
 
-  protected get activeCount(): number {
-    return this.users.filter((u) => u.flagActive).length;
-  }
-
-  protected get credentialCount(): number {
-    return this.users.filter((u) => u.hasCredential).length;
+  /** Row click → the user's detail page (settings, mute, credential). */
+  protected open(user: UserRow): void {
+    this.router.navigate(['/admin/users', user.userId]);
   }
 
   protected loadUsers(): void {

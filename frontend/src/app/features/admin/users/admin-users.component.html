@@ -1,25 +1,10 @@
 <div class="page-stack">
-  <div class="stat-grid" *ngIf="!loading && !error">
-    <div class="stat-card" style="--i: 0">
-      <span class="stat-icon"><app-icon name="users" [size]="20" /></span>
-      <div><span class="stat-value">{{ users.length }}</span><span class="stat-label">Total user</span></div>
-    </div>
-    <div class="stat-card" style="--i: 1">
-      <span class="stat-icon success"><app-icon name="user-check" [size]="20" /></span>
-      <div><span class="stat-value">{{ activeCount }}</span><span class="stat-label">User aktif</span></div>
-    </div>
-    <div class="stat-card" style="--i: 2">
-      <span class="stat-icon accent"><app-icon name="key" [size]="20" /></span>
-      <div><span class="stat-value">{{ credentialCount }}</span><span class="stat-label">Punya credential</span></div>
-    </div>
-  </div>
-
   <section class="card">
     <header class="card-header with-actions">
       <span class="card-icon"><app-icon name="users" [size]="20" /></span>
       <div>
         <h2>Daftar User</h2>
-        <p>Aktifkan, nonaktifkan, atau rapikan data user yang terdaftar.</p>
+        <p>Klik user untuk mengatur notifikasi, mute, dan Jira credential-nya.</p>
       </div>
       <label class="search-input" *ngIf="!loading && !error">
         <app-icon name="search" [size]="16" />
@@ -42,7 +27,13 @@
           <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th class="th-actions">Aksi</th></tr>
         </thead>
         <tbody>
-          <tr *ngFor="let user of filteredUsers" [attr.data-user-id]="user.userId" [class.busy]="rowActionInFlight[user.userId]">
+          <tr
+            *ngFor="let user of filteredUsers"
+            class="clickable"
+            [attr.data-user-id]="user.userId"
+            [class.busy]="rowActionInFlight[user.userId]"
+            (click)="open(user)"
+          >
             <td>
               <div class="user-cell">
                 <span class="user-avatar">{{ user.email.charAt(0).toUpperCase() }}</span>
@@ -54,7 +45,7 @@
             </td>
             <td><span class="status-badge" [class.active]="user.flagActive">{{ user.flagActive ? 'Aktif' : 'Nonaktif' }}</span></td>
             <td>
-              <div class="inline-edit">
+              <div class="inline-edit" (click)="$event.stopPropagation()">
                 <input
                   type="text"
                   [(ngModel)]="jiraAccountIdDrafts[user.userId]"
@@ -75,7 +66,7 @@
               </div>
             </td>
             <td>
-              <div class="cred-cell">
+              <div class="cred-cell" (click)="$event.stopPropagation()">
                 <span class="cred-badge" *ngIf="user.hasCredential"><app-icon name="lock" [size]="12" /> {{ user.credentialMasked || 'Aktif' }}</span>
                 <span class="muted" *ngIf="!user.hasCredential">—</span>
                 <button
@@ -90,7 +81,10 @@
               </div>
             </td>
             <td class="actions">
-              <div class="action-row">
+              <div class="action-row" (click)="$event.stopPropagation()">
+                <a class="btn btn-sm btn-soft" [routerLink]="['/admin/users', user.userId]">
+                  <app-icon name="settings" [size]="14" /> Atur
+                </a>
                 <button
                   type="button"
                   class="btn btn-sm"
@@ -123,6 +117,4 @@
       <div class="empty-row" *ngIf="users.length === 0">Belum ada user terdaftar</div>
     </div>
   </section>
-
-  <app-broadcast></app-broadcast>
 </div>

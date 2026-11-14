@@ -1,0 +1,69 @@
+<div class="page-stack">
+  @if (error(); as message) {
+    <section class="card">
+      <div class="empty-state">
+        <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+        <p class="msg error">{{ message }}</p>
+      </div>
+    </section>
+  } @else if (loading()) {
+    <div class="table-skeleton" aria-busy="true">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="skeleton skeleton-row"></div>
+      }
+    </div>
+  } @else {
+    <div class="stat-grid">
+      <div class="stat-card" style="--i: 0">
+        <span class="stat-icon"><app-icon name="users" [size]="20" /></span>
+        <div><span class="stat-value">{{ users().length }}</span><span class="stat-label">Total user</span></div>
+      </div>
+      <div class="stat-card" style="--i: 1">
+        <span class="stat-icon success"><app-icon name="user-check" [size]="20" /></span>
+        <div><span class="stat-value">{{ activeCount() }}</span><span class="stat-label">User aktif</span></div>
+      </div>
+      <div class="stat-card" style="--i: 2">
+        <span class="stat-icon accent"><app-icon name="key" [size]="20" /></span>
+        <div><span class="stat-value">{{ credentialCount() }}</span><span class="stat-label">Punya credential</span></div>
+      </div>
+    </div>
+
+    <div class="admin-shortlists">
+      <ng-container *ngTemplateOutlet="shortlist; context: { title: 'User tanpa credential', hint: 'Aksi Jira user ini masih memakai akun bot.', icon: 'key', users: withoutCredential(), kind: 'credential', empty: 'Semua user sudah punya credential.' }" />
+      <ng-container *ngTemplateOutlet="shortlist; context: { title: 'User nonaktif', hint: 'Tidak menerima reminder sampai diaktifkan lagi.', icon: 'power', users: inactive(), kind: 'inactive', empty: 'Semua user sudah aktif.' }" />
+    </div>
+  }
+</div>
+
+<ng-template #shortlist let-title="title" let-hint="hint" let-icon="icon" let-users="users" let-kind="kind" let-empty="empty">
+  <section class="card shortlist" [attr.data-list]="kind">
+    <header class="card-header">
+      <span class="card-icon"><app-icon [name]="icon" [size]="20" /></span>
+      <div>
+        <h2>{{ title }}</h2>
+        <p>{{ hint }}</p>
+      </div>
+    </header>
+    @if (users.length) {
+      <ul class="shortlist-items">
+        @for (user of users; track user.userId) {
+          <li>
+            <a [routerLink]="['/admin/users', user.userId]">
+              <span class="user-avatar">{{ user.email.charAt(0).toUpperCase() }}</span>
+              <span class="shortlist-text">
+                <strong>{{ user.email }}</strong>
+                @if (user.userName) {
+                  <small>{{ user.userName }}</small>
+                }
+              </span>
+              <app-icon name="chevron-right" [size]="16" />
+            </a>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="empty-row">{{ empty }}</p>
+    }
+    <a class="shortlist-more" routerLink="/admin/users">Lihat semua user <app-icon name="chevron-right" [size]="14" /></a>
+  </section>
+</ng-template>

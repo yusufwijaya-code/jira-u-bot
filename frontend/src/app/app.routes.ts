@@ -4,8 +4,9 @@ import { DashboardShellComponent } from './layouts/dashboard-shell/dashboard-she
 import { AdminShellComponent } from './layouts/admin-shell/admin-shell.component';
 import { SettingsComponent } from './features/dashboard/settings/settings.component';
 import { HomeComponent } from './features/dashboard/home/home.component';
-import { AdminComponent } from './features/dashboard/admin/admin.component';
-import { BroadcastComponent } from './features/dashboard/admin/broadcast.component';
+import { AdminOverviewComponent } from './features/admin/overview/admin-overview.component';
+import { AdminUsersComponent } from './features/admin/users/admin-users.component';
+import { BroadcastComponent } from './features/admin/broadcast/broadcast.component';
 import { AuthGuard } from './core/guards/auth.guard';
 import { AdminGuard } from './core/guards/admin.guard';
 
@@ -41,13 +42,13 @@ export const routes: Routes = [
       {
         path: '',
         pathMatch: 'full',
-        component: AdminComponent,
+        component: AdminOverviewComponent,
         title: 'Admin · Nudge',
         data: { heading: 'Dashboard', subheading: 'Ringkasan user Nudge', crumbs: ['Admin'] },
       },
       {
         path: 'users',
-        component: AdminComponent,
+        component: AdminUsersComponent,
         title: 'User · Admin · Nudge',
         data: { heading: 'User', subheading: 'Kelola user dan pengaturannya', crumbs: ['Admin', 'User'] },
       },

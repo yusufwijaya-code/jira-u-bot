@@ -557,6 +557,51 @@ input:checked + .check-box {
   letter-spacing: 0.05em;
 }
 .btn-home { white-space: nowrap; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--surface-2); }
+.admin-shortlists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+.shortlist {
+  display: flex;
+  flex-direction: column;
+  .empty-row { margin: 0; padding: 18px 24px; }
+}
+.shortlist-items {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px;
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    transition: background var(--fast) var(--ease);
+    &:hover { background: var(--surface-2); }
+  }
+  app-icon { margin-left: auto; color: var(--text-faint); }
+}
+.shortlist-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  strong { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; }
+  small { font-size: 0.75rem; color: var(--text-muted); }
+}
+.shortlist-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: auto 24px 18px;
+  padding-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
 @media (max-width: 640px) {
   .btn-home span { display: none; }
 }
