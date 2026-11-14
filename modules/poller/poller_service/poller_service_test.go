@@ -641,7 +641,7 @@ func TestPollOnce_ExitToOtherStatusSkipsEarlyCompletion(t *testing.T) {
 }
 
 func TestPollOnce_ExitToTodoTriggersReturnedToTodoNotice(t *testing.T) {
-	// Covers both /u-geser<X>:todo and a manual Jira change — the poller
+	// Covers both /n-geser<X>:todo and a manual Jira change — the poller
 	// can't tell them apart, and shouldn't need to.
 	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "To Do"}
 	issueSession := newFakeIssueSessionServiceForPoller()

@@ -39,7 +39,7 @@ const (
 )
 
 // StatusToDo is the destination status the poller checks for to send the
-// "returned to To Do" notice — whether a ticket got there via /u-geser or
+// "returned to To Do" notice — whether a ticket got there via /n-geser or
 // a manual Jira change.
 const StatusToDo = "To Do"
 

@@ -12,8 +12,8 @@
 - Aturan tracking per project (`jira_client_dto/tracking_rules.go`): OMS dihitung hanya saat **Code Process**; CORE dihitung saat **Code Process + CODE REVIEW** dan berhenti saat keluar dari keduanya (reminder tetap dikirim selama review, pesannya ditandai "CODE REVIEW")
 - Elapsed time dihitung berbasis jam kerja (08:30–17:30 WIB, istirahat 12:00–13:00) dan kalender libur
 - Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
-- Command interaktif (`/u-mytickets`, `/u-budget <issueKey>`, `/u-overdue`, `/u-team`, `/u-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
-- Command `/u-geser<issueKey>:todo` dan `/u-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi (tidak lagi diiklankan di pesan reminder; tetap tercantum di `/u-help`)
+- Command interaktif (`/n-mytickets`, `/n-budget <issueKey>`, `/n-overdue`, `/n-team`, `/n-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
+- Command `/n-geser<issueKey>:todo` dan `/n-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi (tidak lagi diiklankan di pesan reminder; tetap tercantum di `/n-help`)
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
   - **Per board Jira**: pemilih board di navbar (ikon project dari Jira, via proxy `GET /api/dashboard/boards/:id/avatar`) berisi "Semua board" + board yang sprint aktifnya berisi tiket kamu. Board tiket = board dari sprint **aktif**-nya (field sprint Jira). Dashboard & Pengaturan mengikuti board terpilih (`?board=` di URL, diingat di browser)
   - Pengaturan per board: "Semua board" = pengaturan default; board tanpa pengaturan khusus mengikuti default (tombol **Atur khusus board ini** / **Kembalikan ke default**); mute dua level (semua board + per board). Disimpan di `ms_user_setting` dengan kunci `(userID, boardID)`, `boardID = 0` = default; cache board di `ms_board`
@@ -26,7 +26,7 @@
     - **Saklar notifikasi** — saklar utama semua notif otomatis (`ms_user.notificationsEnabled`). User baru mulai **OFF**; user lama tetap ON. Selama belum pernah memilih (`notificationChoiceDate` NULL), pop up muncul setelah login dengan toggle awal OFF dan hanya bisa ditutup lewat Simpan (`PUT /api/dashboard/settings/notifications`). OFF diperlakukan seperti mute oleh reminder engine; broadcast admin & balasan command tetap jalan
     - **Mute & jam tenang** — mute 1 jam / 2 jam / sampai besok 08:30, dan jam tenang harian (WIB); reminder yang jatuh tempo saat itu dilewati (`tr_reminderlog.deliveryStatus = skipped`), notif lewat budget langsung lanjut setelahnya. Badge 🔕 muncul di topbar saat mute aktif
     - Kalau beberapa tier terlewati sekaligus, hanya tier paling relevan yang dikirim
-  - **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
+  - **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/n-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
   - **Foto profil** = foto akun Google (claim `picture` Sign-In, disimpan di `ms_user_picture` tiap login; proxy `GET /api/dashboard/me/avatar`, cache 24 jam; belum pernah login / tanpa foto → huruf inisial)
   - **Admin panel** (khusus `ADMIN_EMAIL`, route `/admin` dengan shell & sidebar sendiri, di-lazy-load; `/dashboard/admin` lama di-redirect). Tombol **Dashboard Utama** di topbar kembali ke `/dashboard`:
     - **Dashboard** — statistik user + daftar pintas user tanpa credential & user nonaktif
@@ -40,7 +40,7 @@
 - Nama aplikasi: **Nudge**; base path `/nudge` (env `BASE_PATH`), Go module `nudge`
 - Ikon: `frontend/public/favicon.svg` (sumber), plus `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png` hasil render-nya, dan `manifest.webmanifest`
 - Design system di `frontend/src/styles.scss` (token warna indigo `--primary` + aksen amber `--accent`, font Plus Jakarta Sans); komponen UI bersama: `shared/ui/icon.component.ts` (ikon SVG inline), `core/ui/toast.service.ts` + `core/ui/confirm.service.ts` (toast & dialog konfirmasi, di-render oleh `shared/ui/overlays.component.ts`), dropdown custom `shared/ui/select.component.ts` dan pemilih jam `shared/ui/time-picker.component.ts` (pengganti `<select>`/`<input type="time">` native)
-- Command bot Google Chat tetap memakai prefix `/u-`
+- Command bot Google Chat memakai prefix `/n-` (Nudge; dulu `/u-`, prefix lama tidak dikenali lagi)
 
 ## Tech Stack
 
@@ -63,7 +63,7 @@
 - `modules/reminder_engine` — logika tier reminder, overage, early completion, dan filter preference per-user
 - `modules/business_hours` — kalkulasi elapsed/deadline berbasis jam kerja & kalender libur
 - `modules/google_chat_notifier` / `modules/chat_dm_notifier` — pengirim pesan ke webhook space & DM
-- `modules/chat_interactive` — logika dispatch command (`/u-mytickets`, dll) ke jawaban teks
+- `modules/chat_interactive` — logika dispatch command (`/n-mytickets`, dll) ke jawaban teks
 - `modules/chat_command_poller` — loop polling pesan DM tiap 10 detik, mendeteksi & membalas command
 - `modules/chat_command_poll_cursor` — penyimpanan cursor (createTime pesan terakhir diproses) per DM space
 - `modules/registration` — repository & service data user (`ms_user`) — dipakai auto-registrasi, bukan lagi form manual

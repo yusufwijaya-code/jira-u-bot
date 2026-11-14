@@ -63,7 +63,7 @@ Kalau notifikasi aktif, manfaatnya buat kamu:
 
 Fokus ngerjain tiketnya aja, biar Nudge yang ingetin waktunya 💪
 
-💡 Ketik */u-help* di sini buat lihat command lain
+💡 Ketik */n-help* di sini buat lihat command lain
 
 #BersamaSayaMenempuhOKRyangPassss`
 	if err := s.dmNotifier.SendPlainTextDM(ctx, email, text); err != nil {

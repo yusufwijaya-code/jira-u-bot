@@ -4,7 +4,7 @@ import "context"
 
 type ChatInteractiveService interface {
 	// RouteCommand checks the sender is registered, then dispatches on the
-	// literal /u-* command found at the start of messageText (falling back
+	// literal /n-* command found at the start of messageText (falling back
 	// to help for unregistered-looking text, same as an unrecognized
 	// command). Always returns a user-facing text string — never an error —
 	// because every outcome (unregistered, unknown command, ticket not

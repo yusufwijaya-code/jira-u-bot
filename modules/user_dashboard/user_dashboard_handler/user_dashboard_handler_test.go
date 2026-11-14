@@ -175,8 +175,8 @@ func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
 	if chat.lastSenderEmail != "dev@esb.co.id" {
 		t.Errorf("RouteCommand sender = %q, want dev@esb.co.id", chat.lastSenderEmail)
 	}
-	if chat.lastCommand != "/u-geser<OMS-1>:code-review" {
-		t.Errorf("RouteCommand command = %q, want /u-geser<OMS-1>:code-review", chat.lastCommand)
+	if chat.lastCommand != "/n-geser<OMS-1>:code-review" {
+		t.Errorf("RouteCommand command = %q, want /n-geser<OMS-1>:code-review", chat.lastCommand)
 	}
 	if !strings.Contains(w.Body.String(), "berhasil digeser") {
 		t.Errorf("body = %q, want it to echo RouteCommand's response (spec AC4.2)", w.Body.String())

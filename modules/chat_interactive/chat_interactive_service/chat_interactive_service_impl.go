@@ -23,19 +23,19 @@ import (
 
 const registerURL = "https://labcup.tech/nudge/register"
 
-// Command prefixes recognized at the start of a DM message. The /u- prefix
+// Command prefixes recognized at the start of a DM message. The /n- prefix
 // (operator's choice) keeps these from colliding with any other bot's
 // commands in the same space.
 const (
-	commandMyTickets = "/u-mytickets"
-	commandBudget    = "/u-budget"
-	commandOverdue   = "/u-overdue"
-	commandTeam      = "/u-team"
+	commandMyTickets = "/n-mytickets"
+	commandBudget    = "/n-budget"
+	commandOverdue   = "/n-overdue"
+	commandTeam      = "/n-team"
 )
 
-// geserCommandPattern matches /u-geser<ISSUEKEY>:target — e.g.
-// /u-geser<OMS-123>:todo or /u-geser<CORE-456>:code-review.
-var geserCommandPattern = regexp.MustCompile(`^/u-geser<([A-Za-z]+-\d+)>:(\S+)$`)
+// geserCommandPattern matches /n-geser<ISSUEKEY>:target — e.g.
+// /n-geser<OMS-123>:todo or /n-geser<CORE-456>:code-review.
+var geserCommandPattern = regexp.MustCompile(`^/n-geser<([A-Za-z]+-\d+)>:(\S+)$`)
 
 // geserTargetStatusNames maps the command's target slug to the Jira status
 // name to search for among the issue's available transitions. Matching is
@@ -97,10 +97,10 @@ func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, senderEma
 	}
 }
 
-// handleGeser implements /u-geser<issueKey>:target — lets the SENDER
+// handleGeser implements /n-geser<issueKey>:target — lets the SENDER
 // transition one of their own tracked tickets directly, without opening
 // Jira. Scope is deliberately limited to tickets the sender is themselves
-// assigned to (same ownership check as /u-budget's data, just enforced
+// assigned to (same ownership check as /n-budget's data, just enforced
 // rather than merely displayed) — this command can change real Jira state,
 // so it must not let anyone move someone else's ticket.
 func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmail, issueKey, targetSlug string) string {
@@ -156,12 +156,12 @@ func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmai
 
 func (s *chatInteractiveServiceImpl) handleHelp() string {
 	return "🤖 Command yang tersedia:\n\n" +
-		"*/u-mytickets* — tiket Code Process kamu\n" +
-		"*/u-budget <issueKey>* — detail budget satu tiket\n" +
-		"*/u-overdue* — semua tiket yang lewat budget\n" +
-		"*/u-team* — ringkasan semua tiket aktif per orang\n" +
-		"*/u-geser<issueKey>:todo* — geser tiket kamu balik ke To Do\n" +
-		"*/u-geser<issueKey>:code-review* — geser tiket kamu ke Code Review"
+		"*/n-mytickets* — tiket Code Process kamu\n" +
+		"*/n-budget <issueKey>* — detail budget satu tiket\n" +
+		"*/n-overdue* — semua tiket yang lewat budget\n" +
+		"*/n-team* — ringkasan semua tiket aktif per orang\n" +
+		"*/n-geser<issueKey>:todo* — geser tiket kamu balik ke To Do\n" +
+		"*/n-geser<issueKey>:code-review* — geser tiket kamu ke Code Review"
 }
 
 func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {
@@ -183,7 +183,7 @@ func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email 
 func (s *chatInteractiveServiceImpl) handleBudget(ctx context.Context, issueKey string) string {
 	issueKey = strings.TrimSpace(issueKey)
 	if issueKey == "" {
-		return "Pakai gini: */u-budget <issueKey>* — contoh: /u-budget CORE-10765"
+		return "Pakai gini: */n-budget <issueKey>* — contoh: /n-budget CORE-10765"
 	}
 
 	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)

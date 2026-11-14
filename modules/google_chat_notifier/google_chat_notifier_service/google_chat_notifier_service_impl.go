@@ -58,7 +58,7 @@ const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
 // separately. Commands are typed directly into the DM conversation (no
 // separate bot to address — see chat_command_poller), hence "di sini" and
 // not "ke bot ini".
-const helpHint = "💡 Ketik */u-help* di sini buat lihat command lain"
+const helpHint = "💡 Ketik */n-help* di sini buat lihat command lain"
 
 func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
@@ -130,7 +130,7 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 		)
 	}
 
-	// No /u-geser hint: the command still works (and is listed by /u-help),
+	// No /n-geser hint: the command still works (and is listed by /n-help),
 	// but it's no longer advertised in every reminder.
 	lines = append(lines, "", helpHint, "", messageFooter)
 	return strings.Join(lines, "\n")

@@ -206,7 +206,7 @@ func TestPollOnce_RepliesToRecognizedCommandAfterCursor(t *testing.T) {
 	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	msgTime := cursor.Add(1 * time.Minute)
 	server := newMessagesServer(t, map[string][]messageFixture{
-		"spaces/ABC": {{senderName: "users/OTHER", text: "/u-mytickets", createTime: msgTime}},
+		"spaces/ABC": {{senderName: "users/OTHER", text: "/n-mytickets", createTime: msgTime}},
 	}, nil)
 	defer server.Close()
 
@@ -225,8 +225,8 @@ func TestPollOnce_RepliesToRecognizedCommandAfterCursor(t *testing.T) {
 		}
 	})
 
-	if len(chatInteractive.calls) != 1 || chatInteractive.calls[0] != "teammate@esb.co.id|/u-mytickets" {
-		t.Fatalf("RouteCommand calls = %v, want [teammate@esb.co.id|/u-mytickets]", chatInteractive.calls)
+	if len(chatInteractive.calls) != 1 || chatInteractive.calls[0] != "teammate@esb.co.id|/n-mytickets" {
+		t.Fatalf("RouteCommand calls = %v, want [teammate@esb.co.id|/n-mytickets]", chatInteractive.calls)
 	}
 	if len(dmSender.calls) != 1 || dmSender.calls[0] != "teammate@esb.co.id|🤖 here are your tickets" {
 		t.Fatalf("SendPlainTextDM calls = %v, want disclosure-marker-prefixed reply", dmSender.calls)
@@ -275,7 +275,7 @@ func TestPollOnce_SkipsOwnMessagesEvenIfLookLikeCommands(t *testing.T) {
 	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	msgTime := cursor.Add(1 * time.Minute)
 	server := newMessagesServer(t, map[string][]messageFixture{
-		"spaces/ABC": {{senderName: selfUserID, text: "/u-mytickets", createTime: msgTime}},
+		"spaces/ABC": {{senderName: selfUserID, text: "/n-mytickets", createTime: msgTime}},
 	}, nil)
 	defer server.Close()
 
@@ -303,8 +303,8 @@ func TestPollOnce_SkipsMessagesAtOrBeforeCursor(t *testing.T) {
 	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	server := newMessagesServer(t, map[string][]messageFixture{
 		"spaces/ABC": {
-			{senderName: "users/OTHER", text: "/u-mytickets", createTime: cursor},                       // exactly at cursor
-			{senderName: "users/OTHER", text: "/u-mytickets", createTime: cursor.Add(-1 * time.Minute)}, // before cursor
+			{senderName: "users/OTHER", text: "/n-mytickets", createTime: cursor},                       // exactly at cursor
+			{senderName: "users/OTHER", text: "/n-mytickets", createTime: cursor.Add(-1 * time.Minute)}, // before cursor
 		},
 	}, nil)
 	defer server.Close()
@@ -332,7 +332,7 @@ func TestPollOnce_SkipsMessagesAtOrBeforeCursor(t *testing.T) {
 func TestPollOnce_FirstPollForSpaceDoesNotReplayHistory(t *testing.T) {
 	msgTime := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	server := newMessagesServer(t, map[string][]messageFixture{
-		"spaces/ABC": {{senderName: "users/OTHER", text: "/u-mytickets", createTime: msgTime}},
+		"spaces/ABC": {{senderName: "users/OTHER", text: "/n-mytickets", createTime: msgTime}},
 	}, nil)
 	defer server.Close()
 
@@ -385,7 +385,7 @@ func TestPollOnce_SendReplyErrorStillAdvancesCursor(t *testing.T) {
 	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	msgTime := cursor.Add(1 * time.Minute)
 	server := newMessagesServer(t, map[string][]messageFixture{
-		"spaces/ABC": {{senderName: "users/OTHER", text: "/u-overdue", createTime: msgTime}},
+		"spaces/ABC": {{senderName: "users/OTHER", text: "/n-overdue", createTime: msgTime}},
 	}, nil)
 	defer server.Close()
 
@@ -412,8 +412,8 @@ func TestPollOnce_ProcessesEachUsersSpaceIndependently(t *testing.T) {
 	cursor := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
 	msgTime := cursor.Add(1 * time.Minute)
 	server := newMessagesServer(t, map[string][]messageFixture{
-		"spaces/ABC": {{senderName: "users/OTHER1", text: "/u-mytickets", createTime: msgTime}},
-		"spaces/XYZ": {{senderName: "users/OTHER2", text: "/u-team", createTime: msgTime}},
+		"spaces/ABC": {{senderName: "users/OTHER1", text: "/n-mytickets", createTime: msgTime}},
+		"spaces/XYZ": {{senderName: "users/OTHER2", text: "/n-team", createTime: msgTime}},
 	}, nil)
 	defer server.Close()
 
@@ -444,8 +444,8 @@ func TestPollOnce_AdvancesCursorPerMessageNotOncePerBatch(t *testing.T) {
 	msg2Time := cursor.Add(2 * time.Minute)
 	server := newMessagesServer(t, map[string][]messageFixture{
 		"spaces/ABC": {
-			{senderName: "users/OTHER", text: "/u-geser<CORE-1>:code-review", createTime: msg1Time},
-			{senderName: "users/OTHER", text: "/u-geser<CORE-2>:code-review", createTime: msg2Time},
+			{senderName: "users/OTHER", text: "/n-geser<CORE-1>:code-review", createTime: msg1Time},
+			{senderName: "users/OTHER", text: "/n-geser<CORE-2>:code-review", createTime: msg2Time},
 		},
 	}, nil)
 	defer server.Close()
@@ -479,8 +479,8 @@ func TestPollOnce_CursorPersistFailureOnlyReplaysUnpersistedTail(t *testing.T) {
 	msg2Time := cursor.Add(2 * time.Minute)
 	server := newMessagesServer(t, map[string][]messageFixture{
 		"spaces/ABC": {
-			{senderName: "users/OTHER", text: "/u-geser<CORE-1>:code-review", createTime: msg1Time},
-			{senderName: "users/OTHER", text: "/u-geser<CORE-2>:code-review", createTime: msg2Time},
+			{senderName: "users/OTHER", text: "/n-geser<CORE-1>:code-review", createTime: msg1Time},
+			{senderName: "users/OTHER", text: "/n-geser<CORE-2>:code-review", createTime: msg2Time},
 		},
 	}, nil)
 	defer server.Close()
@@ -514,7 +514,7 @@ func TestPollOnce_CursorPersistFailureOnlyReplaysUnpersistedTail(t *testing.T) {
 	if len(chatInteractive.calls) != 3 {
 		t.Fatalf("after second pollOnce, RouteCommand calls = %v, want 3 total — only msg2 (whose cursor write failed) should replay, msg1's cursor was already safely persisted before the failure", chatInteractive.calls)
 	}
-	if chatInteractive.calls[2] != "teammate@esb.co.id|/u-geser<CORE-2>:code-review" {
+	if chatInteractive.calls[2] != "teammate@esb.co.id|/n-geser<CORE-2>:code-review" {
 		t.Errorf("the replayed call = %q, want it to be the CORE-2 message", chatInteractive.calls[2])
 	}
 }

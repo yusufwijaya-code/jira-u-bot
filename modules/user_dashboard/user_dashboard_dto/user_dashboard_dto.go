@@ -77,7 +77,7 @@ type Board struct {
 }
 
 // TeamGroup is one assignee's active (Code Process) tickets — Chapter 9c,
-// equivalent to the bot's /u-team.
+// equivalent to the bot's /n-team.
 type TeamGroup struct {
 	AssigneeEmail string `json:"assigneeEmail"`
 	Cards         []Card `json:"cards"`
@@ -88,7 +88,7 @@ type TeamView struct {
 }
 
 // OverdueItem is one active ticket whose elapsed time has passed its
-// budget — Chapter 9c, equivalent to the bot's /u-overdue.
+// budget — Chapter 9c, equivalent to the bot's /n-overdue.
 type OverdueItem struct {
 	Card
 	AssigneeEmail string `json:"assigneeEmail"`

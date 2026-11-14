@@ -351,11 +351,11 @@ func TestBuildMessageText_NeverIncludesGeserHint(t *testing.T) {
 		"returned to todo": {IssueKey: "OMS-1", IsReturnedToTodo: true},
 	} {
 		text := BuildMessageText(msg)
-		if strings.Contains(text, "/u-geser") {
-			t.Errorf("%s: text = %q, want no /u-geser hint", name, text)
+		if strings.Contains(text, "/n-geser") {
+			t.Errorf("%s: text = %q, want no /n-geser hint", name, text)
 		}
-		if !strings.Contains(text, "/u-help") {
-			t.Errorf("%s: text = %q, want it to still mention /u-help", name, text)
+		if !strings.Contains(text, "/n-help") {
+			t.Errorf("%s: text = %q, want it to still mention /n-help", name, text)
 		}
 	}
 }
@@ -367,8 +367,8 @@ func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
 		{IssueKey: "OMS-1", IsEarlyCompletion: true},
 	} {
 		text := BuildMessageText(msg)
-		if !strings.Contains(text, "/u-help") {
-			t.Errorf("message text %q does not mention /u-help — every reminder/overage/early-completion message (space and DM alike, since both reuse this function) must advertise the interactive commands", text)
+		if !strings.Contains(text, "/n-help") {
+			t.Errorf("message text %q does not mention /n-help — every reminder/overage/early-completion message (space and DM alike, since both reuse this function) must advertise the interactive commands", text)
 		}
 	}
 }

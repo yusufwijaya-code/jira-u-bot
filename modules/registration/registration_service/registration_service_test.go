@@ -180,8 +180,8 @@ func TestRegister_SendsThankYouDMForNonSelfRegistration(t *testing.T) {
 	if len(dmNotifier.sentToEmails) != 1 || dmNotifier.sentToEmails[0] != "teammate@esb.co.id" {
 		t.Errorf("sentToEmails = %v, want [teammate@esb.co.id] (spec AC3.1)", dmNotifier.sentToEmails)
 	}
-	if len(dmNotifier.sentPlainTextCalls) != 1 || !strings.Contains(dmNotifier.sentPlainTextCalls[0], "/u-help") {
-		t.Errorf("thank-you DM text = %q, want it to mention /u-help", dmNotifier.sentPlainTextCalls)
+	if len(dmNotifier.sentPlainTextCalls) != 1 || !strings.Contains(dmNotifier.sentPlainTextCalls[0], "/n-help") {
+		t.Errorf("thank-you DM text = %q, want it to mention /n-help", dmNotifier.sentPlainTextCalls)
 	}
 	// Tech Spec "Notification On-Off Consent": new users start with
 	// notifications off — the welcome DM must say so and where to enable.

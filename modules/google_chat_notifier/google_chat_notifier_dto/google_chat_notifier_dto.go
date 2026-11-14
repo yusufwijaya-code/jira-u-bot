@@ -38,7 +38,7 @@ type ReminderMessage struct {
 	// spent in Code Process vs. its budget).
 	CodeReviewEnteredAt time.Time
 	// IsReturnedToTodo flags a notice sent when a ticket leaves Code
-	// Process back to To Do — whether via /u-geser or a manual Jira
+	// Process back to To Do — whether via /n-geser or a manual Jira
 	// change — a fourth message shape alongside tier, overage, and early
 	// completion, reusing the same routing/formatting pipeline. Unlike
 	// IsEarlyCompletion, this always sends regardless of how much budget

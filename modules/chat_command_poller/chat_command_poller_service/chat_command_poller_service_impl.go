@@ -26,7 +26,7 @@ const pollInterval = 10 * time.Second
 // this way is an ordinary human conversation. Only text starting with this
 // prefix is treated as a command attempt; everything else is left alone so
 // casual chat never gets an unsolicited bot reply.
-const commandPrefix = "/u-"
+const commandPrefix = "/n-"
 
 // chatAPIBase is a package-level var (test seam), same pattern as
 // chat_dm_notifier_service's chatAPIBase.

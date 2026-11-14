@@ -50,7 +50,7 @@ func TestUpdateCursor_ThenGetCursor_RoundTrips(t *testing.T) {
 // "2026-10-27T12:32:52.552687Z"). If the stored column truncates that away,
 // the ORIGINAL message's timestamp looks newer than the truncated cursor on
 // the next poll cycle, so chat_command_poller reprocesses it and sends a
-// duplicate reply — confirmed live (Benni got /u-mytickets answered twice,
+// duplicate reply — confirmed live (Benni got /n-mytickets answered twice,
 // exactly one poll interval apart).
 func TestUpdateCursor_PreservesSubSecondPrecision(t *testing.T) {
 	db := testutil.OpenTestDB(t)

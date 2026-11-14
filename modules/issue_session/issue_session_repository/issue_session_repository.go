@@ -19,7 +19,7 @@ type IssueSessionRepository interface {
 	// (nil = not in an active sprint).
 	UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error
 	// FindActiveByAssigneeEmail returns every flagActive=1 session assigned
-	// to email — used by the /u-mytickets interactive command.
+	// to email — used by the /n-mytickets interactive command.
 	FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error)
 	// FindBySprintNames is Sprint Report's data source (Tech Spec
 	// "Dashboard Jira Manage", Chapter 11b, AC7.1) — includes closed

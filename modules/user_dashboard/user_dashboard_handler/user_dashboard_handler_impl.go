@@ -230,8 +230,8 @@ func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
 
 	// Delegates straight to RouteCommand (spec AC4.1) - the exact same
 	// validation/transition/credential-resolution path as the bot's
-	// /u-geser, including its "own tickets only" ownership check.
-	command := "/u-geser<" + issueKey + ">:" + req.Target
+	// /n-geser, including its "own tickets only" ownership check.
+	command := "/n-geser<" + issueKey + ">:" + req.Target
 	message := h.chatInteractive.RouteCommand(c.Request.Context(), currentUser(c).Email, command)
 	c.JSON(http.StatusOK, gin.H{"message": message})
 }

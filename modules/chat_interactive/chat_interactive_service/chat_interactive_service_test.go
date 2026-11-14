@@ -200,7 +200,7 @@ func newTestServiceWithCredential(registered map[string]registration_dto.User, i
 func TestRouteCommand_UnregisteredUserGetsInviteToRegister(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{}, nil)
 
-	got := svc.RouteCommand(context.Background(), "ghost@esb.co.id", "/u-mytickets")
+	got := svc.RouteCommand(context.Background(), "ghost@esb.co.id", "/n-mytickets")
 
 	if !strings.Contains(got, "labcup.tech/nudge/register") {
 		t.Errorf("RouteCommand() = %q, want it to contain the registration link", got)
@@ -212,18 +212,18 @@ func TestRouteCommand_UnknownTextFallsBackToHelp(t *testing.T) {
 
 	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "woi kapan deploy")
 
-	if !strings.Contains(got, "/u-mytickets") || !strings.Contains(got, "/u-budget") || !strings.Contains(got, "/u-overdue") || !strings.Contains(got, "/u-team") || !strings.Contains(got, "/u-geser") {
-		t.Errorf("RouteCommand() = %q, want help text listing all 5 commands including /u-geser", got)
+	if !strings.Contains(got, "/n-mytickets") || !strings.Contains(got, "/n-budget") || !strings.Contains(got, "/n-overdue") || !strings.Contains(got, "/n-team") || !strings.Contains(got, "/n-geser") {
+		t.Errorf("RouteCommand() = %q, want help text listing all 5 commands including /n-geser", got)
 	}
 }
 
 func TestRouteCommand_UHelpShowsHelp(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-help")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-help")
 
-	if !strings.Contains(got, "/u-mytickets") {
-		t.Errorf("RouteCommand() = %q, want help text for /u-help", got)
+	if !strings.Contains(got, "/n-mytickets") {
+		t.Errorf("RouteCommand() = %q, want help text for /n-help", got)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestRouteCommand_MyTicketsListsActiveTicketsForInvoker(t *testing.T) {
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-mytickets")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
 
 	if !strings.Contains(got, "OMS-1") {
 		t.Errorf("RouteCommand() = %q, want it to mention OMS-1", got)
@@ -262,7 +262,7 @@ func TestRouteCommand_MyTicketsSeparatesMultipleTicketsWithBlankLine(t *testing.
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-mytickets")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
 
 	if !strings.Contains(got, "OMS-1") || !strings.Contains(got, "OMS-2") {
 		t.Fatalf("RouteCommand() = %q, want it to mention both tickets", got)
@@ -287,7 +287,7 @@ func TestRouteCommand_MyTicketsIncludesDeadline(t *testing.T) {
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-mytickets")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
 
 	if !strings.Contains(got, "Harus Selesai Pass") {
 		t.Errorf("RouteCommand() = %q, want it to include the Harus Selesai Pass deadline", got)
@@ -297,7 +297,7 @@ func TestRouteCommand_MyTicketsIncludesDeadline(t *testing.T) {
 func TestRouteCommand_MyTicketsNoActiveTicketsIsFriendly(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-mytickets")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
 
 	if strings.Contains(got, "error") || got == "" {
 		t.Errorf("RouteCommand() = %q, want a friendly no-tickets message, not empty/error", got)
@@ -314,7 +314,7 @@ func TestRouteCommand_BudgetFoundTicketShowsDetail(t *testing.T) {
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-budget CORE-99")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-budget CORE-99")
 
 	if !strings.Contains(got, "CORE-99") || !strings.Contains(got, "Audit screen") {
 		t.Errorf("RouteCommand() = %q, want ticket detail for CORE-99", got)
@@ -324,7 +324,7 @@ func TestRouteCommand_BudgetFoundTicketShowsDetail(t *testing.T) {
 func TestRouteCommand_BudgetTicketNotFound(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-budget CORE-404")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-budget CORE-404")
 
 	if !strings.Contains(got, "tidak ditemukan") {
 		t.Errorf("RouteCommand() = %q, want a not-found message", got)
@@ -334,10 +334,10 @@ func TestRouteCommand_BudgetTicketNotFound(t *testing.T) {
 func TestRouteCommand_BudgetWithoutArgumentShowsUsage(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-budget")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-budget")
 
-	if !strings.Contains(got, "/u-budget") {
-		t.Errorf("RouteCommand() = %q, want usage instructions mentioning /u-budget", got)
+	if !strings.Contains(got, "/n-budget") {
+		t.Errorf("RouteCommand() = %q, want usage instructions mentioning /n-budget", got)
 	}
 }
 
@@ -352,7 +352,7 @@ func TestRouteCommand_OverdueListsOnlyOverBudgetTickets(t *testing.T) {
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-overdue")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-overdue")
 
 	if !strings.Contains(got, "OVER-1") {
 		t.Errorf("RouteCommand() = %q, want it to list OVER-1", got)
@@ -372,7 +372,7 @@ func TestRouteCommand_OverdueNoneIsPositiveMessage(t *testing.T) {
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-overdue")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-overdue")
 
 	if strings.Contains(got, "UNDER-1") {
 		t.Error("RouteCommand() should not list any tickets when none are overdue")
@@ -393,7 +393,7 @@ func TestRouteCommand_TeamGroupsTicketsByAssignee(t *testing.T) {
 	}
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-team")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-team")
 
 	if !strings.Contains(got, "alice@esb.co.id") || !strings.Contains(got, "bob@esb.co.id") {
 		t.Errorf("RouteCommand() = %q, want it to mention both assignees", got)
@@ -406,7 +406,7 @@ func TestRouteCommand_TeamGroupsTicketsByAssignee(t *testing.T) {
 func TestRouteCommand_TeamNoActivityMessage(t *testing.T) {
 	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-team")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-team")
 
 	if got == "" {
 		t.Error("RouteCommand() must return a friendly no-activity message, not empty")
@@ -428,7 +428,7 @@ func TestRouteCommand_GeserTransitionsToMatchingStatus(t *testing.T) {
 	}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
 
 	if len(jiraClient.transitionCalls) != 1 || jiraClient.transitionCalls[0] != "OMS-12561|5" {
 		t.Fatalf("TransitionIssue calls = %v, want [OMS-12561|5]", jiraClient.transitionCalls)
@@ -454,7 +454,7 @@ func TestRouteCommand_GeserUsesPersonalCredentialWhenSet(t *testing.T) {
 	}}
 	svc := newTestServiceWithCredential(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient, jiraCredential)
 
-	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
 
 	if jiraClient.lastTransitionsCred != personalCred {
 		t.Errorf("GetTransitionsAs called with cred=%v, want the sender's personal credential (spec AC5.3)", jiraClient.lastTransitionsCred)
@@ -476,7 +476,7 @@ func TestRouteCommand_GeserFallsBackToCentralCredentialWhenNotSet(t *testing.T) 
 	}
 	svc := newTestServiceWithCredential(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient, &fakeJiraCredentialServiceForChat{})
 
-	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
 
 	if jiraClient.lastTransitionCred != nil {
 		t.Errorf("TransitionIssueAs called with cred=%v, want nil (fallback to central credential, spec AC5.4)", jiraClient.lastTransitionCred)
@@ -499,7 +499,7 @@ func TestRouteCommand_GeserMatchesCaseInsensitiveTargetStatus(t *testing.T) {
 	}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<CORE-10841>:code-review")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<CORE-10841>:code-review")
 
 	if len(jiraClient.transitionCalls) != 1 || jiraClient.transitionCalls[0] != "CORE-10841|22" {
 		t.Fatalf("TransitionIssue calls = %v, want [CORE-10841|22]", jiraClient.transitionCalls)
@@ -519,7 +519,7 @@ func TestRouteCommand_GeserRejectsTicketNotOwnedBySender(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForChat{}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
 
 	if len(jiraClient.transitionCalls) != 0 {
 		t.Errorf("TransitionIssue calls = %v, want none — ticket is not the sender's own", jiraClient.transitionCalls)
@@ -533,7 +533,7 @@ func TestRouteCommand_GeserRejectsUnknownOrUntrackedTicket(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForChat{}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-99999>:todo")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-99999>:todo")
 
 	if len(jiraClient.transitionCalls) != 0 {
 		t.Errorf("TransitionIssue calls = %v, want none", jiraClient.transitionCalls)
@@ -553,7 +553,7 @@ func TestRouteCommand_GeserRejectsUnrecognizedTarget(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForChat{}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:bukan-target-valid")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:bukan-target-valid")
 
 	if len(jiraClient.transitionCalls) != 0 {
 		t.Errorf("TransitionIssue calls = %v, want none", jiraClient.transitionCalls)
@@ -580,7 +580,7 @@ func TestRouteCommand_GeserReturnsFriendlyMessageWhenWorkflowHasNoSuchTransition
 	}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12546>:todo")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12546>:todo")
 
 	if len(jiraClient.transitionCalls) != 0 {
 		t.Errorf("TransitionIssue calls = %v, want none — no matching transition available", jiraClient.transitionCalls)
@@ -600,7 +600,7 @@ func TestRouteCommand_GeserReturnsFriendlyMessageWhenGetTransitionsFails(t *test
 	jiraClient := &fakeJiraClientServiceForChat{transitionsErr: errGeserTest}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
 
 	if got == "" {
 		t.Error("RouteCommand() must return a friendly error message, not empty")
@@ -620,7 +620,7 @@ func TestRouteCommand_GeserReturnsFriendlyMessageWhenTransitionIssueFails(t *tes
 	}
 	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
 
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/u-geser<OMS-12561>:todo")
+	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
 
 	if got == "" {
 		t.Error("RouteCommand() must return a friendly error message, not empty")

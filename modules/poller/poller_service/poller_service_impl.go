@@ -171,7 +171,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		}
 
 		// Exit-destination notices (spec AC4.1/AC4.4/AC4.5, plus the To Do
-		// case for /u-geser and manual Jira changes) are best-effort: the
+		// case for /n-geser and manual Jira changes) are best-effort: the
 		// session above is already closed by the time we get here, so there
 		// is no natural retry hook if either step below fails — log and move
 		// on to the next ticket rather than failing the cycle.
