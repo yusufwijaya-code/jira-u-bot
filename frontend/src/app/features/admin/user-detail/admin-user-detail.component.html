@@ -1,0 +1,115 @@
+<div class="page-stack">
+  @if (loading()) {
+    <div class="table-skeleton" aria-busy="true">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="skeleton skeleton-row"></div>
+      }
+    </div>
+  } @else if (notFound()) {
+    <section class="card">
+      <div class="empty-state not-found">
+        <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+        <p class="msg error">User tidak ditemukan</p>
+        <a class="btn btn-ghost btn-sm" routerLink="/admin/users"><app-icon name="arrow-left" [size]="14" /> Kembali ke daftar user</a>
+      </div>
+    </section>
+  } @else if (error()) {
+    <section class="card">
+      <div class="empty-state">
+        <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+        <p class="msg error">{{ error() }}</p>
+      </div>
+    </section>
+  }
+  @if (!loading() && !notFound() && !error() && user(); as u) {
+    <a class="back-link" routerLink="/admin/users"><app-icon name="arrow-left" [size]="14" /> Daftar user</a>
+
+    <div class="admin-editing-banner">
+      <app-icon name="shield" [size]="18" />
+      <span>Kamu sedang mengatur pengaturan milik <strong>{{ u.email }}</strong>. Setiap perubahan diberitahukan ke user lewat DM.</span>
+    </div>
+
+    <section class="card profile-card">
+      <div class="profile-head">
+        <span class="user-avatar xl">{{ u.email.charAt(0).toUpperCase() }}</span>
+        <div class="profile-id">
+          <h2>{{ u.userName || u.email }}</h2>
+          <p>{{ u.email }}</p>
+        </div>
+        <span class="status-badge" [class.active]="u.flagActive">{{ u.flagActive ? 'Aktif' : 'Nonaktif' }}</span>
+      </div>
+
+      <dl class="profile-grid">
+        <div>
+          <dt>Status</dt>
+          <dd>
+            <button
+              type="button"
+              class="btn btn-sm"
+              [class.btn-soft]="!u.flagActive"
+              [class.btn-ghost]="u.flagActive"
+              [disabled]="busy()"
+              (click)="toggleActive()"
+            >
+              <app-icon name="power" [size]="14" /> {{ u.flagActive ? 'Nonaktifkan' : 'Aktifkan' }}
+            </button>
+          </dd>
+        </div>
+        <div>
+          <dt>Jira Account ID</dt>
+          <dd>
+            <div class="inline-edit">
+              <input type="text" [(ngModel)]="jiraAccountIdDraft" [disabled]="busy()" placeholder="Belum diisi" aria-label="Jira Account ID" />
+              <button
+                type="button"
+                class="icon-btn"
+                title="Simpan ID"
+                aria-label="Simpan ID"
+                [disabled]="busy() || jiraAccountIdDraft === u.jiraAccountId"
+                (click)="saveJiraAccountId()"
+              >
+                <app-icon name="check" [size]="16" />
+              </button>
+            </div>
+          </dd>
+        </div>
+        <div>
+          <dt>Jira credential</dt>
+          <dd>
+            @if (u.hasCredential) {
+              <span class="cred-badge"><app-icon name="lock" [size]="12" /> {{ u.credentialMasked || 'Aktif' }}</span>
+            } @else {
+              <span class="muted">Belum ada — aksi Jira memakai akun bot</span>
+            }
+          </dd>
+        </div>
+      </dl>
+      @if (rowMessage(); as message) {
+        <p class="msg error">{{ message }}</p>
+      }
+    </section>
+
+    <section class="card scope-card">
+      <header class="card-header">
+        <span class="card-icon"><app-icon name="layers" [size]="20" /></span>
+        <div>
+          <h2>Scope pengaturan</h2>
+          <p>Pilih pengaturan default semua board, atau board tempat user ini punya tiket di sprint aktif.</p>
+        </div>
+      </header>
+      <div class="scope-picker">
+        <app-select
+          ariaLabel="Scope pengaturan"
+          [options]="scopeOptions()"
+          [ngModel]="scope.selectedId()"
+          (ngModelChange)="scope.select($event)"
+        />
+        @if (scope.loaded() && !scope.boards().length) {
+          <small class="muted">User ini belum punya tiket di sprint aktif mana pun.</small>
+        }
+      </div>
+    </section>
+
+    <app-settings />
+  }
+</div>

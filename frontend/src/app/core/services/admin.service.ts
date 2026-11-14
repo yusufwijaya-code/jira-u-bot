@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { BoardSummary } from './board-context.service';
 
 export interface UserRow {
   userId: number;
@@ -29,6 +30,16 @@ export class AdminService {
 
   listUsers(): Observable<ListUsersResponse> {
     return this.http.get<ListUsersResponse>(`${environment.apiBasePath}/api/dashboard/admin/users`);
+  }
+
+  /** One user (404 when unknown) — Tech Spec "Admin Panel Revamp". */
+  getUser(userId: number): Observable<UserRow> {
+    return this.http.get<UserRow>(`${environment.apiBasePath}/api/dashboard/admin/users/${userId}`);
+  }
+
+  /** The user's boards, same shape as the navbar picker's GET /boards. */
+  listUserBoards(userId: number): Observable<{ boards: BoardSummary[] | null }> {
+    return this.http.get<{ boards: BoardSummary[] | null }>(`${environment.apiBasePath}/api/dashboard/admin/users/${userId}/boards`);
   }
 
   toggleActive(userId: number, active: boolean): Observable<unknown> {
