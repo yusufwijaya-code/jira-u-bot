@@ -5,15 +5,17 @@ import { AdminService, UserRow } from '../../../core/services/admin.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { UserAvatarComponent, adminUserAvatarUrl } from '../../../shared/ui/user-avatar.component';
 import { Router, RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-admin-users',
   standalone: true,
-  imports: [NgFor, NgIf, FormsModule, RouterLink, IconComponent],
+  imports: [NgFor, NgIf, FormsModule, RouterLink, IconComponent, UserAvatarComponent],
   templateUrl: './admin-users.component.html',
 })
 export class AdminUsersComponent implements OnInit {
+  protected readonly avatarUrl = adminUserAvatarUrl;
   protected users: UserRow[] = [];
   protected loading = true;
   protected error: string | null = null;

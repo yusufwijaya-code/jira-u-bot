@@ -80,7 +80,7 @@
             [attr.aria-expanded]="menuOpen"
             (click)="toggleMenu()"
           >
-            <span class="user-avatar">{{ initial$ | async }}</span>
+            <app-user-avatar [src]="myAvatar" [name]="(authService.currentUser$ | async)?.email" />
             <span class="user-email">{{ (authService.currentUser$ | async)?.email }}</span>
             <app-icon class="chevron" [class.open]="menuOpen" name="chevron-down" [size]="16" />
           </button>
@@ -88,7 +88,7 @@
           @if (menuOpen) {
             <ul class="user-menu-list" role="menu">
               <li class="user-menu-header" role="none">
-                <span class="user-avatar lg">{{ initial$ | async }}</span>
+                <app-user-avatar size="lg" [src]="myAvatar" [name]="(authService.currentUser$ | async)?.email" />
                 <div>
                   <strong>{{ (authService.currentUser$ | async)?.email }}</strong>
                   <span class="role-badge admin">Administrator</span>

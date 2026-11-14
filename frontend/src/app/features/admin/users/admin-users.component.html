@@ -36,7 +36,7 @@
           >
             <td>
               <div class="user-cell">
-                <span class="user-avatar">{{ user.email.charAt(0).toUpperCase() }}</span>
+                <app-user-avatar [src]="avatarUrl(user.userId)" [name]="user.email" />
                 <div>
                   <strong>{{ user.email }}</strong>
                   <small *ngIf="user.userName">{{ user.userName }}</small>

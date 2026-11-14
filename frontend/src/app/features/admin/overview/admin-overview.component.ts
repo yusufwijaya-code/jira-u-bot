@@ -3,6 +3,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AdminService, UserRow } from '../../../core/services/admin.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { UserAvatarComponent, adminUserAvatarUrl } from '../../../shared/ui/user-avatar.component';
 
 /** How many users each shortcut list shows. */
 const SHORTLIST_SIZE = 5;
@@ -14,10 +15,11 @@ const SHORTLIST_SIZE = 5;
 @Component({
   selector: 'app-admin-overview',
   standalone: true,
-  imports: [NgTemplateOutlet, RouterLink, IconComponent],
+  imports: [NgTemplateOutlet, RouterLink, IconComponent, UserAvatarComponent],
   templateUrl: './admin-overview.component.html',
 })
 export class AdminOverviewComponent implements OnInit {
+  protected readonly avatarUrl = adminUserAvatarUrl;
   private adminService = inject(AdminService);
 
   protected loading = signal(true);

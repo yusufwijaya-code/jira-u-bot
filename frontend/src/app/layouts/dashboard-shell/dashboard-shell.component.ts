@@ -8,6 +8,7 @@ import { MuteStateService } from '../../core/services/mute-state.service';
 import { BoardContextService } from '../../core/services/board-context.service';
 import { BoardAvatarComponent } from '../../shared/ui/board-avatar.component';
 import { IconComponent } from '../../shared/ui/icon.component';
+import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { environment } from '../../../environments/environment';
 
 interface PageHeading {
@@ -18,7 +19,7 @@ interface PageHeading {
 @Component({
   selector: 'app-dashboard-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, BoardAvatarComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, UserAvatarComponent, BoardAvatarComponent],
   templateUrl: './dashboard-shell.component.html',
 })
 export class DashboardShellComponent implements OnInit {
@@ -37,9 +38,8 @@ export class DashboardShellComponent implements OnInit {
   protected boardMenuOpen = false;
   protected sidebarOpen = false;
 
-  protected initial$ = this.authService.currentUser$.pipe(
-    map((user) => (user?.email ?? '?').charAt(0).toUpperCase()),
-  );
+  /** The logged-in user's Jira profile picture. */
+  protected myAvatar = myAvatarUrl();
 
   /** Page title shown in the top bar, taken from the deepest route's `data`. */
   protected page$ = this.router.events.pipe(

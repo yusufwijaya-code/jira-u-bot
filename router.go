@@ -14,6 +14,7 @@ import (
 	"nudge/modules/auth/auth_service"
 	"nudge/modules/sprint_report"
 	"nudge/modules/sprint_report/sprint_report_handler"
+	"nudge/modules/user_avatar/user_avatar_handler"
 	"nudge/modules/user_dashboard"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
 )
@@ -31,6 +32,7 @@ func SetupRouter(
 	adminDashboardHandler admin_dashboard_handler.AdminDashboardHandler,
 	sprintReportHandler sprint_report_handler.SprintReportHandler,
 	adminUserSettings *user_dashboard_handler.SettingsHandler,
+	userAvatars *user_avatar_handler.UserAvatarHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -57,6 +59,8 @@ func SetupRouter(
 	dashboardAPI.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
 	user_dashboard.Router(dashboardAPI, userDashboardHandler)
 	sprint_report.Router(dashboardAPI, sprintReportHandler)
+	// Jira profile pictures (Tech Spec "Admin Panel Revamp").
+	dashboardAPI.GET("/me/avatar", userAvatars.Mine)
 
 	dashboardAdmin := base.Group("/dashboard/admin")
 	dashboardAdmin.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
@@ -66,6 +70,7 @@ func SetupRouter(
 	apiDashboardAdmin.Use(auth_middleware.AdminMiddleware(cfg))
 
 	admin_dashboard.Router(dashboardAdmin, apiDashboardAdmin, adminDashboardHandler, adminUserSettings)
+	apiDashboardAdmin.GET("/users/:userID/avatar", userAvatars.ForUser)
 
 	return r
 }

@@ -589,6 +589,11 @@ input:checked + .check-box {
   p { margin: 2px 0 0; font-size: 0.85rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
 }
 .user-avatar.xl { width: 52px; height: 52px; font-size: 1.3rem; }
+app-user-avatar.user-avatar {
+  overflow: hidden;
+  &.has-photo { background: var(--surface-2); }
+  img { width: 100%; height: 100%; object-fit: cover; display: block; }
+}
 .profile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

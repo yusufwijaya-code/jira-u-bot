@@ -4,6 +4,7 @@ import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive, Ro
 import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { IconComponent } from '../../shared/ui/icon.component';
+import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { environment } from '../../../environments/environment';
 
 interface AdminPage {
@@ -21,7 +22,7 @@ interface AdminPage {
 @Component({
   selector: 'app-admin-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, IconComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, IconComponent, UserAvatarComponent],
   templateUrl: './admin-shell.component.html',
 })
 export class AdminShellComponent {
@@ -35,7 +36,8 @@ export class AdminShellComponent {
   protected menuOpen = false;
   protected sidebarOpen = false;
 
-  protected initial$ = this.authService.currentUser$.pipe(map((user) => (user?.email ?? '?').charAt(0).toUpperCase()));
+  /** The logged-in user's Jira profile picture. */
+  protected myAvatar = myAvatarUrl();
 
   /** Heading, subheading and breadcrumb from the deepest route's `data`. */
   protected page$ = this.router.events.pipe(

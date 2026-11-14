@@ -41,6 +41,8 @@ import (
 	"nudge/modules/reminder_log/reminder_log_service"
 	"nudge/modules/sprint_report/sprint_report_handler"
 	"nudge/modules/sprint_report/sprint_report_service"
+	"nudge/modules/user_avatar/user_avatar_handler"
+	"nudge/modules/user_avatar/user_avatar_service"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
 	"nudge/modules/user_dashboard/user_dashboard_service"
 	"nudge/modules/user_setting/user_setting_repository"
@@ -204,7 +206,11 @@ func main() {
 		admin_dashboard_handler.AdminChangeListener(adminDashboardSvc),
 	)
 
-	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings)
+	userAvatarHandler := user_avatar_handler.NewUserAvatarHandler(
+		user_avatar_service.NewUserAvatarService(registrationRepo, jira_client_service.NewJiraUserClient(&cfg)),
+	)
+
+	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings, userAvatarHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

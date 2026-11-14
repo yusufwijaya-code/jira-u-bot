@@ -49,7 +49,7 @@
         @for (user of users; track user.userId) {
           <li>
             <a [routerLink]="['/admin/users', user.userId]">
-              <span class="user-avatar">{{ user.email.charAt(0).toUpperCase() }}</span>
+              <app-user-avatar [src]="avatarUrl(user.userId)" [name]="user.email" />
               <span class="shortlist-text">
                 <strong>{{ user.email }}</strong>
                 @if (user.userName) {

@@ -31,7 +31,7 @@
 
     <section class="card profile-card">
       <div class="profile-head">
-        <span class="user-avatar xl">{{ u.email.charAt(0).toUpperCase() }}</span>
+        <app-user-avatar size="xl" [src]="avatarUrl(u.userId)" [name]="u.email" />
         <div class="profile-id">
           <h2>{{ u.userName || u.email }}</h2>
           <p>{{ u.email }}</p>
