@@ -45,8 +45,8 @@ func TestCurlRequest_SendsHeadersAndBody(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("failed to decode request body: %v", err)
 		}
-		if body.Name != "jira-u-bot" {
-			t.Errorf("body.Name = %q, want %q", body.Name, "jira-u-bot")
+		if body.Name != "nudge" {
+			t.Errorf("body.Name = %q, want %q", body.Name, "nudge")
 		}
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(testResponse{Message: "received"})
@@ -54,7 +54,7 @@ func TestCurlRequest_SendsHeadersAndBody(t *testing.T) {
 	defer server.Close()
 
 	headers := map[string]string{"Authorization": "Bearer secret"}
-	result, err := CurlRequest[testResponse](context.Background(), server.URL, headers, reqBody{Name: "jira-u-bot"}, http.MethodPost, 1000, true)
+	result, err := CurlRequest[testResponse](context.Background(), server.URL, headers, reqBody{Name: "nudge"}, http.MethodPost, 1000, true)
 	if err != nil {
 		t.Fatalf("CurlRequest returned error: %v", err)
 	}

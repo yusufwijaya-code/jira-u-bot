@@ -3,7 +3,7 @@ package registration_repository
 import (
 	"context"
 
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 type RegistrationRepository interface {

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 
-	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
-	"jira-u-bot/modules/jira_client/jira_client_service"
-	"jira-u-bot/modules/registration/registration_repository"
+	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
+	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/registration/registration_repository"
 )
 
 type registrationServiceImpl struct {
@@ -52,7 +52,7 @@ func (s *registrationServiceImpl) sendThankYouDM(ctx context.Context, email stri
 	if email == s.selfEmail || s.dmNotifier == nil {
 		return
 	}
-	const text = `🎉 Halo! Registrasi kamu di Jira U Bot berhasil.
+	const text = `🎉 Halo! Registrasi kamu di Nudge berhasil.
 
 🤖 Mulai sekarang, setiap tiket Code Process yang kamu pegang bakal dipantau otomatis, dan reminder-nya masuk langsung ke DM ini.
 
@@ -61,7 +61,7 @@ Manfaatnya buat kamu:
 🔴 Dapet notif kalau sudah lewat budget, biar bisa segera eskalasi
 🎉 Dapet apresiasi kalau selesai lebih awal dari budget
 
-Fokus ngerjain tiketnya aja, biar Jira U Bot yang ingetin waktunya 💪
+Fokus ngerjain tiketnya aja, biar Nudge yang ingetin waktunya 💪
 
 💡 Ketik */u-help* di sini buat lihat command lain
 

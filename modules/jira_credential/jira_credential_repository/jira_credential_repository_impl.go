@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"jira-u-bot/modules/jira_credential/jira_credential_dto"
+	"nudge/modules/jira_credential/jira_credential_dto"
 )
 
 type jiraCredentialRepositoryImpl struct {

@@ -1,4 +1,4 @@
-module jira-u-bot
+module nudge
 
 go 1.26.0
 

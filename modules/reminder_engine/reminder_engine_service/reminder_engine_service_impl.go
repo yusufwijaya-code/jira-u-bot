@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/issue_session/issue_session_service"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/registration/registration_repository"
-	"jira-u-bot/modules/reminder_log/reminder_log_dto"
-	"jira-u-bot/modules/reminder_log/reminder_log_service"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/issue_session/issue_session_service"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/registration/registration_repository"
+	"nudge/modules/reminder_log/reminder_log_dto"
+	"nudge/modules/reminder_log/reminder_log_service"
 )
 
 const overageRepeatInterval = 5 * time.Minute

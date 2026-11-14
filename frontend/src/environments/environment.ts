@@ -1,3 +1,3 @@
 export const environment = {
-  apiBasePath: '/jira-notif',
+  apiBasePath: '/nudge',
 };

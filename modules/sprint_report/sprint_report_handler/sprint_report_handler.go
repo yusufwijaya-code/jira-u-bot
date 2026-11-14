@@ -3,7 +3,6 @@ package sprint_report_handler
 import "github.com/gin-gonic/gin"
 
 type SprintReportHandler interface {
-	Report(c *gin.Context)
 	// GetReport returns the Sprint Report page's data as JSON — available
 	// sprints always included, generated report included only when at least
 	// one sprint was selected via query param (Tech Spec "Angular Dashboard

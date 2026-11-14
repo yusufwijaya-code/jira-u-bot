@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 type fakeChatOAuthService struct {

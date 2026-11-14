@@ -3,23 +3,19 @@ package user_dashboard_handler
 import "github.com/gin-gonic/gin"
 
 type UserDashboardHandler interface {
-	// Dashboard renders the legacy My Board HTML page — stays alongside
-	// GetBoard until Plan C removes the old HTML routes.
-	Dashboard(c *gin.Context)
-	// GetBoard returns My Board as JSON — consumed by the Angular
-	// frontend's board.service.ts (Tech Spec "Angular Dashboard Revamp",
-	// Repository 1 Chapter 2).
+	// GetSettings returns the caller's reminder tier preference and Jira
+	// credential status as JSON — consumed by the Angular frontend's
+	// settings page.
+	GetSettings(c *gin.Context)
+	// GetBoard, GetTeam and GetOverdue return JSON scoped to the logged-in
+	// user's own tickets (email taken from the session, admin included).
 	GetBoard(c *gin.Context)
-	// GetTeam returns the Team view as JSON (Tech Spec "Angular Dashboard
-	// Revamp", Repository 1 Chapter 3).
 	GetTeam(c *gin.Context)
-	TeamView(c *gin.Context)
-	OverdueView(c *gin.Context)
-	// GetOverdue returns the Overdue view as JSON (Tech Spec "Angular
-	// Dashboard Revamp", Repository 1 Chapter 4).
 	GetOverdue(c *gin.Context)
-	UpdatePreference(c *gin.Context)
+	// TransitionTicket moves one of the caller's own tickets via the same
+	// path as the bot's /u-geser (which enforces ownership).
 	TransitionTicket(c *gin.Context)
+	UpdatePreference(c *gin.Context)
 	SaveCredential(c *gin.Context)
 	DeleteCredential(c *gin.Context)
 }

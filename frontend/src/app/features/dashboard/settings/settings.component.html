@@ -1,0 +1,53 @@
+<div class="page-stack">
+  @if (loading) {
+    @for (i of [1, 2]; track i) {
+      <section class="card skeleton-card" aria-busy="true" aria-label="Memuat pengaturan">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton-grid">
+          <div class="skeleton skeleton-tile"></div>
+          <div class="skeleton skeleton-tile"></div>
+          <div class="skeleton skeleton-tile"></div>
+        </div>
+      </section>
+    }
+  }
+
+  @if (error) {
+    <section class="card empty-state">
+      <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+      <p class="msg error">{{ error }}</p>
+      <button type="button" class="btn btn-ghost" (click)="loadSettings()">
+        <app-icon name="refresh" [size]="16" /> Coba lagi
+      </button>
+    </section>
+  }
+
+  @if (!loading && !error) {
+    <section class="card">
+      <header class="card-header">
+        <span class="card-icon"><app-icon name="bell" [size]="20" /></span>
+        <div>
+          <h2>Reminder Preference</h2>
+          <p>Pilih kapan Nudge mencolek kamu sebelum budget waktu tiket habis.</p>
+        </div>
+      </header>
+      <app-reminder-preference [tiers]="tiers"></app-reminder-preference>
+    </section>
+
+    <section class="card">
+      <header class="card-header">
+        <span class="card-icon accent"><app-icon name="key" [size]="20" /></span>
+        <div>
+          <h2>Jira API Key Pribadi</h2>
+          <p>Supaya aksi ke Jira tercatat atas nama kamu sendiri, bukan akun bot.</p>
+        </div>
+      </header>
+      <app-jira-credential
+        [hasCredential]="hasCredential"
+        [credentialMasked]="credentialMasked"
+        (credentialChanged)="onCredentialChanged()"
+      ></app-jira-credential>
+    </section>
+  }
+</div>

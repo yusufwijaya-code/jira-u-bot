@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"time"
 
-	"jira-u-bot/base/helpers/curl_helper"
-	"jira-u-bot/config"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
+	"nudge/base/helpers/curl_helper"
+	"nudge/config"
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 type jiraClientServiceImpl struct {

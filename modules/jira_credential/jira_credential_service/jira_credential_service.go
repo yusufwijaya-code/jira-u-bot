@@ -3,7 +3,7 @@ package jira_credential_service
 import (
 	"context"
 
-	"jira-u-bot/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 // JiraCredentialService implements Tech Spec "Dashboard Jira Manage",

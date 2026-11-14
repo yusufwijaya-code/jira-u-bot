@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 type ReminderEngineService interface {

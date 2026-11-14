@@ -2,17 +2,23 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
 import { AdminService, ListUsersResponse } from '../../../core/services/admin.service';
+import { ConfirmService } from '../../../core/ui/confirm.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
   let adminService: jasmine.SpyObj<AdminService>;
+  let confirmService: jasmine.SpyObj<ConfirmService>;
 
   beforeEach(async () => {
     adminService = jasmine.createSpyObj('AdminService', ['listUsers', 'toggleActive', 'editJiraAccountId', 'deleteCredential', 'deleteUser']);
+    confirmService = jasmine.createSpyObj('ConfirmService', ['ask']);
 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
-      providers: [{ provide: AdminService, useValue: adminService }],
+      providers: [
+        { provide: AdminService, useValue: adminService },
+        { provide: ConfirmService, useValue: confirmService },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AdminComponent);
@@ -106,38 +112,38 @@ describe('AdminComponent', () => {
     expect(rows[1].textContent).not.toContain('Hapus Credential');
   });
 
-  it('asks for confirmation before deleting a credential, and does nothing if cancelled', () => {
+  it('asks for confirmation before deleting a credential, and does nothing if cancelled', async () => {
     const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
-    spyOn(window, 'confirm').and.returnValue(false);
+    confirmService.ask.and.resolveTo(false);
 
-    fixture.componentInstance['onDeleteCredential'](user);
+    await fixture.componentInstance['onDeleteCredential'](user);
 
     expect(adminService.deleteCredential).not.toHaveBeenCalled();
   });
 
-  it('deletes the credential and reloads the list on confirmation', () => {
+  it('deletes the credential and reloads the list on confirmation', async () => {
     const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
-    spyOn(window, 'confirm').and.returnValue(true);
+    confirmService.ask.and.resolveTo(true);
     adminService.deleteCredential.and.returnValue(of({}));
 
-    fixture.componentInstance['onDeleteCredential'](user);
+    await fixture.componentInstance['onDeleteCredential'](user);
 
     expect(adminService.deleteCredential).toHaveBeenCalledWith(1);
     expect(adminService.listUsers).toHaveBeenCalledTimes(2);
   });
 
-  it('shows the self-lockout error message when deleting a user fails', () => {
+  it('shows the self-lockout error message when deleting a user fails', async () => {
     const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
-    spyOn(window, 'confirm').and.returnValue(true);
+    confirmService.ask.and.resolveTo(true);
     adminService.deleteUser.and.returnValue(throwError(() => ({ error: { error: 'Tidak bisa menghapus diri sendiri' } })));
 
-    fixture.componentInstance['onDeleteUser'](user);
+    await fixture.componentInstance['onDeleteUser'](user);
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.actions .msg.error').textContent).toContain('Tidak bisa menghapus diri sendiri');
@@ -154,5 +160,29 @@ describe('AdminComponent', () => {
 
     const buttons: HTMLButtonElement[] = Array.from(fixture.nativeElement.querySelectorAll('tbody tr button'));
     expect(buttons.every((btn) => btn.disabled)).toBe(true);
+  });
+
+  it('filters the table by the search query', () => {
+    const a = { userId: 1, email: 'alice@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const b = { userId: 2, email: 'bob@esb.co.id', userName: 'B', flagActive: false, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    adminService.listUsers.and.returnValue(of({ users: [a, b] }));
+    fixture.detectChanges();
+
+    fixture.componentInstance['query'] = 'bob';
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('bob@esb.co.id');
+  });
+
+  it('shows summary stats for total, active and credential counts', () => {
+    const a = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const b = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: false, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    adminService.listUsers.and.returnValue(of({ users: [a, b] }));
+    fixture.detectChanges();
+
+    const values = Array.from(fixture.nativeElement.querySelectorAll('.stat-value')).map((el: any) => el.textContent.trim());
+    expect(values).toEqual(['2', '1', '1']);
   });
 });

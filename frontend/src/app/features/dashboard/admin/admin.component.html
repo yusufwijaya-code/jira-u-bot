@@ -1,32 +1,128 @@
-<section>
-  <h2>Admin — Daftar User</h2>
-  <p *ngIf="loading">Memuat...</p>
-  <p *ngIf="error" class="msg error">{{ error }}</p>
-  <div class="table-wrap" *ngIf="!loading && !error">
-    <table class="admin-users">
-      <thead>
-        <tr><th>Email</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th>Aksi</th></tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let user of users" [attr.data-user-id]="user.userId">
-          <td>{{ user.email }}</td>
-          <td><span class="status-badge" [class.active]="user.flagActive">{{ user.flagActive ? 'Aktif' : 'Nonaktif' }}</span></td>
-          <td>
-            <input type="text" [(ngModel)]="jiraAccountIdDrafts[user.userId]" [disabled]="rowActionInFlight[user.userId]" />
-            <button (click)="onSaveJiraAccountId(user)" [disabled]="rowActionInFlight[user.userId]">Simpan ID</button>
-          </td>
-          <td>
-            {{ user.hasCredential ? 'Aktif' : '—' }}
-            <button *ngIf="user.hasCredential" (click)="onDeleteCredential(user)" [disabled]="rowActionInFlight[user.userId]">Hapus Credential</button>
-          </td>
-          <td class="actions">
-            <button (click)="onToggleActive(user)" [disabled]="rowActionInFlight[user.userId]">{{ user.flagActive ? 'Nonaktifkan' : 'Aktifkan' }}</button>
-            <button class="secondary" (click)="onDeleteUser(user)" [disabled]="rowActionInFlight[user.userId]">Hapus</button>
-            <div class="msg error" *ngIf="rowMessage[user.userId]">{{ rowMessage[user.userId] }}</div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+<div class="page-stack">
+  <div class="stat-grid" *ngIf="!loading && !error">
+    <div class="stat-card" style="--i: 0">
+      <span class="stat-icon"><app-icon name="users" [size]="20" /></span>
+      <div><span class="stat-value">{{ users.length }}</span><span class="stat-label">Total user</span></div>
+    </div>
+    <div class="stat-card" style="--i: 1">
+      <span class="stat-icon success"><app-icon name="user-check" [size]="20" /></span>
+      <div><span class="stat-value">{{ activeCount }}</span><span class="stat-label">User aktif</span></div>
+    </div>
+    <div class="stat-card" style="--i: 2">
+      <span class="stat-icon accent"><app-icon name="key" [size]="20" /></span>
+      <div><span class="stat-value">{{ credentialCount }}</span><span class="stat-label">Punya credential</span></div>
+    </div>
   </div>
-</section>
-<app-broadcast></app-broadcast>
+
+  <section class="card">
+    <header class="card-header with-actions">
+      <span class="card-icon"><app-icon name="users" [size]="20" /></span>
+      <div>
+        <h2>Daftar User</h2>
+        <p>Aktifkan, nonaktifkan, atau rapikan data user yang terdaftar.</p>
+      </div>
+      <label class="search-input" *ngIf="!loading && !error">
+        <app-icon name="search" [size]="16" />
+        <input type="search" placeholder="Cari email..." [(ngModel)]="query" aria-label="Cari email" />
+      </label>
+    </header>
+
+    <div class="table-skeleton" *ngIf="loading" aria-busy="true">
+      <div class="skeleton skeleton-row" *ngFor="let i of [1, 2, 3, 4]"></div>
+    </div>
+
+    <div class="empty-state" *ngIf="error">
+      <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+      <p class="msg error">{{ error }}</p>
+    </div>
+
+    <div class="table-wrap" *ngIf="!loading && !error">
+      <table class="admin-users">
+        <thead>
+          <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th class="th-actions">Aksi</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let user of filteredUsers" [attr.data-user-id]="user.userId" [class.busy]="rowActionInFlight[user.userId]">
+            <td>
+              <div class="user-cell">
+                <span class="user-avatar">{{ user.email.charAt(0).toUpperCase() }}</span>
+                <div>
+                  <strong>{{ user.email }}</strong>
+                  <small *ngIf="user.userName">{{ user.userName }}</small>
+                </div>
+              </div>
+            </td>
+            <td><span class="status-badge" [class.active]="user.flagActive">{{ user.flagActive ? 'Aktif' : 'Nonaktif' }}</span></td>
+            <td>
+              <div class="inline-edit">
+                <input
+                  type="text"
+                  [(ngModel)]="jiraAccountIdDrafts[user.userId]"
+                  [disabled]="rowActionInFlight[user.userId]"
+                  placeholder="Belum diisi"
+                  aria-label="Jira Account ID"
+                />
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Simpan ID"
+                  aria-label="Simpan ID"
+                  (click)="onSaveJiraAccountId(user)"
+                  [disabled]="rowActionInFlight[user.userId] || jiraAccountIdDrafts[user.userId] === user.jiraAccountId"
+                >
+                  <app-icon name="check" [size]="16" />
+                </button>
+              </div>
+            </td>
+            <td>
+              <div class="cred-cell">
+                <span class="cred-badge" *ngIf="user.hasCredential"><app-icon name="lock" [size]="12" /> {{ user.credentialMasked || 'Aktif' }}</span>
+                <span class="muted" *ngIf="!user.hasCredential">—</span>
+                <button
+                  *ngIf="user.hasCredential"
+                  type="button"
+                  class="btn btn-sm btn-danger-ghost"
+                  (click)="onDeleteCredential(user)"
+                  [disabled]="rowActionInFlight[user.userId]"
+                >
+                  Hapus Credential
+                </button>
+              </div>
+            </td>
+            <td class="actions">
+              <div class="action-row">
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  [class.btn-soft]="!user.flagActive"
+                  [class.btn-ghost]="user.flagActive"
+                  (click)="onToggleActive(user)"
+                  [disabled]="rowActionInFlight[user.userId]"
+                >
+                  <app-icon name="power" [size]="14" /> {{ user.flagActive ? 'Nonaktifkan' : 'Aktifkan' }}
+                </button>
+                <button
+                  type="button"
+                  class="icon-btn danger"
+                  title="Hapus user"
+                  aria-label="Hapus user"
+                  (click)="onDeleteUser(user)"
+                  [disabled]="rowActionInFlight[user.userId]"
+                >
+                  <app-icon name="trash" [size]="16" />
+                </button>
+              </div>
+              <div class="msg error" *ngIf="rowMessage[user.userId]">{{ rowMessage[user.userId] }}</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="empty-row" *ngIf="users.length > 0 && filteredUsers.length === 0">
+        Tidak ada user yang cocok dengan "{{ query }}"
+      </div>
+      <div class="empty-row" *ngIf="users.length === 0">Belum ada user terdaftar</div>
+    </div>
+  </section>
+
+  <app-broadcast></app-broadcast>
+</div>

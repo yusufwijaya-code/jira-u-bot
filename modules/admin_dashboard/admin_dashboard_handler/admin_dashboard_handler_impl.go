@@ -2,54 +2,27 @@ package admin_dashboard_handler
 
 import (
 	"errors"
-	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_dto"
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_service"
-	admintemplates "jira-u-bot/modules/admin_dashboard/templates"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_middleware"
+	"nudge/modules/admin_dashboard/admin_dashboard_service"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_middleware"
 )
 
-type adminPageData struct {
-	BasePath string
-	Email    string
-	Users    []admin_dashboard_dto.UserRow
-}
-
 type adminDashboardHandlerImpl struct {
-	svc      admin_dashboard_service.AdminDashboardService
-	basePath string
-	template *template.Template
+	svc admin_dashboard_service.AdminDashboardService
 }
 
-func NewAdminDashboardHandler(svc admin_dashboard_service.AdminDashboardService, cfg *config.AppConfig) AdminDashboardHandler {
-	return &adminDashboardHandlerImpl{
-		svc:      svc,
-		basePath: cfg.BasePath,
-		template: template.Must(template.ParseFS(admintemplates.FS, "admin.html")),
-	}
+func NewAdminDashboardHandler(svc admin_dashboard_service.AdminDashboardService) AdminDashboardHandler {
+	return &adminDashboardHandlerImpl{svc: svc}
 }
 
 func currentUser(c *gin.Context) auth_dto.Session {
 	return c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session)
-}
-
-func (h *adminDashboardHandlerImpl) UserList(c *gin.Context) {
-	users, err := h.svc.ListUsers(c.Request.Context())
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat daftar user, coba lagi")
-		return
-	}
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	h.template.Execute(c.Writer, adminPageData{BasePath: h.basePath, Email: currentUser(c).Email, Users: users})
 }
 
 func (h *adminDashboardHandlerImpl) ListUsers(c *gin.Context) {

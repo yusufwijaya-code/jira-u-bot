@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"jira-u-bot/base/helpers/curl_helper"
-	"jira-u-bot/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
-	"jira-u-bot/modules/chat_interactive/chat_interactive_service"
-	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
-	"jira-u-bot/modules/registration/registration_dto"
-	"jira-u-bot/modules/registration/registration_repository"
+	"nudge/base/helpers/curl_helper"
+	"nudge/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
+	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/chat_oauth/chat_oauth_service"
+	"nudge/modules/registration/registration_dto"
+	"nudge/modules/registration/registration_repository"
 )
 
 const pollInterval = 10 * time.Second

@@ -9,19 +9,19 @@ import (
 	"strings"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/issue_session/issue_session_repository"
-	"jira-u-bot/modules/issue_session/issue_session_service"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/jira_client/jira_client_service"
-	"jira-u-bot/modules/jira_credential/jira_credential_service"
-	"jira-u-bot/modules/registration/registration_repository"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/issue_session/issue_session_repository"
+	"nudge/modules/issue_session/issue_session_service"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/registration/registration_repository"
 )
 
-const registerURL = "https://labcup.tech/jira-notif/register"
+const registerURL = "https://labcup.tech/nudge/register"
 
 // Command prefixes recognized at the start of a DM message. The /u- prefix
 // (operator's choice) keeps these from colliding with any other bot's

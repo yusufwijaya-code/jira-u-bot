@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/config"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 )
 
 func TestSendReminder_PostsExpectedTextToWebhook(t *testing.T) {

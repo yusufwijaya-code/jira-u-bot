@@ -6,17 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/issue_session/issue_session_repository"
-	"jira-u-bot/modules/issue_session/issue_session_service"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/jira_client/jira_client_service"
-	"jira-u-bot/modules/jira_credential/jira_credential_service"
-	"jira-u-bot/modules/registration/registration_repository"
-	"jira-u-bot/modules/user_dashboard/user_dashboard_dto"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/issue_session/issue_session_repository"
+	"nudge/modules/issue_session/issue_session_service"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/registration/registration_repository"
+	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
 
 type userDashboardServiceImpl struct {
@@ -121,28 +121,31 @@ func (s *userDashboardServiceImpl) attachBudgetDetail(card *user_dashboard_dto.C
 	card.DeadlineLabel = google_chat_notifier_service.FormatDeadline(deadline)
 }
 
-func (s *userDashboardServiceImpl) GetTeamView(ctx context.Context) (user_dashboard_dto.TeamView, error) {
-	sessions, err := s.issueSessionRepo.GetActiveSessions(ctx)
+// GetTeamView returns email's own active (Code Process) tickets, grouped by
+// assignee like before — which now means a single group (the caller).
+// Other users' tickets are never returned, admin included.
+func (s *userDashboardServiceImpl) GetTeamView(ctx context.Context, email string) (user_dashboard_dto.TeamView, error) {
+	sessions, err := s.issueSessionRepo.FindActiveByAssigneeEmail(ctx, email)
 	if err != nil {
 		return user_dashboard_dto.TeamView{}, err
 	}
 
 	view := user_dashboard_dto.TeamView{}
-	groupIndex := map[string]int{}
-	for _, session := range sessions {
-		idx, ok := groupIndex[session.AssigneeEmail]
-		if !ok {
-			idx = len(view.Groups)
-			groupIndex[session.AssigneeEmail] = idx
-			view.Groups = append(view.Groups, user_dashboard_dto.TeamGroup{AssigneeEmail: session.AssigneeEmail})
-		}
-		view.Groups[idx].Cards = append(view.Groups[idx].Cards, s.cardFromSession(session))
+	if len(sessions) == 0 {
+		return view, nil
 	}
+	group := user_dashboard_dto.TeamGroup{AssigneeEmail: email}
+	for _, session := range sessions {
+		group.Cards = append(group.Cards, s.cardFromSession(session))
+	}
+	view.Groups = append(view.Groups, group)
 	return view, nil
 }
 
-func (s *userDashboardServiceImpl) GetOverdueView(ctx context.Context) ([]user_dashboard_dto.OverdueItem, error) {
-	sessions, err := s.issueSessionRepo.GetActiveSessions(ctx)
+// GetOverdueView returns only the given email's own active tickets that have
+// passed their budget - never anyone else's, admin included.
+func (s *userDashboardServiceImpl) GetOverdueView(ctx context.Context, email string) ([]user_dashboard_dto.OverdueItem, error) {
+	sessions, err := s.issueSessionRepo.FindActiveByAssigneeEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}

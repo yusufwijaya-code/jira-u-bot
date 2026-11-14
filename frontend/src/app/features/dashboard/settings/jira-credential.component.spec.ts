@@ -2,17 +2,27 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { JiraCredentialComponent } from './jira-credential.component';
 import { BoardService } from '../../../core/services/board.service';
+import { ConfirmService } from '../../../core/ui/confirm.service';
+import { ToastService } from '../../../core/ui/toast.service';
 
 describe('JiraCredentialComponent', () => {
   let fixture: ComponentFixture<JiraCredentialComponent>;
   let boardService: jasmine.SpyObj<BoardService>;
+  let confirmService: jasmine.SpyObj<ConfirmService>;
+  let toastService: jasmine.SpyObj<ToastService>;
 
   beforeEach(async () => {
     boardService = jasmine.createSpyObj('BoardService', ['saveCredential', 'deleteCredential']);
+    confirmService = jasmine.createSpyObj('ConfirmService', ['ask']);
+    toastService = jasmine.createSpyObj('ToastService', ['success', 'error', 'info']);
 
     await TestBed.configureTestingModule({
       imports: [JiraCredentialComponent],
-      providers: [{ provide: BoardService, useValue: boardService }],
+      providers: [
+        { provide: BoardService, useValue: boardService },
+        { provide: ConfirmService, useValue: confirmService },
+        { provide: ToastService, useValue: toastService },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(JiraCredentialComponent);
@@ -45,6 +55,7 @@ describe('JiraCredentialComponent', () => {
 
     expect(boardService.saveCredential).toHaveBeenCalledWith('a@esb.co.id', 'tok123');
     expect(emitted).toHaveBeenCalled();
+    expect(toastService.success).toHaveBeenCalled();
   });
 
   it('shows the encryption-not-configured message on a 503 response', () => {
@@ -71,16 +82,29 @@ describe('JiraCredentialComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('failed to save credential');
   });
 
-  it('emits credentialChanged after a successful delete', () => {
+  it('emits credentialChanged after a confirmed delete', async () => {
     fixture.componentRef.setInput('hasCredential', true);
     fixture.componentRef.setInput('credentialMasked', '••••ab3f');
     fixture.detectChanges();
+    confirmService.ask.and.resolveTo(true);
     boardService.deleteCredential.and.returnValue(of({ status: 'ok' }));
     const emitted = jasmine.createSpy('emitted');
     fixture.componentInstance.credentialChanged.subscribe(emitted);
 
-    fixture.componentInstance['onDelete']();
+    await fixture.componentInstance['onDelete']();
 
+    expect(confirmService.ask).toHaveBeenCalledWith(jasmine.objectContaining({ tone: 'danger' }));
     expect(emitted).toHaveBeenCalled();
+    expect(toastService.success).toHaveBeenCalledWith('Credential dihapus');
+  });
+
+  it('does not delete anything when the confirmation dialog is cancelled', async () => {
+    fixture.componentRef.setInput('hasCredential', true);
+    fixture.detectChanges();
+    confirmService.ask.and.resolveTo(false);
+
+    await fixture.componentInstance['onDelete']();
+
+    expect(boardService.deleteCredential).not.toHaveBeenCalled();
   });
 });

@@ -4,18 +4,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_middleware"
-	"jira-u-bot/modules/auth/auth_service"
-	authtemplates "jira-u-bot/modules/auth/templates"
-	"jira-u-bot/modules/registration/registration_service"
+	"nudge/config"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_middleware"
+	"nudge/modules/auth/auth_service"
+	"nudge/modules/registration/registration_service"
 )
 
 const (
@@ -30,25 +29,21 @@ const (
 	sessionCookieMaxAge = 30 * 24 * 3600 // 30 days, matches auth_service.sessionLifetime
 )
 
-type loginPageData struct {
-	BasePath string
-	Error    string
-}
-
 type authHandlerImpl struct {
-	authService   auth_service.AuthService
-	basePath      string
-	adminEmail    string
-	loginTemplate *template.Template
+	authService auth_service.AuthService
+	basePath    string
+	adminEmail  string
+	// appURL is the frontend origin + BasePath — where every post-login /
+	// post-logout redirect lands (see config.AppConfig.FrontendURL).
+	appURL string
 }
 
 func NewAuthHandler(authService auth_service.AuthService, cfg *config.AppConfig) AuthHandler {
-	loginTmpl := template.Must(template.ParseFS(authtemplates.FS, "login.html"))
 	return &authHandlerImpl{
-		authService:   authService,
-		basePath:      cfg.BasePath,
-		adminEmail:    cfg.AdminEmail,
-		loginTemplate: loginTmpl,
+		authService: authService,
+		basePath:    cfg.BasePath,
+		adminEmail:  cfg.AdminEmail,
+		appURL:      cfg.FrontendURL + cfg.BasePath,
 	}
 }
 
@@ -59,14 +54,6 @@ func NewAuthHandler(authService auth_service.AuthService, cfg *config.AppConfig)
 // app at "/" would silently clobber this one in the browser's cookie jar.
 func (h *authHandlerImpl) cookiePath() string {
 	return h.basePath
-}
-
-// LoginPage shows the app's own landing page — no cookies, no redirect, no
-// contact with Google. This is what unauthenticated visitors should land
-// on first (AuthMiddleware points here), so they see the app before being
-// sent into Google's consent flow by clicking the button themselves.
-func (h *authHandlerImpl) LoginPage(c *gin.Context) {
-	h.renderLoginPage(c, "")
 }
 
 // Me reports the current session's email and whether it belongs to the
@@ -101,7 +88,7 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	c.SetCookie(stateCookieName, "", -1, h.cookiePath(), "", true, true)
 
 	if cookieErr != nil || cookieState == "" || cookieState != c.Query("state") {
-		h.renderLoginPage(c, "Sesi login tidak valid atau kedaluwarsa, coba lagi")
+		h.redirectToLoginWithError(c, "Sesi login tidak valid atau kedaluwarsa, coba lagi")
 		return
 	}
 
@@ -109,11 +96,11 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	claims, err := h.authService.VerifyGoogleCallback(ctx, c.Query("code"))
 	if err != nil {
 		if errors.Is(err, auth_service.ErrDomainNotAllowed) {
-			h.renderLoginPage(c, "Login hanya untuk email @esb.co.id yang terverifikasi Google")
+			h.redirectToLoginWithError(c, "Login hanya untuk email @esb.co.id yang terverifikasi Google")
 			return
 		}
 		log.Printf("auth_handler: VerifyGoogleCallback failed: %v", err)
-		h.renderLoginPage(c, "Gagal login dengan Google, coba lagi sebentar lagi")
+		h.redirectToLoginWithError(c, "Gagal login dengan Google, coba lagi sebentar lagi")
 		return
 	}
 
@@ -121,26 +108,26 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, auth_service.ErrUserDeactivated):
-			h.renderLoginPage(c, "Akun kamu sudah dinonaktifkan — hubungi admin")
+			h.redirectToLoginWithError(c, "Akun kamu sudah dinonaktifkan — hubungi admin")
 		case errors.Is(err, registration_service.ErrJiraAccountNotFound):
-			h.renderLoginPage(c, "Email ini belum terdaftar sebagai akun Jira esb-id")
+			h.redirectToLoginWithError(c, "Email ini belum terdaftar sebagai akun Jira esb-id")
 		case errors.Is(err, registration_service.ErrJiraLookupUnavailable):
-			h.renderLoginPage(c, "Gagal memverifikasi akun ke Jira, coba lagi sebentar lagi")
+			h.redirectToLoginWithError(c, "Gagal memverifikasi akun ke Jira, coba lagi sebentar lagi")
 		default:
-			h.renderLoginPage(c, "Gagal memproses akun, coba lagi")
+			h.redirectToLoginWithError(c, "Gagal memproses akun, coba lagi")
 		}
 		return
 	}
 
 	token, err := h.authService.IssueSession(ctx, user.UserID)
 	if err != nil {
-		h.renderLoginPage(c, "Gagal membuat sesi, coba lagi")
+		h.redirectToLoginWithError(c, "Gagal membuat sesi, coba lagi")
 		return
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(sessionCookieName, token, sessionCookieMaxAge, h.cookiePath(), "", true, true)
-	c.Redirect(http.StatusFound, h.basePath+"/dashboard")
+	c.Redirect(http.StatusFound, h.appURL+"/dashboard")
 }
 
 func (h *authHandlerImpl) Logout(c *gin.Context) {
@@ -149,13 +136,13 @@ func (h *authHandlerImpl) Logout(c *gin.Context) {
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(sessionCookieName, "", -1, h.cookiePath(), "", true, true)
-	c.Redirect(http.StatusFound, h.basePath+"/auth/login")
+	c.Redirect(http.StatusFound, h.appURL+"/")
 }
 
-func (h *authHandlerImpl) renderLoginPage(c *gin.Context, message string) {
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	h.loginTemplate.Execute(c.Writer, loginPageData{BasePath: h.basePath, Error: message})
+// redirectToLoginWithError sends the browser back to the Angular login
+// screen (the app root), which shows the message from the ?error= query.
+func (h *authHandlerImpl) redirectToLoginWithError(c *gin.Context, message string) {
+	c.Redirect(http.StatusFound, h.appURL+"/?error="+url.QueryEscape(message))
 }
 
 // randomState generates the CSRF state parameter (spec AC1.2/security) —

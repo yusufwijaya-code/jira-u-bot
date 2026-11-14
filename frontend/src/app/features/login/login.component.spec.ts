@@ -30,10 +30,10 @@ describe('LoginComponent', () => {
     expect(alert?.textContent).toContain('Sesi login tidak valid atau kedaluwarsa, coba lagi');
   });
 
-  it('points the Sign in with Google link at /jira-notif/auth/google/login', async () => {
+  it('points the Sign in with Google link at /nudge/auth/google/login', async () => {
     const fixture = await setup({});
     const link: HTMLAnchorElement = fixture.nativeElement.querySelector('.google-signin-btn');
-    expect(link.getAttribute('href')).toBe('/jira-notif/auth/google/login');
+    expect(link.getAttribute('href')).toBe('/nudge/auth/google/login');
   });
 
   it('renders the Sign in button as a plain anchor element, not a button with a click handler', async () => {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 type registrationRepositoryImpl struct {

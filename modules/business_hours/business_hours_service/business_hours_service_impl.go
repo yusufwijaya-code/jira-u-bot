@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_dto"
 )
 
 const (

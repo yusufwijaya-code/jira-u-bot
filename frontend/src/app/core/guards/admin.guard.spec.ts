@@ -30,7 +30,7 @@ describe('AdminGuard', () => {
     });
   });
 
-  it('redirects to My Board and denies navigation when the current user is not admin', (done) => {
+  it('redirects to Settings and denies navigation when the current user is not admin', (done) => {
     currentUser$.next({ email: 'dev@esb.co.id', isAdmin: false });
 
     guard.canActivate().subscribe((result) => {

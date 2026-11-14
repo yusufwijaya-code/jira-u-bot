@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"jira-u-bot/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 type JiraClientService interface {

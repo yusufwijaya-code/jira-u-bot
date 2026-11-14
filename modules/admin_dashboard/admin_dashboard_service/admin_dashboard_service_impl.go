@@ -4,10 +4,10 @@ import (
 	"context"
 	"log"
 
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_dto"
-	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
-	"jira-u-bot/modules/jira_credential/jira_credential_service"
-	"jira-u-bot/modules/registration/registration_repository"
+	"nudge/modules/admin_dashboard/admin_dashboard_dto"
+	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
+	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/registration/registration_repository"
 )
 
 type adminDashboardServiceImpl struct {

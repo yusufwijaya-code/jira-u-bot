@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/jira_credential/jira_credential_crypto"
-	"jira-u-bot/modules/jira_credential/jira_credential_repository"
-	"jira-u-bot/modules/registration/registration_repository"
+	"nudge/config"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_credential/jira_credential_crypto"
+	"nudge/modules/jira_credential/jira_credential_repository"
+	"nudge/modules/registration/registration_repository"
 )
 
 // ErrEncryptionKeyNotConfigured is returned by UpsertCredential when

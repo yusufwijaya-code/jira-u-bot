@@ -11,36 +11,36 @@ import (
 	"syscall"
 	"time"
 
-	"jira-u-bot/base/helpers/shutdown"
-	"jira-u-bot/config"
-	"jira-u-bot/migrations"
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_handler"
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_service"
-	"jira-u-bot/modules/auth/auth_handler"
-	"jira-u-bot/modules/auth/auth_service"
-	"jira-u-bot/modules/auth/auth_session_repository"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
-	"jira-u-bot/modules/chat_command_poller/chat_command_poller_service"
-	"jira-u-bot/modules/chat_dm_notifier/chat_dm_notifier_service"
-	"jira-u-bot/modules/chat_interactive/chat_interactive_service"
-	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
-	"jira-u-bot/modules/issue_session/issue_session_repository"
-	"jira-u-bot/modules/issue_session/issue_session_service"
-	"jira-u-bot/modules/jira_client/jira_client_service"
-	"jira-u-bot/modules/jira_credential/jira_credential_repository"
-	"jira-u-bot/modules/jira_credential/jira_credential_service"
-	"jira-u-bot/modules/poller/poller_service"
-	"jira-u-bot/modules/registration/registration_repository"
-	"jira-u-bot/modules/registration/registration_service"
-	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
-	"jira-u-bot/modules/reminder_log/reminder_log_repository"
-	"jira-u-bot/modules/reminder_log/reminder_log_service"
-	"jira-u-bot/modules/sprint_report/sprint_report_handler"
-	"jira-u-bot/modules/sprint_report/sprint_report_service"
-	"jira-u-bot/modules/user_dashboard/user_dashboard_handler"
-	"jira-u-bot/modules/user_dashboard/user_dashboard_service"
+	"nudge/base/helpers/shutdown"
+	"nudge/config"
+	"nudge/migrations"
+	"nudge/modules/admin_dashboard/admin_dashboard_handler"
+	"nudge/modules/admin_dashboard/admin_dashboard_service"
+	"nudge/modules/auth/auth_handler"
+	"nudge/modules/auth/auth_service"
+	"nudge/modules/auth/auth_session_repository"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
+	"nudge/modules/chat_command_poller/chat_command_poller_service"
+	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
+	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/chat_oauth/chat_oauth_service"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
+	"nudge/modules/issue_session/issue_session_repository"
+	"nudge/modules/issue_session/issue_session_service"
+	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/jira_credential/jira_credential_repository"
+	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/poller/poller_service"
+	"nudge/modules/registration/registration_repository"
+	"nudge/modules/registration/registration_service"
+	"nudge/modules/reminder_engine/reminder_engine_service"
+	"nudge/modules/reminder_log/reminder_log_repository"
+	"nudge/modules/reminder_log/reminder_log_service"
+	"nudge/modules/sprint_report/sprint_report_handler"
+	"nudge/modules/sprint_report/sprint_report_service"
+	"nudge/modules/user_dashboard/user_dashboard_handler"
+	"nudge/modules/user_dashboard/user_dashboard_service"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -176,13 +176,13 @@ func main() {
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
 		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar,
 	)
-	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, &cfg)
-
-	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail)
-	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc, &cfg)
+	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
-	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc, &cfg)
+	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc)
+
+	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail)
+	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
 
 	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler)
 
@@ -196,21 +196,21 @@ func main() {
 
 	go func() {
 		<-sigCtx.Done()
-		log.Println("jira-u-bot: shutdown signal received, stopping poller and http server")
+		log.Println("nudge: shutdown signal received, stopping poller and http server")
 		shutdownMgr.Shutdown()
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("jira-u-bot: http server shutdown error: %v", err)
+			log.Printf("nudge: http server shutdown error: %v", err)
 		}
 	}()
 
-	log.Printf("jira-u-bot listening on :%s", cfg.Port)
+	log.Printf("nudge listening on :%s", cfg.Port)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server exited with error: %v", err)
 	}
 
 	shutdownMgr.Wait()
-	log.Println("jira-u-bot: shutdown complete")
+	log.Println("nudge: shutdown complete")
 }

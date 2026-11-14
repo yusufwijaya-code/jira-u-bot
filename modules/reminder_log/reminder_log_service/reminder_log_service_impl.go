@@ -3,7 +3,7 @@ package reminder_log_service
 import (
 	"context"
 
-	"jira-u-bot/modules/reminder_log/reminder_log_repository"
+	"nudge/modules/reminder_log/reminder_log_repository"
 )
 
 type reminderLogServiceImpl struct {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/base/testutil"
+	"nudge/base/testutil"
 )
 
 func cleanupSession(t *testing.T, repo IssueSessionRepository, issueKey string) {

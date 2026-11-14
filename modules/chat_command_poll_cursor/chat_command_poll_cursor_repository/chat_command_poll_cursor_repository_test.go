@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/base/testutil"
+	"nudge/base/testutil"
 )
 
 func TestGetCursor_NotFoundReturnsFalseNoError(t *testing.T) {

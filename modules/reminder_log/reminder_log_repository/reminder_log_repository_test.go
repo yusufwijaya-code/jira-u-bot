@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"jira-u-bot/base/testutil"
+	"nudge/base/testutil"
 )
 
 func TestHasTierBeenSent_FalseWhenNoRowExists(t *testing.T) {

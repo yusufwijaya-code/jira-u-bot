@@ -12,7 +12,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"jira-u-bot/config"
+	"nudge/config"
 )
 
 // Scopes proven sufficient via live testing against the real Google Chat

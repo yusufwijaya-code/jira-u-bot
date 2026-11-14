@@ -31,18 +31,18 @@ describe('authInterceptor', () => {
   afterEach(() => httpMock.verify());
 
   it('clears the session and redirects to Login on a 401 response from any request', () => {
-    http.get('/jira-notif/api/dashboard/board').subscribe({ error: () => {} });
+    http.get('/nudge/api/dashboard/settings').subscribe({ error: () => {} });
 
-    httpMock.expectOne('/jira-notif/api/dashboard/board').flush({ error: 'unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/nudge/api/dashboard/settings').flush({ error: 'unauthorized' }, { status: 401, statusText: 'Unauthorized' });
 
     expect(authService.clearSession).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/']);
   });
 
   it('does not touch the session or redirect on a non-401 error', () => {
-    http.get('/jira-notif/api/dashboard/board').subscribe({ error: () => {} });
+    http.get('/nudge/api/dashboard/settings').subscribe({ error: () => {} });
 
-    httpMock.expectOne('/jira-notif/api/dashboard/board').flush({ error: 'failed to load board' }, { status: 500, statusText: 'Server Error' });
+    httpMock.expectOne('/nudge/api/dashboard/settings').flush({ error: 'failed to load settings' }, { status: 500, statusText: 'Server Error' });
 
     expect(authService.clearSession).not.toHaveBeenCalled();
     expect(router.navigate).not.toHaveBeenCalled();

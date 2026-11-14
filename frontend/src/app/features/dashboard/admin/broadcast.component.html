@@ -1,6 +1,33 @@
-<section class="broadcast">
-  <h2>Broadcast Message</h2>
-  <textarea [(ngModel)]="message" placeholder="Tulis pengumuman fitur baru / update di sini..." [disabled]="submitting"></textarea>
-  <button (click)="onSend()" [disabled]="!canSend">Kirim</button>
-  <p class="msg" [class.error]="result?.isError" *ngIf="result">{{ result.text }}</p>
+<section class="card broadcast">
+  <header class="card-header">
+    <span class="card-icon accent"><app-icon name="megaphone" [size]="20" /></span>
+    <div>
+      <h2>Broadcast Message</h2>
+      <p>Kirim pengumuman lewat DM Google Chat ke semua user aktif.</p>
+    </div>
+  </header>
+
+  <div class="field">
+    <textarea
+      [(ngModel)]="message"
+      placeholder="Tulis pengumuman fitur baru / update di sini..."
+      [disabled]="submitting"
+      rows="4"
+      maxlength="2000"
+      aria-label="Isi pengumuman"
+    ></textarea>
+    <span class="char-count">{{ message.length }} / 2000</span>
+  </div>
+
+  <div class="card-footer">
+    <p class="msg" [class.error]="result.isError" [class.success]="!result.isError" *ngIf="result">
+      <app-icon [name]="result.isError ? 'alert-circle' : 'check-circle'" [size]="16" />
+      {{ result.text }}
+    </p>
+    <span class="spacer"></span>
+    <button type="button" class="btn btn-primary" [class.loading]="submitting" (click)="onSend()" [disabled]="!canSend">
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="btn-label"><app-icon name="send" [size]="16" /> Kirim</span>
+    </button>
+  </div>
 </section>

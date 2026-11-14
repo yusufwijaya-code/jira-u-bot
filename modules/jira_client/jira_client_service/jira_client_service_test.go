@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
+	"nudge/config"
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 func newTestConfig(baseURL string) *config.AppConfig {

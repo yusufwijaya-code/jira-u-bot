@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"jira-u-bot/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_dto"
 )
 
 type authSessionRepositoryImpl struct {

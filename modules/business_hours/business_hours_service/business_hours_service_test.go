@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_dto"
 )
 
 func mustLoadLocation(t *testing.T) *time.Location {

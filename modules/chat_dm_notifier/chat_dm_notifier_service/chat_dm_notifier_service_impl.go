@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"jira-u-bot/base/helpers/curl_helper"
-	"jira-u-bot/modules/chat_oauth/chat_oauth_service"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_service"
-	"jira-u-bot/modules/registration/registration_repository"
+	"nudge/base/helpers/curl_helper"
+	"nudge/modules/chat_oauth/chat_oauth_service"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
+	"nudge/modules/registration/registration_repository"
 )
 
 // chatAPIBase is a package-level var (not a const) so tests can point it at

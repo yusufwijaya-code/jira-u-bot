@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 var errSendFailed = errors.New("send failed")

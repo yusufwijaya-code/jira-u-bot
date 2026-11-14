@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"jira-u-bot/base/helpers/curl_helper"
-	"jira-u-bot/config"
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/base/helpers/curl_helper"
+	"nudge/config"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 )
 
 type googleChatNotifierServiceImpl struct {

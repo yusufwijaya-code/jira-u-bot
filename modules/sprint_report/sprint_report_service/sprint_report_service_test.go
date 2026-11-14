@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/issue_session/issue_session_dto"
 )
 
 type fakeIssueSessionRepoForReport struct {
@@ -59,11 +59,11 @@ func TestGenerateReport_MatchesRealPDFFixtureRow(t *testing.T) {
 	// 5.44h = 19584s, AccumulatedSeconds (not CurrentSessionStartedDate) so
 	// the test is wall-clock independent.
 	repo := &fakeIssueSessionRepoForReport{sessions: []issue_session_dto.IssueSession{
-		{IssueKey: "OMS-11035", IssueSummary: "LHDN Setting API", SprintName: "Sprint 15", StoryPoints: 7.0, AccumulatedSeconds: 19584},
+		{AssigneeEmail: "dev@esb.co.id", IssueKey: "OMS-11035", IssueSummary: "LHDN Setting API", SprintName: "Sprint 15", StoryPoints: 7.0, AccumulatedSeconds: 19584},
 	}}
 	svc := newTestReportService(repo)
 
-	report, err := svc.GenerateReport(context.Background(), []string{"Sprint 15"}, 12)
+	report, err := svc.GenerateReport(context.Background(), "dev@esb.co.id", []string{"Sprint 15"}, 12)
 	if err != nil {
 		t.Fatalf("GenerateReport returned error: %v", err)
 	}
@@ -88,11 +88,11 @@ func TestGenerateReport_AggregateMatchesRealPDFFixtureTotals(t *testing.T) {
 	// single synthetic row carrying those exact sums (the formula operates
 	// on sums, not per-row averages, so one row is sufficient to verify it).
 	repo := &fakeIssueSessionRepoForReport{sessions: []issue_session_dto.IssueSession{
-		{IssueKey: "AGG-1", SprintName: "Sprint 15-20", StoryPoints: 401.30, AccumulatedSeconds: int64(503.42 * 3600)},
+		{AssigneeEmail: "dev@esb.co.id", IssueKey: "AGG-1", SprintName: "Sprint 15-20", StoryPoints: 401.30, AccumulatedSeconds: int64(503.42 * 3600)},
 	}}
 	svc := newTestReportService(repo)
 
-	report, err := svc.GenerateReport(context.Background(), []string{"Sprint 15-20"}, 12)
+	report, err := svc.GenerateReport(context.Background(), "dev@esb.co.id", []string{"Sprint 15-20"}, 12)
 	if err != nil {
 		t.Fatalf("GenerateReport returned error: %v", err)
 	}
@@ -109,12 +109,12 @@ func TestGenerateReport_AggregateMatchesRealPDFFixtureTotals(t *testing.T) {
 
 func TestGenerateReport_WithinBandCounting(t *testing.T) {
 	repo := &fakeIssueSessionRepoForReport{sessions: []issue_session_dto.IssueSession{
-		{IssueKey: "A", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 10 * 3600}, // 0% deviation -> WITHIN
-		{IssueKey: "B", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 20 * 3600}, // 100% deviation -> OUT
+		{AssigneeEmail: "dev@esb.co.id", IssueKey: "A", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 10 * 3600}, // 0% deviation -> WITHIN
+		{AssigneeEmail: "dev@esb.co.id", IssueKey: "B", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 20 * 3600}, // 100% deviation -> OUT
 	}}
 	svc := newTestReportService(repo)
 
-	report, err := svc.GenerateReport(context.Background(), []string{"S1"}, 12)
+	report, err := svc.GenerateReport(context.Background(), "dev@esb.co.id", []string{"S1"}, 12)
 	if err != nil {
 		t.Fatalf("GenerateReport returned error: %v", err)
 	}
@@ -129,11 +129,11 @@ func TestGenerateReport_UsesLiveElapsedForActiveSession(t *testing.T) {
 	// accumulatedSeconds alone.
 	start := time.Now() // business_hours treats "right now" sanely regardless of weekday for a 0-elapsed sanity check
 	repo := &fakeIssueSessionRepoForReport{sessions: []issue_session_dto.IssueSession{
-		{IssueKey: "LIVE-1", SprintName: "S1", StoryPoints: 1, AccumulatedSeconds: 1800, CurrentSessionStartedDate: &start},
+		{AssigneeEmail: "dev@esb.co.id", IssueKey: "LIVE-1", SprintName: "S1", StoryPoints: 1, AccumulatedSeconds: 1800, CurrentSessionStartedDate: &start},
 	}}
 	svc := newTestReportService(repo)
 
-	report, err := svc.GenerateReport(context.Background(), []string{"S1"}, 12)
+	report, err := svc.GenerateReport(context.Background(), "dev@esb.co.id", []string{"S1"}, 12)
 	if err != nil {
 		t.Fatalf("GenerateReport returned error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestGenerateReport_EmptyWhenNoSessionsMatch(t *testing.T) {
 	repo := &fakeIssueSessionRepoForReport{}
 	svc := newTestReportService(repo)
 
-	report, err := svc.GenerateReport(context.Background(), []string{"Sprint Nonexistent"}, 12)
+	report, err := svc.GenerateReport(context.Background(), "dev@esb.co.id", []string{"Sprint Nonexistent"}, 12)
 	if err != nil {
 		t.Fatalf("GenerateReport returned error: %v", err)
 	}
@@ -157,15 +157,37 @@ func TestGenerateReport_EmptyWhenNoSessionsMatch(t *testing.T) {
 	}
 }
 
-func TestListAvailableSprints_DelegatesToRepository(t *testing.T) {
-	repo := &fakeIssueSessionRepoForReport{distinctSprintNames: []string{"Sprint 20", "Sprint 19"}}
+func TestListAvailableSprints_OnlySprintsWhereCallerHasTickets(t *testing.T) {
+	repo := &fakeIssueSessionRepoForReport{
+		distinctSprintNames: []string{"Sprint 20", "Sprint 19"},
+		sessions: []issue_session_dto.IssueSession{
+			{AssigneeEmail: "dev@esb.co.id", IssueKey: "A", SprintName: "Sprint 20", StoryPoints: 1},
+			{AssigneeEmail: "other@esb.co.id", IssueKey: "B", SprintName: "Sprint 19", StoryPoints: 1},
+		},
+	}
 	svc := newTestReportService(repo)
 
-	got, err := svc.ListAvailableSprints(context.Background())
+	got, err := svc.ListAvailableSprints(context.Background(), "dev@esb.co.id")
 	if err != nil {
 		t.Fatalf("ListAvailableSprints returned error: %v", err)
 	}
-	if len(got) != 2 {
-		t.Errorf("len(got) = %d, want 2", len(got))
+	if len(got) != 1 || got[0] != "Sprint 20" {
+		t.Errorf("got = %v, want only [Sprint 20] (Sprint 19 only has another user's tickets)", got)
+	}
+}
+
+func TestGenerateReport_ExcludesOtherUsersTickets(t *testing.T) {
+	repo := &fakeIssueSessionRepoForReport{sessions: []issue_session_dto.IssueSession{
+		{AssigneeEmail: "dev@esb.co.id", IssueKey: "MINE", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 10 * 3600},
+		{AssigneeEmail: "other@esb.co.id", IssueKey: "THEIRS", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 10 * 3600},
+	}}
+	svc := newTestReportService(repo)
+
+	report, err := svc.GenerateReport(context.Background(), "dev@esb.co.id", []string{"S1"}, 12)
+	if err != nil {
+		t.Fatalf("GenerateReport returned error: %v", err)
+	}
+	if report.TotalCount != 1 || len(report.Rows) != 1 || report.Rows[0].IssueKey != "MINE" {
+		t.Errorf("report = %+v, want only the caller's own ticket MINE", report)
 	}
 }

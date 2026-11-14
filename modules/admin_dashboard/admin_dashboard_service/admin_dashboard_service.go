@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_dto"
+	"nudge/modules/admin_dashboard/admin_dashboard_dto"
 )
 
 // ErrCannotModifySelf is spec's self-lockout guard: an admin can't

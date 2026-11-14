@@ -6,9 +6,9 @@ import (
 	"errors"
 	"testing"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/jira_credential/jira_credential_dto"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/config"
+	"nudge/modules/jira_credential/jira_credential_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 const testKeyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" // base64("0123456789abcdef0123456789abcdef")

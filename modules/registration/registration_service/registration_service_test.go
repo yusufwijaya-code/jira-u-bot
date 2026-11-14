@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/modules/google_chat_notifier/google_chat_notifier_dto"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 type fakeJiraClientServiceForRegistration struct {

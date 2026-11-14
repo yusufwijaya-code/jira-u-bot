@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Nudge">
+  <defs>
+    <linearGradient id="nudge-bg" x1="8" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7C6CFF"/>
+      <stop offset="1" stop-color="#4338CA"/>
+    </linearGradient>
+    <linearGradient id="nudge-dot" x1="41" y1="8" x2="55" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD166"/>
+      <stop offset="1" stop-color="#FF9F1C"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#nudge-bg)"/>
+  <path d="M20 48V32a12 12 0 0 1 24 0v16" fill="none" stroke="#FFFFFF" stroke-width="8.5" stroke-linecap="round"/>
+  <circle cx="48.5" cy="15.5" r="8.5" fill="#5446E6"/>
+  <circle cx="48.5" cy="15.5" r="6.5" fill="url(#nudge-dot)"/>
+</svg>

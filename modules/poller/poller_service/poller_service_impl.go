@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/issue_session/issue_session_service"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/jira_client/jira_client_service"
-	"jira-u-bot/modules/registration/registration_repository"
-	"jira-u-bot/modules/reminder_engine/reminder_engine_service"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/issue_session/issue_session_service"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/registration/registration_repository"
+	"nudge/modules/reminder_engine/reminder_engine_service"
 )
 
 const pollInterval = 10 * time.Second

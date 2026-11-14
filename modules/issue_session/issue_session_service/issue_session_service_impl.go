@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/issue_session/issue_session_repository"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/issue_session/issue_session_repository"
 )
 
 type issueSessionServiceImpl struct {

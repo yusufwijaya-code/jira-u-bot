@@ -10,16 +10,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_dto"
-	"jira-u-bot/modules/admin_dashboard/admin_dashboard_service"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_middleware"
+	"nudge/modules/admin_dashboard/admin_dashboard_dto"
+	"nudge/modules/admin_dashboard/admin_dashboard_service"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_middleware"
 )
-
-func testCfg() *config.AppConfig {
-	return &config.AppConfig{AdminEmail: "yusuf.wijaya@esb.co.id", BasePath: "/jira-notif"}
-}
 
 type fakeAdminDashboardService struct {
 	users                []admin_dashboard_dto.UserRow
@@ -78,23 +73,9 @@ func newAdminTestContext(method, path, body string, params gin.Params) (*httptes
 	return w, c
 }
 
-func TestUserList_RendersUsers(t *testing.T) {
-	svc := &fakeAdminDashboardService{users: []admin_dashboard_dto.UserRow{
-		{UserID: 2, Email: "dev@esb.co.id", FlagActive: true},
-	}}
-	handler := NewAdminDashboardHandler(svc, testCfg())
-
-	w, c := newAdminTestContext("GET", "/dashboard/admin", "", nil)
-	handler.UserList(c)
-
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "dev@esb.co.id") {
-		t.Errorf("status=%d body missing dev@esb.co.id", w.Code)
-	}
-}
-
 func TestToggleActive_CallsServiceWithActingAndTargetID(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/users/2/active", `{"active":false}`, gin.Params{{Key: "userID", Value: "2"}})
 	handler.ToggleActive(c)
@@ -109,7 +90,7 @@ func TestToggleActive_CallsServiceWithActingAndTargetID(t *testing.T) {
 
 func TestToggleActive_ReturnsBadRequestOnSelfLockout(t *testing.T) {
 	svc := &fakeAdminDashboardService{setActiveErr: admin_dashboard_service.ErrCannotModifySelf}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/users/1/active", `{"active":false}`, gin.Params{{Key: "userID", Value: "1"}})
 	handler.ToggleActive(c)
@@ -121,7 +102,7 @@ func TestToggleActive_ReturnsBadRequestOnSelfLockout(t *testing.T) {
 
 func TestEditJiraAccountID_UpdatesService(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/users/2/jira-account-id", `{"jiraAccountId":"acc-new"}`, gin.Params{{Key: "userID", Value: "2"}})
 	handler.EditJiraAccountID(c)
@@ -133,7 +114,7 @@ func TestEditJiraAccountID_UpdatesService(t *testing.T) {
 
 func TestDeleteUser_DelegatesToService(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("DELETE", "/dashboard/admin/users/2", "", gin.Params{{Key: "userID", Value: "2"}})
 	handler.DeleteUser(c)
@@ -145,7 +126,7 @@ func TestDeleteUser_DelegatesToService(t *testing.T) {
 
 func TestDeleteUserCredential_DelegatesToService(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("DELETE", "/dashboard/admin/users/2/credential", "", gin.Params{{Key: "userID", Value: "2"}})
 	handler.DeleteUserCredential(c)
@@ -157,7 +138,7 @@ func TestDeleteUserCredential_DelegatesToService(t *testing.T) {
 
 func TestBroadcastMessage_SendsTrimmedMessageAndReturnsResult(t *testing.T) {
 	svc := &fakeAdminDashboardService{broadcastResult: admin_dashboard_dto.BroadcastResult{SentCount: 3}}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/broadcast", `{"message":"  Ada fitur baru!  "}`, nil)
 	handler.BroadcastMessage(c)
@@ -175,7 +156,7 @@ func TestBroadcastMessage_SendsTrimmedMessageAndReturnsResult(t *testing.T) {
 
 func TestBroadcastMessage_RejectsEmptyMessage(t *testing.T) {
 	svc := &fakeAdminDashboardService{}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/broadcast", `{"message":"   "}`, nil)
 	handler.BroadcastMessage(c)
@@ -190,7 +171,7 @@ func TestBroadcastMessage_RejectsEmptyMessage(t *testing.T) {
 
 func TestBroadcastMessage_ReturnsServiceUnavailableWhenDMNotConfigured(t *testing.T) {
 	svc := &fakeAdminDashboardService{broadcastErr: admin_dashboard_service.ErrDMNotConfigured}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("POST", "/dashboard/admin/broadcast", `{"message":"Ada fitur baru!"}`, nil)
 	handler.BroadcastMessage(c)
@@ -204,7 +185,7 @@ func TestListUsers_ReturnsUsersAsJSON(t *testing.T) {
 	svc := &fakeAdminDashboardService{users: []admin_dashboard_dto.UserRow{
 		{UserID: 2, Email: "dev@esb.co.id", FlagActive: true, HasCredential: true, CredentialMasked: "••••ab3f"},
 	}}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("GET", "/api/dashboard/admin/users", "", nil)
 	handler.ListUsers(c)
@@ -219,7 +200,7 @@ func TestListUsers_ReturnsUsersAsJSON(t *testing.T) {
 
 func TestListUsers_ReturnsServerErrorWhenServiceFails(t *testing.T) {
 	svc := &fakeAdminDashboardService{err: errors.New("db down")}
-	handler := NewAdminDashboardHandler(svc, testCfg())
+	handler := NewAdminDashboardHandler(svc)
 
 	w, c := newAdminTestContext("GET", "/api/dashboard/admin/users", "", nil)
 	handler.ListUsers(c)

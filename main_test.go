@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
+	"nudge/config"
 )
 
 // TestMysqlDSN_SetsSessionTimeZoneToWIB reproduces a production bug: MySQL's
@@ -37,10 +37,10 @@ func TestShouldRunSetupMode_DetectsSetupOAuthFlag(t *testing.T) {
 		args []string
 		want bool
 	}{
-		{"no args", []string{"jira-u-bot"}, false},
-		{"unrelated flag", []string{"jira-u-bot", "--help"}, false},
-		{"setup flag present", []string{"jira-u-bot", "--setup-oauth"}, true},
-		{"setup flag among others", []string{"jira-u-bot", "-x", "--setup-oauth"}, true},
+		{"no args", []string{"nudge"}, false},
+		{"unrelated flag", []string{"nudge", "--help"}, false},
+		{"setup flag present", []string{"nudge", "--setup-oauth"}, true},
+		{"setup flag among others", []string{"nudge", "-x", "--setup-oauth"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -55,35 +55,34 @@ func TestShouldRunSetupMode_DetectsSetupOAuthFlag(t *testing.T) {
 func TestRedirectToDashboardHandler_RedirectsToBasePathDashboard(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	cfg := &config.AppConfig{BasePath: "/jira-notif"}
-	r.GET("/jira-notif", redirectToDashboardHandler(cfg))
+	cfg := &config.AppConfig{BasePath: "/nudge"}
+	r.GET("/nudge", redirectToDashboardHandler(cfg))
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/jira-notif", nil)
+	req := httptest.NewRequest("GET", "/nudge", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusFound {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusFound)
 	}
-	if loc := w.Header().Get("Location"); loc != "/jira-notif/dashboard" {
-		t.Errorf("Location = %q, want /jira-notif/dashboard", loc)
+	if loc := w.Header().Get("Location"); loc != "/nudge/dashboard" {
+		t.Errorf("Location = %q, want /nudge/dashboard", loc)
 	}
 }
 
-func TestNotFoundHandler_Returns404WithDashboardLink(t *testing.T) {
+func TestNotFoundHandler_Returns404JSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	cfg := &config.AppConfig{BasePath: "/jira-notif"}
-	r.NoRoute(notFoundHandler(cfg))
+	r.NoRoute(notFoundHandler())
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/jira-notif/this-route-does-not-exist", nil)
+	req := httptest.NewRequest("GET", "/nudge/this-route-does-not-exist", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
 	}
-	if !strings.Contains(w.Body.String(), `href="/jira-notif/dashboard"`) {
-		t.Errorf("body missing a link back to the dashboard: %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), `"error":"not found"`) {
+		t.Errorf("body = %s, want a JSON not-found error", w.Body.String())
 	}
 }

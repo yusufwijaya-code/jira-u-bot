@@ -1,20 +1,17 @@
 package user_dashboard_handler
 
 import (
-	"html/template"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_middleware"
-	"jira-u-bot/modules/chat_interactive/chat_interactive_service"
-	"jira-u-bot/modules/jira_credential/jira_credential_service"
-	userdashboardtemplates "jira-u-bot/modules/user_dashboard/templates"
-	"jira-u-bot/modules/user_dashboard/user_dashboard_dto"
-	"jira-u-bot/modules/user_dashboard/user_dashboard_service"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_middleware"
+	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/user_dashboard/user_dashboard_dto"
+	"nudge/modules/user_dashboard/user_dashboard_service"
 )
 
 // tierOptions is the fixed 6-tier menu (spec AC2.1) in display order.
@@ -27,58 +24,21 @@ var tierOptions = []struct{ Code, Label string }{
 	{"1m", "T-1 menit"},
 }
 
-type tierCheckbox struct {
-	Code    string
-	Label   string
-	Checked bool
-}
-
-type dashboardPageData struct {
-	BasePath         string
-	Email            string
-	Board            user_dashboard_dto.Board
-	TierCheckboxes   []tierCheckbox
-	HasCredential    bool
-	CredentialMasked string
-}
-
-type teamPageData struct {
-	BasePath string
-	Email    string
-	View     user_dashboard_dto.TeamView
-}
-
-type overduePageData struct {
-	BasePath string
-	Email    string
-	Items    []user_dashboard_dto.OverdueItem
-}
-
 type userDashboardHandlerImpl struct {
 	dashboardSvc    user_dashboard_service.UserDashboardService
 	chatInteractive chat_interactive_service.ChatInteractiveService
 	jiraCredential  jira_credential_service.JiraCredentialService
-	basePath        string
-
-	dashboardTemplate *template.Template
-	teamTemplate      *template.Template
-	overdueTemplate   *template.Template
 }
 
 func NewUserDashboardHandler(
 	dashboardSvc user_dashboard_service.UserDashboardService,
 	chatInteractive chat_interactive_service.ChatInteractiveService,
 	jiraCredential jira_credential_service.JiraCredentialService,
-	cfg *config.AppConfig,
 ) UserDashboardHandler {
 	return &userDashboardHandlerImpl{
-		dashboardSvc:      dashboardSvc,
-		chatInteractive:   chatInteractive,
-		jiraCredential:    jiraCredential,
-		basePath:          cfg.BasePath,
-		dashboardTemplate: template.Must(template.ParseFS(userdashboardtemplates.FS, "dashboard.html")),
-		teamTemplate:      template.Must(template.ParseFS(userdashboardtemplates.FS, "team.html")),
-		overdueTemplate:   template.Must(template.ParseFS(userdashboardtemplates.FS, "overdue.html")),
+		dashboardSvc:    dashboardSvc,
+		chatInteractive: chatInteractive,
+		jiraCredential:  jiraCredential,
 	}
 }
 
@@ -86,65 +46,13 @@ func currentUser(c *gin.Context) auth_dto.Session {
 	return c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session)
 }
 
-func (h *userDashboardHandlerImpl) Dashboard(c *gin.Context) {
+func (h *userDashboardHandlerImpl) GetSettings(c *gin.Context) {
 	user := currentUser(c)
 	ctx := c.Request.Context()
 
-	board, err := h.dashboardSvc.GetMyBoard(ctx, user.Email)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat board, coba lagi")
-		return
-	}
-
 	savedPreference, err := h.dashboardSvc.GetReminderTierPreference(ctx, user.Email)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat preference, coba lagi")
-		return
-	}
-	// nil (never set) means every tier is checked by default (spec AC5.2);
-	// a non-nil CSV (possibly "") means only the listed codes are checked.
-	preferredSet := map[string]bool{}
-	if savedPreference != nil {
-		for _, code := range strings.Split(*savedPreference, ",") {
-			preferredSet[code] = true
-		}
-	}
-	checkboxes := make([]tierCheckbox, 0, len(tierOptions))
-	for _, opt := range tierOptions {
-		checkboxes = append(checkboxes, tierCheckbox{
-			Code:    opt.Code,
-			Label:   opt.Label,
-			Checked: savedPreference == nil || preferredSet[opt.Code],
-		})
-	}
-
-	credentialMasked, hasCredential, _ := h.jiraCredential.MaskedPreview(ctx, user.UserID)
-
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	h.dashboardTemplate.Execute(c.Writer, dashboardPageData{
-		BasePath:         h.basePath,
-		Email:            user.Email,
-		Board:            board,
-		TierCheckboxes:   checkboxes,
-		HasCredential:    hasCredential,
-		CredentialMasked: credentialMasked,
-	})
-}
-
-func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
-	user := currentUser(c)
-	ctx := c.Request.Context()
-
-	board, err := h.dashboardSvc.GetMyBoard(ctx, user.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load board"})
-		return
-	}
-
-	savedPreference, err := h.dashboardSvc.GetReminderTierPreference(ctx, user.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load board"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
 		return
 	}
 	// nil (never set) means every tier is checked by default (spec AC5.2);
@@ -165,7 +73,6 @@ func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
 	credentialMasked, hasCredential, _ := h.jiraCredential.MaskedPreview(ctx, user.UserID)
 
 	c.JSON(http.StatusOK, gin.H{
-		"columns": board.Columns,
 		"tierPreference": gin.H{
 			"tiers": tiers,
 		},
@@ -174,46 +81,6 @@ func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
 			"maskedPreview": credentialMasked,
 		},
 	})
-}
-
-func (h *userDashboardHandlerImpl) GetTeam(c *gin.Context) {
-	view, err := h.dashboardSvc.GetTeamView(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team data"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"groups": view.Groups})
-}
-
-func (h *userDashboardHandlerImpl) TeamView(c *gin.Context) {
-	view, err := h.dashboardSvc.GetTeamView(c.Request.Context())
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat data team, coba lagi")
-		return
-	}
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	h.teamTemplate.Execute(c.Writer, teamPageData{BasePath: h.basePath, Email: currentUser(c).Email, View: view})
-}
-
-func (h *userDashboardHandlerImpl) OverdueView(c *gin.Context) {
-	items, err := h.dashboardSvc.GetOverdueView(c.Request.Context())
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Gagal memuat data overdue, coba lagi")
-		return
-	}
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.Status(http.StatusOK)
-	h.overdueTemplate.Execute(c.Writer, overduePageData{BasePath: h.basePath, Email: currentUser(c).Email, Items: items})
-}
-
-func (h *userDashboardHandlerImpl) GetOverdue(c *gin.Context) {
-	items, err := h.dashboardSvc.GetOverdueView(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load overdue data"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 type updatePreferenceRequest struct {
@@ -238,26 +105,6 @@ func (h *userDashboardHandlerImpl) UpdatePreference(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-type transitionRequest struct {
-	Target string `json:"target"`
-}
-
-func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
-	issueKey := c.Param("issueKey")
-	var req transitionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-
-	// Delegates straight to RouteCommand (spec AC4.1) — the exact same
-	// validation/transition/credential-resolution path as the bot's
-	// /u-geser, zero duplicated logic.
-	command := "/u-geser<" + issueKey + ">:" + req.Target
-	message := h.chatInteractive.RouteCommand(c.Request.Context(), currentUser(c).Email, command)
-	c.JSON(http.StatusOK, gin.H{"message": message})
 }
 
 type saveCredentialRequest struct {
@@ -291,4 +138,72 @@ func (h *userDashboardHandlerImpl) DeleteCredential(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
+	board, err := h.dashboardSvc.GetMyBoard(c.Request.Context(), currentUser(c).Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load board"})
+		return
+	}
+	columns := board.Columns
+	if columns == nil {
+		columns = []user_dashboard_dto.BoardColumn{} // JSON [] not null
+	}
+	for i := range columns {
+		if columns[i].Cards == nil {
+			columns[i].Cards = []user_dashboard_dto.Card{}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"columns": columns})
+}
+
+func (h *userDashboardHandlerImpl) GetTeam(c *gin.Context) {
+	view, err := h.dashboardSvc.GetTeamView(c.Request.Context(), currentUser(c).Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load team data"})
+		return
+	}
+	groups := view.Groups
+	if groups == nil {
+		groups = []user_dashboard_dto.TeamGroup{} // JSON [] not null
+	}
+	for i := range groups {
+		if groups[i].Cards == nil {
+			groups[i].Cards = []user_dashboard_dto.Card{}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"groups": groups})
+}
+
+func (h *userDashboardHandlerImpl) GetOverdue(c *gin.Context) {
+	items, err := h.dashboardSvc.GetOverdueView(c.Request.Context(), currentUser(c).Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load overdue data"})
+		return
+	}
+	if items == nil {
+		items = []user_dashboard_dto.OverdueItem{} // JSON [] not null
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+type transitionRequest struct {
+	Target string `json:"target"`
+}
+
+func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
+	issueKey := c.Param("issueKey")
+	var req transitionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	// Delegates straight to RouteCommand (spec AC4.1) - the exact same
+	// validation/transition/credential-resolution path as the bot's
+	// /u-geser, including its "own tickets only" ownership check.
+	command := "/u-geser<" + issueKey + ">:" + req.Target
+	message := h.chatInteractive.RouteCommand(c.Request.Context(), currentUser(c).Email, command)
+	c.JSON(http.StatusOK, gin.H{"message": message})
 }

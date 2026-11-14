@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"jira-u-bot/base/testutil"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/base/testutil"
+	"nudge/modules/registration/registration_dto"
 )
 
 func TestUpsertUser_CreatesNewUser(t *testing.T) {

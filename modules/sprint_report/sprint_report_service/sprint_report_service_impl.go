@@ -3,11 +3,11 @@ package sprint_report_service
 import (
 	"context"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/issue_session/issue_session_repository"
-	"jira-u-bot/modules/issue_session/issue_session_service"
-	"jira-u-bot/modules/sprint_report/sprint_report_dto"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/issue_session/issue_session_repository"
+	"nudge/modules/issue_session/issue_session_service"
+	"nudge/modules/sprint_report/sprint_report_dto"
 )
 
 type sprintReportServiceImpl struct {
@@ -28,11 +28,37 @@ func NewSprintReportService(
 	}
 }
 
-func (s *sprintReportServiceImpl) ListAvailableSprints(ctx context.Context) ([]string, error) {
-	return s.issueSessionRepo.ListDistinctSprintNames(ctx)
+// ListAvailableSprints narrows the global sprint list down to the sprints
+// where email has at least one tracked ticket — a user never even sees the
+// names of sprints they have no tickets in.
+func (s *sprintReportServiceImpl) ListAvailableSprints(ctx context.Context, email string) ([]string, error) {
+	all, err := s.issueSessionRepo.ListDistinctSprintNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(all) == 0 {
+		return nil, nil
+	}
+	sessions, err := s.issueSessionRepo.FindBySprintNames(ctx, all)
+	if err != nil {
+		return nil, err
+	}
+	owned := make(map[string]bool, len(all))
+	for _, session := range sessions {
+		if session.AssigneeEmail == email {
+			owned[session.SprintName] = true
+		}
+	}
+	var available []string
+	for _, name := range all {
+		if owned[name] {
+			available = append(available, name)
+		}
+	}
+	return available, nil
 }
 
-func (s *sprintReportServiceImpl) GenerateReport(ctx context.Context, sprintNames []string, capPercent float64) (sprint_report_dto.Report, error) {
+func (s *sprintReportServiceImpl) GenerateReport(ctx context.Context, email string, sprintNames []string, capPercent float64) (sprint_report_dto.Report, error) {
 	sessions, err := s.issueSessionRepo.FindBySprintNames(ctx, sprintNames)
 	if err != nil {
 		return sprint_report_dto.Report{}, err
@@ -40,6 +66,9 @@ func (s *sprintReportServiceImpl) GenerateReport(ctx context.Context, sprintName
 
 	report := sprint_report_dto.Report{CapPercent: capPercent}
 	for _, session := range sessions {
+		if session.AssigneeEmail != email {
+			continue // own tickets only, regardless of who else is in the sprint
+		}
 		estimatedHours := session.StoryPoints
 		// AC7.5: live elapsed via CalculateElapsedSeconds, not raw
 		// accumulatedSeconds — a still-active session's actual time stays

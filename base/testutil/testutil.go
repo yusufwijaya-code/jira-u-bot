@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"jira-u-bot/migrations"
+	"nudge/migrations"
 
 	_ "github.com/go-sql-driver/mysql"
 )

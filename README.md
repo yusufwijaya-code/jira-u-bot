@@ -1,6 +1,8 @@
-# Jira U Bot
+# Nudge
 
-Bot Go yang memantau tiket Jira berstatus **Code Process**, menghitung budget waktu dari Story Point, lalu mengirim reminder otomatis ke Google Chat saat mendekati, melewati, atau menyelesaikan budget lebih awal.
+<img src="frontend/public/favicon.svg" width="56" alt="Nudge logo" />
+
+**Nudge** (sebelumnya *Jira U Bot*) — bot Go yang memantau tiket Jira berstatus **Code Process**, menghitung budget waktu dari Story Point, lalu mengirim reminder otomatis ke Google Chat saat mendekati, melewati, atau menyelesaikan budget lebih awal.
 
 ## Fitur
 
@@ -11,13 +13,18 @@ Bot Go yang memantau tiket Jira berstatus **Code Process**, menghitung budget wa
 - Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
 - Command interaktif (`/u-mytickets`, `/u-budget <issueKey>`, `/u-overdue`, `/u-team`, `/u-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
 - Command `/u-geser<issueKey>:todo` dan `/u-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi; hint-nya otomatis muncul di tiap pesan reminder & overdue
-- **Dashboard web** (`/jira-notif/dashboard`, login via Sign in with Google, domain `@esb.co.id` saja):
-  - **My Board** — semua tiket Jira milik user yang login, lintas status (bukan cuma Code Process), plus detail budget untuk yang sedang di-track
-  - **Reminder preference** — pilih sendiri subset tier reminder (T-2 jam s/d T-1 menit) yang mau diterima
-  - **Jira API key pribadi** (opsional) — begitu di-set, aksi transisi status (baik dari dashboard maupun command `/u-geser`) tercatat di Jira atas nama akun sendiri, bukan akun pusat; token disimpan terenkripsi (AES-256-GCM)
-  - **Team** / **Overdue** — versi web dari `/u-team` dan `/u-overdue`, data sama persis
-  - **Admin Dashboard** (`/jira-notif/dashboard/admin`, khusus `yusuf.wijaya@esb.co.id`) — kelola user terdaftar: aktifkan/nonaktifkan, edit mapping Jira account ID, reset credential pribadi user, hapus user
-  - **Sprint Report** (`/jira-notif/dashboard/report`) — pilih satu atau beberapa sprint, lihat Aggregate Deviation, Achievement %, dan perbandingan Estimated vs Actual Time per tiket
+- **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
+  - Layout: sidebar kiri (menu **Setting**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
+  - **Setting** — **Reminder preference** (pilih subset tier T-2 jam s/d T-1 menit) dan **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
+  - **Admin** (khusus `ADMIN_EMAIL`) — statistik user, cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user, dan broadcast pengumuman lewat DM
+  - Semua data **hanya milik user yang login** (di-scope di server lewat email sesi, termasuk admin)
+
+### Brand & UI
+
+- Nama aplikasi: **Nudge**; base path `/nudge` (env `BASE_PATH`), Go module `nudge`
+- Ikon: `frontend/public/favicon.svg` (sumber), plus `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png` hasil render-nya, dan `manifest.webmanifest`
+- Design system di `frontend/src/styles.scss` (token warna indigo `--primary` + aksen amber `--accent`, font Plus Jakarta Sans); komponen UI bersama: `shared/ui/icon.component.ts` (ikon SVG inline), `core/ui/toast.service.ts` + `core/ui/confirm.service.ts` (toast & dialog konfirmasi, di-render oleh `shared/ui/overlays.component.ts`)
+- Command bot Google Chat tetap memakai prefix `/u-`
 
 ## Tech Stack
 
@@ -47,6 +54,6 @@ Bot Go yang memantau tiket Jira berstatus **Code Process**, menghitung budget wa
 - `modules/jira_client` — client Jira Cloud REST API, termasuk varian `*As` yang jalan atas nama credential pribadi user
 - `modules/jira_credential` — penyimpanan & resolusi Jira API key pribadi user, terenkripsi AES-256-GCM
 - `modules/auth` — Google Sign-In, session, auto-registrasi, middleware auth/admin
-- `modules/user_dashboard` — My Board, preference, credential setup, Team/Overdue, aksi transisi status
+- `modules/user_dashboard` — board, overdue, team, preference & credential setup
 - `modules/admin_dashboard` — manajemen user untuk admin
 - `modules/sprint_report` — generate report Estimated vs Actual Time per sprint

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"jira-u-bot/modules/issue_session/issue_session_dto"
+	"nudge/modules/issue_session/issue_session_dto"
 )
 
 type IssueSessionService interface {

@@ -3,7 +3,7 @@ package jira_credential_repository
 import (
 	"context"
 
-	"jira-u-bot/modules/jira_credential/jira_credential_dto"
+	"nudge/modules/jira_credential/jira_credential_dto"
 )
 
 type JiraCredentialRepository interface {

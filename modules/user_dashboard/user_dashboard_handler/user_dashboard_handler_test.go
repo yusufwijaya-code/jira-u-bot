@@ -10,17 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_middleware"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/jira_credential/jira_credential_service"
-	"jira-u-bot/modules/user_dashboard/user_dashboard_dto"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_middleware"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
-
-func testCfg() *config.AppConfig {
-	return &config.AppConfig{BasePath: "/jira-notif"}
-}
 
 type fakeUserDashboardService struct {
 	board            user_dashboard_dto.Board
@@ -32,15 +27,25 @@ type fakeUserDashboardService struct {
 	setPreferenceCSV string
 	setPreferenceErr error
 	getPreference    *string
+	getPreferenceErr error
+
+	// emails the handler passed to each read method, to prove the identity
+	// always comes from the session.
+	boardEmail   string
+	teamEmail    string
+	overdueEmail string
 }
 
 func (f *fakeUserDashboardService) GetMyBoard(ctx context.Context, email string) (user_dashboard_dto.Board, error) {
+	f.boardEmail = email
 	return f.board, f.boardErr
 }
-func (f *fakeUserDashboardService) GetTeamView(ctx context.Context) (user_dashboard_dto.TeamView, error) {
+func (f *fakeUserDashboardService) GetTeamView(ctx context.Context, email string) (user_dashboard_dto.TeamView, error) {
+	f.teamEmail = email
 	return f.teamView, f.teamViewErr
 }
-func (f *fakeUserDashboardService) GetOverdueView(ctx context.Context) ([]user_dashboard_dto.OverdueItem, error) {
+func (f *fakeUserDashboardService) GetOverdueView(ctx context.Context, email string) ([]user_dashboard_dto.OverdueItem, error) {
+	f.overdueEmail = email
 	return f.overdueItems, f.overdueErr
 }
 func (f *fakeUserDashboardService) SetReminderTierPreference(ctx context.Context, email, csv string) error {
@@ -48,7 +53,7 @@ func (f *fakeUserDashboardService) SetReminderTierPreference(ctx context.Context
 	return f.setPreferenceErr
 }
 func (f *fakeUserDashboardService) GetReminderTierPreference(ctx context.Context, email string) (*string, error) {
-	return f.getPreference, nil
+	return f.getPreference, f.getPreferenceErr
 }
 
 type fakeChatInteractiveForHandler struct {
@@ -102,39 +107,68 @@ func newTestContextWithUser(method, path, body string) (*httptest.ResponseRecord
 	return w, c
 }
 
-func TestGetBoard_ReturnsBoardPreferenceAndCredentialAsJSON(t *testing.T) {
+func TestGetBoard_ReturnsBoardAsJSONForSessionEmail(t *testing.T) {
 	svc := &fakeUserDashboardService{board: user_dashboard_dto.Board{Columns: []user_dashboard_dto.BoardColumn{
 		{Status: "Code Process", Cards: []user_dashboard_dto.Card{
 			{IssueKey: "OMS-1", Summary: "Test ticket", Status: "Code Process", HasBudgetDetail: true, StoryPoints: 3, ElapsedLabel: "1 jam", RemainingLabel: "2 jam"},
 		}},
 	}}}
-	cred := &fakeJiraCredentialForHandler{maskedPreview: "••••ab3f", maskedFound: true}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, cred, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
-	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
+	// A hostile ?email= must be ignored - identity only comes from the session.
+	w, c := newTestContextWithUser("GET", "/api/dashboard/board?email=victim@esb.co.id", "")
 	handler.GetBoard(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	body := w.Body.String()
-	if !strings.Contains(body, `"issueKey":"OMS-1"`) {
-		t.Errorf("body missing board ticket: %s", body)
+	if !strings.Contains(w.Body.String(), `"issueKey":"OMS-1"`) {
+		t.Errorf("body missing board ticket: %s", w.Body.String())
 	}
-	if !strings.Contains(body, `"tiers":[`) {
-		t.Errorf("body missing tierPreference.tiers: %s", body)
+	if svc.boardEmail != "dev@esb.co.id" {
+		t.Errorf("GetMyBoard called with %q, want the session's dev@esb.co.id", svc.boardEmail)
+	}
+}
+
+func TestGetBoard_ReturnsServerErrorWhenServiceFails(t *testing.T) {
+	svc := &fakeUserDashboardService{boardErr: errors.New("jira down")}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
+	handler.GetBoard(c)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestGetSettings_ReturnsPreferenceAndCredentialAsJSON(t *testing.T) {
+	saved := "2h,1h"
+	svc := &fakeUserDashboardService{getPreference: &saved}
+	cred := &fakeJiraCredentialForHandler{maskedPreview: "••••ab3f", maskedFound: true}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, cred)
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/settings", "")
+	handler.GetSettings(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"tiers":["2h","1h"]`) {
+		t.Errorf("body missing saved tierPreference.tiers: %s", body)
 	}
 	if !strings.Contains(body, `"hasCredential":true`) || !strings.Contains(body, `"maskedPreview":"••••ab3f"`) {
 		t.Errorf("body missing credential info: %s", body)
 	}
 }
 
-func TestGetBoard_DefaultsAllTiersWhenPreferenceNeverSet(t *testing.T) {
+func TestGetSettings_DefaultsAllTiersWhenPreferenceNeverSet(t *testing.T) {
 	svc := &fakeUserDashboardService{getPreference: nil}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
-	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
-	handler.GetBoard(c)
+	w, c := newTestContextWithUser("GET", "/api/dashboard/settings", "")
+	handler.GetSettings(c)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
@@ -146,21 +180,35 @@ func TestGetBoard_DefaultsAllTiersWhenPreferenceNeverSet(t *testing.T) {
 	}
 }
 
-func TestGetBoard_ReturnsServerErrorWhenServiceFails(t *testing.T) {
-	svc := &fakeUserDashboardService{boardErr: errors.New("jira down")}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+func TestGetSettings_ReturnsServerErrorWhenServiceFails(t *testing.T) {
+	svc := &fakeUserDashboardService{getPreferenceErr: errors.New("db down")}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
-	w, c := newTestContextWithUser("GET", "/api/dashboard/board", "")
-	handler.GetBoard(c)
+	w, c := newTestContextWithUser("GET", "/api/dashboard/settings", "")
+	handler.GetSettings(c)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", w.Code)
 	}
 }
 
+func TestGetTeamAndOverdue_UseSessionEmail(t *testing.T) {
+	svc := &fakeUserDashboardService{}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
+
+	_, c := newTestContextWithUser("GET", "/api/dashboard/team?email=victim@esb.co.id", "")
+	handler.GetTeam(c)
+	_, c = newTestContextWithUser("GET", "/api/dashboard/overdue?email=victim@esb.co.id", "")
+	handler.GetOverdue(c)
+
+	if svc.teamEmail != "dev@esb.co.id" || svc.overdueEmail != "dev@esb.co.id" {
+		t.Errorf("team=%q overdue=%q, want both the session's dev@esb.co.id", svc.teamEmail, svc.overdueEmail)
+	}
+}
+
 func TestUpdatePreference_PersistsSelectedTiers(t *testing.T) {
 	svc := &fakeUserDashboardService{}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/preference", `{"tiers":["1h","15m"]}`)
 	handler.UpdatePreference(c)
@@ -175,7 +223,7 @@ func TestUpdatePreference_PersistsSelectedTiers(t *testing.T) {
 
 func TestUpdatePreference_EmptyArrayPersistsAsEmptyString(t *testing.T) {
 	svc := &fakeUserDashboardService{}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/preference", `{"tiers":[]}`)
 	handler.UpdatePreference(c)
@@ -187,7 +235,7 @@ func TestUpdatePreference_EmptyArrayPersistsAsEmptyString(t *testing.T) {
 
 func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
 	chat := &fakeChatInteractiveForHandler{response: "✅ OMS-1 berhasil digeser ke Code Review"}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, chat, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, chat, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"target":"code-review"}`)
 	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
@@ -209,7 +257,7 @@ func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
 
 func TestSaveCredential_CallsUpsert(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/credential", `{"jiraEmail":"dev@esb.co.id","apiToken":"my-token"}`)
 	handler.SaveCredential(c)
@@ -221,7 +269,7 @@ func TestSaveCredential_CallsUpsert(t *testing.T) {
 
 func TestSaveCredential_RejectsMissingFields(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/credential", `{"jiraEmail":""}`)
 	handler.SaveCredential(c)
@@ -233,7 +281,7 @@ func TestSaveCredential_RejectsMissingFields(t *testing.T) {
 
 func TestSaveCredential_ReturnsServiceUnavailableWhenKeyNotConfigured(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{upsertErr: jira_credential_service.ErrEncryptionKeyNotConfigured}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
 
 	w, c := newTestContextWithUser("POST", "/api/dashboard/credential", `{"jiraEmail":"dev@esb.co.id","apiToken":"tok"}`)
 	handler.SaveCredential(c)
@@ -245,7 +293,7 @@ func TestSaveCredential_ReturnsServiceUnavailableWhenKeyNotConfigured(t *testing
 
 func TestDeleteCredential_CallsDelete(t *testing.T) {
 	cred := &fakeJiraCredentialForHandler{}
-	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred, testCfg())
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, cred)
 
 	w, c := newTestContextWithUser("DELETE", "/api/dashboard/credential", "")
 	handler.DeleteCredential(c)
@@ -259,7 +307,7 @@ func TestGetTeam_ReturnsGroupsAsJSON(t *testing.T) {
 	svc := &fakeUserDashboardService{teamView: user_dashboard_dto.TeamView{Groups: []user_dashboard_dto.TeamGroup{
 		{AssigneeEmail: "teammate@esb.co.id", Cards: []user_dashboard_dto.Card{{IssueKey: "OMS-1", Summary: "Test"}}},
 	}}}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("GET", "/api/dashboard/team", "")
 	handler.GetTeam(c)
@@ -275,7 +323,7 @@ func TestGetTeam_ReturnsGroupsAsJSON(t *testing.T) {
 func TestGetTeam_ReturnsServerErrorWhenServiceFails(t *testing.T) {
 	svc := &fakeUserDashboardService{}
 	svc.teamViewErr = errors.New("db down")
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("GET", "/api/dashboard/team", "")
 	handler.GetTeam(c)
@@ -289,7 +337,7 @@ func TestGetOverdue_ReturnsItemsAsJSON(t *testing.T) {
 	svc := &fakeUserDashboardService{overdueItems: []user_dashboard_dto.OverdueItem{
 		{Card: user_dashboard_dto.Card{IssueKey: "OMS-1", Summary: "Test"}, AssigneeEmail: "teammate@esb.co.id"},
 	}}
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("GET", "/api/dashboard/overdue", "")
 	handler.GetOverdue(c)
@@ -305,7 +353,7 @@ func TestGetOverdue_ReturnsItemsAsJSON(t *testing.T) {
 func TestGetOverdue_ReturnsServerErrorWhenServiceFails(t *testing.T) {
 	svc := &fakeUserDashboardService{}
 	svc.overdueErr = errors.New("db down")
-	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, testCfg())
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{})
 
 	w, c := newTestContextWithUser("GET", "/api/dashboard/overdue", "")
 	handler.GetOverdue(c)

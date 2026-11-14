@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 var errGeserTest = errors.New("jira api error")
@@ -197,7 +197,7 @@ func TestRouteCommand_UnregisteredUserGetsInviteToRegister(t *testing.T) {
 
 	got := svc.RouteCommand(context.Background(), "ghost@esb.co.id", "/u-mytickets")
 
-	if !strings.Contains(got, "labcup.tech/jira-notif/register") {
+	if !strings.Contains(got, "labcup.tech/nudge/register") {
 		t.Errorf("RouteCommand() = %q, want it to contain the registration link", got)
 	}
 }

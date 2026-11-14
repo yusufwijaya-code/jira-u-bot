@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"jira-u-bot/config"
+	"nudge/config"
 )
 
 func TestNewChatOAuthService_ReturnsNilWhenClientCredentialsNotConfigured(t *testing.T) {

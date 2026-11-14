@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 var (

@@ -3,7 +3,7 @@ package business_hours_service
 import (
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_dto"
 )
 
 type BusinessHoursService interface {

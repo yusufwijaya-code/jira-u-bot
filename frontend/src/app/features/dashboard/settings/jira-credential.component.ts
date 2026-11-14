@@ -2,11 +2,14 @@ import { Component, OnInit, inject, input, output } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { NgIf } from '@angular/common';
 import { BoardService } from '../../../core/services/board.service';
+import { ConfirmService } from '../../../core/ui/confirm.service';
+import { ToastService } from '../../../core/ui/toast.service';
+import { IconComponent } from '../../../shared/ui/icon.component';
 
 @Component({
   selector: 'app-jira-credential',
   standalone: true,
-  imports: [ReactiveFormsModule, NgIf],
+  imports: [ReactiveFormsModule, NgIf, IconComponent],
   templateUrl: './jira-credential.component.html',
 })
 export class JiraCredentialComponent implements OnInit {
@@ -16,10 +19,14 @@ export class JiraCredentialComponent implements OnInit {
 
   protected form!: FormGroup<{ jiraEmail: FormControl<string>; apiToken: FormControl<string> }>;
   protected submitting = false;
+  protected deleting = false;
+  protected showToken = false;
   protected error: string | null = null;
 
   private fb = inject(FormBuilder);
   private boardService = inject(BoardService);
+  private confirm = inject(ConfirmService);
+  private toast = inject(ToastService);
 
   ngOnInit(): void {
     this.form = this.fb.group({
@@ -30,6 +37,7 @@ export class JiraCredentialComponent implements OnInit {
 
   protected onSubmit(): void {
     if (this.form.invalid || this.submitting) {
+      this.form.markAllAsTouched();
       return;
     }
     this.submitting = true;
@@ -39,6 +47,7 @@ export class JiraCredentialComponent implements OnInit {
     this.boardService.saveCredential(value.jiraEmail, value.apiToken).subscribe({
       next: () => {
         this.submitting = false;
+        this.toast.success('Credential tersimpan', 'Aksi Jira sekarang memakai akun kamu sendiri.');
         this.credentialChanged.emit();
       },
       error: (err) => {
@@ -48,10 +57,26 @@ export class JiraCredentialComponent implements OnInit {
     });
   }
 
-  protected onDelete(): void {
+  protected async onDelete(): Promise<void> {
+    const confirmed = await this.confirm.ask({
+      title: 'Hapus credential?',
+      message: 'Aksi Jira kamu akan kembali memakai akun bot pusat. Kamu bisa menambahkannya lagi kapan saja.',
+      confirmText: 'Hapus',
+      tone: 'danger',
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    this.deleting = true;
     this.boardService.deleteCredential().subscribe({
-      next: () => this.credentialChanged.emit(),
+      next: () => {
+        this.deleting = false;
+        this.toast.success('Credential dihapus');
+        this.credentialChanged.emit();
+      },
       error: () => {
+        this.deleting = false;
         this.error = 'failed to delete credential';
       },
     });

@@ -3,47 +3,9 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
-export interface Card {
-  issueKey: string;
-  summary: string;
-  status: string;
-  hasBudgetDetail: boolean;
-  storyPoints: number;
-  elapsedLabel: string;
-  remainingLabel: string;
-  deadlineLabel: string;
-}
-
-export interface BoardColumn {
-  status: string;
-  cards: Card[];
-}
-
-export interface BoardResponse {
-  columns: BoardColumn[];
+export interface SettingsResponse {
   tierPreference: { tiers: string[] };
   credential: { hasCredential: boolean; maskedPreview: string };
-}
-
-export interface TeamGroup {
-  assigneeEmail: string;
-  cards: Card[];
-}
-
-export interface TeamResponse {
-  groups: TeamGroup[];
-}
-
-export interface OverdueItem extends Card {
-  assigneeEmail: string;
-}
-
-export interface OverdueResponse {
-  items: OverdueItem[];
-}
-
-export interface TransitionResponse {
-  message: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -65,22 +27,7 @@ export class BoardService {
     return this.http.delete<{ status: string }>(`${environment.apiBasePath}/api/dashboard/credential`);
   }
 
-  getBoard(): Observable<BoardResponse> {
-    return this.http.get<BoardResponse>(`${environment.apiBasePath}/api/dashboard/board`);
-  }
-
-  transitionTicket(issueKey: string, target: 'todo' | 'code-review'): Observable<TransitionResponse> {
-    return this.http.post<TransitionResponse>(
-      `${environment.apiBasePath}/api/dashboard/tickets/${encodeURIComponent(issueKey)}/transition`,
-      { target },
-    );
-  }
-
-  getTeam(): Observable<TeamResponse> {
-    return this.http.get<TeamResponse>(`${environment.apiBasePath}/api/dashboard/team`);
-  }
-
-  getOverdue(): Observable<OverdueResponse> {
-    return this.http.get<OverdueResponse>(`${environment.apiBasePath}/api/dashboard/overdue`);
+  getSettings(): Observable<SettingsResponse> {
+    return this.http.get<SettingsResponse>(`${environment.apiBasePath}/api/dashboard/settings`);
   }
 }

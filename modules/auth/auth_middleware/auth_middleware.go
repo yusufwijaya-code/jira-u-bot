@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_service"
+	"nudge/config"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_service"
 )
 
 // CurrentUserKey is the gin.Context key AuthMiddleware/AuthMiddlewareAPI
@@ -17,26 +17,11 @@ const CurrentUserKey = "currentUser"
 
 const sessionCookieName = "session_token"
 
-// AuthMiddleware implements spec AC1.6/AC1.7: every request under the old
-// server-rendered page routes must have a valid, non-expired session for a
-// flagActive user — resolved fresh from the DB every request (not cached in
-// the cookie). Unauthenticated requests are redirected to the app's own
-// landing page. This variant stays in place only for as long as the old
-// HTML page routes exist — once they're deleted (Angular Dashboard Revamp
-// Plan C), only AuthMiddlewareAPI remains.
-func AuthMiddleware(authService auth_service.AuthService, cfg *config.AppConfig) gin.HandlerFunc {
-	loginURL := cfg.BasePath + "/auth/login"
-	return authMiddleware(authService, func(c *gin.Context) {
-		c.Redirect(http.StatusFound, loginURL)
-	})
-}
-
-// AuthMiddlewareAPI is the JSON-API counterpart to AuthMiddleware — used
-// for routes consumed by fetch()/HttpClient (Angular), where a 302 redirect
-// to an HTML page is useless (the caller can't meaningfully follow it and
-// the response body wouldn't be JSON). Same session validation, same
-// CurrentUserKey contract, only the failure response differs: 401 JSON
-// instead of a redirect.
+// AuthMiddlewareAPI implements spec AC1.6/AC1.7: every request must carry a
+// valid, non-expired session for a flagActive user — resolved fresh from
+// the DB every request (not cached in the cookie). Unauthenticated
+// requests get a 401 JSON, which the Angular frontend's interceptor turns
+// into a redirect to the login screen.
 func AuthMiddlewareAPI(authService auth_service.AuthService, cfg *config.AppConfig) gin.HandlerFunc {
 	return authMiddleware(authService, func(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})

@@ -11,12 +11,12 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/idtoken"
 
-	"jira-u-bot/config"
-	"jira-u-bot/modules/auth/auth_dto"
-	"jira-u-bot/modules/auth/auth_session_repository"
-	"jira-u-bot/modules/registration/registration_dto"
-	"jira-u-bot/modules/registration/registration_repository"
-	"jira-u-bot/modules/registration/registration_service"
+	"nudge/config"
+	"nudge/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_session_repository"
+	"nudge/modules/registration/registration_dto"
+	"nudge/modules/registration/registration_repository"
+	"nudge/modules/registration/registration_service"
 )
 
 // sessionLifetime is how long a session stays valid after login (spec

@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"jira-u-bot/modules/business_hours/business_hours_dto"
-	"jira-u-bot/modules/business_hours/business_hours_service"
-	"jira-u-bot/modules/issue_session/issue_session_dto"
-	"jira-u-bot/modules/jira_client/jira_client_dto"
-	"jira-u-bot/modules/registration/registration_dto"
+	"nudge/modules/business_hours/business_hours_dto"
+	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/issue_session/issue_session_dto"
+	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/registration/registration_dto"
 )
 
 // --- fakes ---
@@ -145,7 +145,13 @@ func (f *fakeIssueSessionRepoForDashboard) UpdateLastOverageReminder(ctx context
 	return nil
 }
 func (f *fakeIssueSessionRepoForDashboard) FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error) {
-	return nil, nil
+	var own []issue_session_dto.IssueSession
+	for _, session := range f.activeAll {
+		if session.AssigneeEmail == email {
+			own = append(own, session)
+		}
+	}
+	return own, nil
 }
 
 func (f *fakeIssueSessionRepoForDashboard) FindBySprintNames(ctx context.Context, sprintNames []string) ([]issue_session_dto.IssueSession, error) {
@@ -256,7 +262,7 @@ func TestGetMyBoard_ReturnsEmptyBoardForUnknownEmail(t *testing.T) {
 
 // --- GetTeamView / GetOverdueView ---
 
-func TestGetTeamView_GroupsActiveSessionsByAssignee(t *testing.T) {
+func TestGetTeamView_ReturnsOnlyCallersOwnActiveSessions(t *testing.T) {
 	sessionRepo := &fakeIssueSessionRepoForDashboard{activeAll: []issue_session_dto.IssueSession{
 		{IssueKey: "OMS-1", AssigneeEmail: "a@esb.co.id", StoryPoints: 1, AccumulatedSeconds: 100},
 		{IssueKey: "OMS-2", AssigneeEmail: "b@esb.co.id", StoryPoints: 1, AccumulatedSeconds: 100},
@@ -264,32 +270,45 @@ func TestGetTeamView_GroupsActiveSessionsByAssignee(t *testing.T) {
 	}}
 	svc := newTestService(&fakeJiraClientForDashboard{}, &fakeJiraCredentialForDashboard{}, &fakeRegistrationRepoForDashboard{}, sessionRepo)
 
-	view, err := svc.GetTeamView(context.Background())
+	view, err := svc.GetTeamView(context.Background(), "a@esb.co.id")
 	if err != nil {
 		t.Fatalf("GetTeamView returned error: %v", err)
 	}
-	if len(view.Groups) != 2 {
-		t.Fatalf("len(Groups) = %d, want 2", len(view.Groups))
+	if len(view.Groups) != 1 || view.Groups[0].AssigneeEmail != "a@esb.co.id" || len(view.Groups[0].Cards) != 2 {
+		t.Fatalf("Groups = %+v, want a single group for a@esb.co.id with its 2 cards and nothing of b@esb.co.id", view.Groups)
 	}
 }
 
-func TestGetOverdueView_OnlyReturnsSessionsPastBudget(t *testing.T) {
+func TestGetTeamView_EmptyWhenCallerHasNoActiveSessions(t *testing.T) {
+	sessionRepo := &fakeIssueSessionRepoForDashboard{activeAll: []issue_session_dto.IssueSession{
+		{IssueKey: "OMS-2", AssigneeEmail: "b@esb.co.id", StoryPoints: 1},
+	}}
+	svc := newTestService(&fakeJiraClientForDashboard{}, &fakeJiraCredentialForDashboard{}, &fakeRegistrationRepoForDashboard{}, sessionRepo)
+
+	view, err := svc.GetTeamView(context.Background(), "a@esb.co.id")
+	if err != nil || len(view.Groups) != 0 {
+		t.Errorf("GetTeamView = %+v, %v, want no groups", view, err)
+	}
+}
+
+func TestGetOverdueView_OnlyReturnsCallersOwnSessionsPastBudget(t *testing.T) {
 	// AccumulatedSeconds (already-banked time), not CurrentSessionStartedDate
 	// + wall-clock business-hours math — deterministic regardless of when
 	// this test actually runs (weekend/after-hours would otherwise compute
 	// near-zero elapsed business seconds for a live session).
 	sessionRepo := &fakeIssueSessionRepoForDashboard{activeAll: []issue_session_dto.IssueSession{
 		{IssueKey: "OMS-1", AssigneeEmail: "a@esb.co.id", StoryPoints: 1, AccumulatedSeconds: 7200},  // 1 SP = 1h budget, 2h elapsed -> overdue
-		{IssueKey: "OMS-2", AssigneeEmail: "b@esb.co.id", StoryPoints: 10, AccumulatedSeconds: 3600}, // 10h budget, well within
+		{IssueKey: "OMS-2", AssigneeEmail: "a@esb.co.id", StoryPoints: 10, AccumulatedSeconds: 3600}, // 10h budget, well within
+		{IssueKey: "OMS-3", AssigneeEmail: "b@esb.co.id", StoryPoints: 1, AccumulatedSeconds: 7200},  // overdue, but someone else's
 	}}
 	svc := newTestService(&fakeJiraClientForDashboard{}, &fakeJiraCredentialForDashboard{}, &fakeRegistrationRepoForDashboard{}, sessionRepo)
 
-	overdue, err := svc.GetOverdueView(context.Background())
+	overdue, err := svc.GetOverdueView(context.Background(), "a@esb.co.id")
 	if err != nil {
 		t.Fatalf("GetOverdueView returned error: %v", err)
 	}
 	if len(overdue) != 1 || overdue[0].IssueKey != "OMS-1" {
-		t.Errorf("overdue = %+v, want only OMS-1", overdue)
+		t.Errorf("overdue = %+v, want only OMS-1 (OMS-3 belongs to another user)", overdue)
 	}
 }
 

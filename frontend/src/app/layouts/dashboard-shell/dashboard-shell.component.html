@@ -1,15 +1,80 @@
-<header class="shell-header">
-  <span class="brand">🤖 Jira U Bot Dashboard</span>
-  <nav>
-    <span>{{ (authService.currentUser$ | async)?.email }}</span>
-    <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">My Board</a>
-    <a routerLink="/dashboard/team" routerLinkActive="active">Team</a>
-    <a routerLink="/dashboard/overdue" routerLinkActive="active">Overdue</a>
-    <a *ngIf="(authService.currentUser$ | async)?.isAdmin" routerLink="/dashboard/admin" routerLinkActive="active">Admin</a>
-    <a routerLink="/dashboard/report" routerLinkActive="active">Sprint Report</a>
-    <a [href]="logoutHref">Logout</a>
-  </nav>
-</header>
-<main>
-  <router-outlet></router-outlet>
-</main>
+<div class="app-shell" [class.sidebar-open]="sidebarOpen">
+  <aside class="sidebar" aria-label="Navigasi utama">
+    <a class="sidebar-brand" routerLink="/dashboard" (click)="closeSidebar()">
+      <img src="favicon.svg" alt="" width="34" height="34" />
+      <span class="brand-name">Nudge</span>
+    </a>
+
+    <nav class="sidebar-nav">
+      <span class="nav-section">Menu</span>
+      <a class="nav-item" routerLink="/dashboard/settings" routerLinkActive="active" (click)="closeSidebar()">
+        <app-icon name="settings" />
+        <span>Setting</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-tip">
+        <app-icon name="zap" [size]="16" />
+        <span>Nudge mencolek kamu sebelum budget waktu tiket habis.</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-scrim" (click)="closeSidebar()"></div>
+
+  <div class="shell-main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button type="button" class="icon-btn sidebar-toggle" aria-label="Buka menu" (click)="toggleSidebar()">
+          <app-icon name="menu" />
+        </button>
+        <div class="page-heading" *ngIf="page$ | async as page">
+          <h1>{{ page.heading }}</h1>
+          <p *ngIf="page.subheading">{{ page.subheading }}</p>
+        </div>
+      </div>
+
+      <div class="user-menu">
+        <button
+          type="button"
+          class="user-menu-trigger"
+          aria-haspopup="menu"
+          [attr.aria-expanded]="menuOpen"
+          (click)="toggleMenu($event)"
+        >
+          <span class="user-avatar">{{ initial$ | async }}</span>
+          <span class="user-email">{{ (authService.currentUser$ | async)?.email }}</span>
+          <app-icon class="chevron" [class.open]="menuOpen" name="chevron-down" [size]="16" />
+        </button>
+
+        <ul class="user-menu-list" role="menu" *ngIf="menuOpen" (click)="closeMenu()">
+          <li class="user-menu-header" role="none">
+            <span class="user-avatar lg">{{ initial$ | async }}</span>
+            <div>
+              <strong>{{ (authService.currentUser$ | async)?.email }}</strong>
+              <span class="role-badge" [class.admin]="(authService.currentUser$ | async)?.isAdmin">
+                {{ (authService.currentUser$ | async)?.isAdmin ? 'Administrator' : 'Member' }}
+              </span>
+            </div>
+          </li>
+          <li role="none" *ngIf="(authService.currentUser$ | async)?.isAdmin">
+            <a role="menuitem" routerLink="/dashboard/admin" routerLinkActive="active">
+              <app-icon name="shield" [size]="16" /> Admin
+            </a>
+          </li>
+          <li role="separator" class="divider"></li>
+          <li role="none">
+            <a role="menuitem" class="logout" [href]="logoutHref">
+              <app-icon name="logout" [size]="16" /> Logout
+            </a>
+          </li>
+        </ul>
+      </div>
+    </header>
+
+    <main class="page">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>

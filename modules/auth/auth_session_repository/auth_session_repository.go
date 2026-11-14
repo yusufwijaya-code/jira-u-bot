@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"jira-u-bot/modules/auth/auth_dto"
+	"nudge/modules/auth/auth_dto"
 )
 
 type AuthSessionRepository interface {
