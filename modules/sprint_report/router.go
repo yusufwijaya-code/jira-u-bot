@@ -8,4 +8,5 @@ import (
 
 func Router(api *gin.RouterGroup, handler sprint_report_handler.SprintReportHandler) {
 	api.GET("/report", handler.GetReport)
+	api.POST("/report/backfill", handler.Backfill)
 }

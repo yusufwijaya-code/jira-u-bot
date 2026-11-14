@@ -1,6 +1,7 @@
 package sprint_report_handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -16,11 +17,43 @@ import (
 const defaultCapPercent float64 = 12
 
 type sprintReportHandlerImpl struct {
-	svc sprint_report_service.SprintReportService
+	svc      sprint_report_service.SprintReportService
+	backfill Backfiller
 }
 
-func NewSprintReportHandler(svc sprint_report_service.SprintReportService) SprintReportHandler {
-	return &sprintReportHandlerImpl{svc: svc}
+// Backfiller is the sprint_backfill_service capability behind Backfill.
+type Backfiller interface {
+	RunForEmail(ctx context.Context, email string) (added int, err error)
+}
+
+// Option configures the handler.
+type Option func(*sprintReportHandlerImpl)
+
+// WithBackfiller enables POST /report/backfill.
+func WithBackfiller(b Backfiller) Option {
+	return func(h *sprintReportHandlerImpl) { h.backfill = b }
+}
+
+func NewSprintReportHandler(svc sprint_report_service.SprintReportService, opts ...Option) SprintReportHandler {
+	h := &sprintReportHandlerImpl{svc: svc}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+func (h *sprintReportHandlerImpl) Backfill(c *gin.Context) {
+	if h.backfill == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "backfill tidak tersedia"})
+		return
+	}
+	email := c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session).Email
+	added, err := h.backfill.RunForEmail(c.Request.Context(), email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengambil data dari Jira"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"added": added})
 }
 
 func (h *sprintReportHandlerImpl) GetReport(c *gin.Context) {

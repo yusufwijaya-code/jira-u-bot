@@ -138,3 +138,43 @@ func TrackedRunTimes(histories []ChangelogEntry, rule TrackingRule) (runStart, l
 	}
 	return runStart, lastEntry, found
 }
+
+// TrackedSeconds sums the time a ticket spent in rule's tracked statuses
+// across EVERY run in its changelog (Tech Spec "Active Sprint Tracking &
+// Changelog Backfill", AC3.3); elapsed measures one run (business hours).
+// A run still open at the end of the changelog is NOT counted — a ticket
+// currently in a tracked status belongs to the poller. found=false if the
+// ticket never entered a tracked status.
+func TrackedSeconds(histories []ChangelogEntry, rule TrackingRule, elapsed func(start, end time.Time) int64) (seconds int64, found bool) {
+	type change struct {
+		at       time.Time
+		from, to string
+	}
+	var changes []change
+	for _, history := range histories {
+		created, err := time.Parse("2006-01-02T15:04:05.000-0700", history.Created)
+		if err != nil {
+			continue
+		}
+		for _, item := range history.Items {
+			if item.Field == "status" {
+				changes = append(changes, change{created, item.FromString, item.ToString})
+			}
+		}
+	}
+	sort.SliceStable(changes, func(i, j int) bool { return changes[i].at.Before(changes[j].at) })
+
+	var runStart *time.Time
+	for _, c := range changes {
+		switch {
+		case runStart == nil && rule.IsTracked(c.to):
+			at := c.at
+			runStart = &at
+			found = true
+		case runStart != nil && !rule.IsTracked(c.to):
+			seconds += elapsed(*runStart, c.at)
+			runStart = nil
+		}
+	}
+	return seconds, found
+}

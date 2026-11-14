@@ -545,13 +545,15 @@ func TestGetMyBoard_CoreReviewTicketGetsBudgetDetailButOmsReviewDoesNot(t *testi
 
 // --- branches (Tech Spec "Subtask & Linked Item Branches") ---
 
-func withRelations(issue jira_client_dto.Issue, subtasks []string, links map[string]string) jira_client_dto.Issue {
+// withRelations adds subtasks and outward links in the given order; links
+// are key/label pairs (a slice, not a map, so the order is deterministic).
+func withRelations(issue jira_client_dto.Issue, subtasks []string, links [][2]string) jira_client_dto.Issue {
 	for _, key := range subtasks {
 		issue.Fields.Subtasks = append(issue.Fields.Subtasks, jira_client_dto.IssueRef{Key: key})
 	}
-	for key, label := range links {
-		link := jira_client_dto.IssueLink{OutwardIssue: &jira_client_dto.IssueRef{Key: key}}
-		link.Type.Outward = label
+	for _, kv := range links {
+		link := jira_client_dto.IssueLink{OutwardIssue: &jira_client_dto.IssueRef{Key: kv[0]}}
+		link.Type.Outward = kv[1]
 		issue.Fields.IssueLinks = append(issue.Fields.IssueLinks, link)
 	}
 	return issue
@@ -566,7 +568,7 @@ func plainIssue(key, status, assignee string) jira_client_dto.Issue {
 
 func branchFixture() (*fakeJiraClientForDashboard, *fakeRegistrationRepoForDashboard, *fakeIssueSessionRepoForDashboard) {
 	parentOMS := sprintIssue("OMS-11727", "Code Review", 28, 8294, "OMS Sprint 23 - 2026")
-	parentOMS = withRelations(parentOMS, []string{"OMS-11938", "OMS-11912"}, map[string]string{"OMS-11905": "relates to", "CORE-5": "relates to"})
+	parentOMS = withRelations(parentOMS, []string{"OMS-11938", "OMS-11912"}, [][2]string{{"OMS-11905", "relates to"}, {"CORE-5", "relates to"}})
 	sprintSubtask := sprintIssue("OMS-11939", "Code Process", 28, 8294, "OMS Sprint 23 - 2026")
 	sprintSubtask.Fields.Parent = &jira_client_dto.IssueRef{Key: "OMS-11727"}
 	parentCORE := withRelations(sprintIssue("CORE-1", "To Do", 26, 7988, "Core Sprint 23 2026"), []string{"CORE-2", "OMS-11938"}, nil)

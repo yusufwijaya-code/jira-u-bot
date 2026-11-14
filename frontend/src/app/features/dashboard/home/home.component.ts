@@ -281,11 +281,15 @@ export class HomeComponent {
     return byParent;
   });
 
-  /** The 5 tickets that deviated most from their estimate. */
-  protected topDeviations = computed(() =>
+  /**
+   * Every ticket of the sprint, largest deviation first, so the user sees
+   * all of them — not just a top 5. `over` = actual above the estimate (the
+   * API's deviation is unsigned).
+   */
+  protected sprintRows = computed(() =>
     [...(this.report()?.rows ?? [])]
-      .sort((a, b) => Math.abs(b.deviationPercent) - Math.abs(a.deviationPercent))
-      .slice(0, 5),
+      .map((r) => ({ ...r, over: r.actualHours > r.estimatedHours }))
+      .sort((a, b) => Math.abs(b.deviationPercent) - Math.abs(a.deviationPercent)),
   );
 
   constructor() {
@@ -304,6 +308,15 @@ export class HomeComponent {
 
   protected boardOf(card: TicketCard): BoardSummary | null {
     return this.boardContext.boards().find((b) => b.boardId === card.boardId) ?? null;
+  }
+
+  /**
+   * Jira link of any key, built from a link the board already gave us
+   * (".../browse/OMS-1" → ".../browse/<key>"); "" when there is none yet.
+   */
+  protected jiraUrl(issueKey: string): string {
+    const sample = this.cards()[0]?.issueURL || this.related()[0]?.issueURL || '';
+    return sample ? sample.replace(/[^/]+$/, issueKey) : '';
   }
 
   /** Jira link of a header-only parent: its branch's link with the parent key. */
@@ -328,6 +341,31 @@ export class HomeComponent {
       error: () => {
         this.boardError.set('Gagal memuat tiket dari Jira, coba lagi');
         this.boardLoading.set(false);
+      },
+    });
+  }
+
+  /** At least one ticket has tracked time in the sprint — otherwise show "–", never a fake 100%. */
+  protected hasTrackedTickets = computed(() => (this.report()?.totalCount ?? 0) > 0);
+  protected backfilling = signal(false);
+
+  /** "Hitung ulang dari Jira": fill in time the bot missed, then reload the summary. */
+  protected backfillSprint(): void {
+    if (this.backfilling()) return;
+    this.backfilling.set(true);
+    this.dashboard.backfillSprint().subscribe({
+      next: ({ added }) => {
+        this.backfilling.set(false);
+        if (added > 0) {
+          this.toast.success('Data sprint diperbarui', `${added} tiket ditambahkan dari riwayat Jira.`);
+        } else {
+          this.toast.info('Sudah lengkap', 'Tidak ada tiket baru yang perlu dihitung dari Jira.');
+        }
+        this.loadReport();
+      },
+      error: () => {
+        this.backfilling.set(false);
+        this.toast.error('Gagal menghitung ulang', 'Data dari Jira belum bisa diambil, coba lagi.');
       },
     });
   }

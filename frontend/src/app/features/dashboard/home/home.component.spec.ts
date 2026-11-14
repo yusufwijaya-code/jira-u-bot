@@ -151,7 +151,7 @@ describe('HomeComponent', () => {
   const stat = (name: string) => el().querySelector(`[data-stat="${name}"]`)?.textContent?.trim();
 
   beforeEach(async () => {
-    dashboard = jasmine.createSpyObj('DashboardService', ['getBoard', 'getSprintReport', 'transitionTicket']);
+    dashboard = jasmine.createSpyObj('DashboardService', ['getBoard', 'getSprintReport', 'transitionTicket', 'backfillSprint']);
     dashboard.getBoard.and.returnValue(of(BOARD));
     dashboard.getSprintReport.and.returnValue(of({ availableSprints: [], capPercent: 12, report: REPORT }));
     confirm = jasmine.createSpyObj('ConfirmService', ['ask']);
@@ -408,6 +408,51 @@ describe('HomeComponent', () => {
       expect(stat('overdue')).toBe('1');
       expect(stat('total')).toBe('4');
       expect(el().textContent).not.toContain('OMS-11905 ');
+    });
+  });
+  describe('Sprint aktif card (Tech Spec "Active Sprint Tracking & Changelog Backfill")', () => {
+    const sprintCard = () => el().querySelector('[data-card="sprint"]') as HTMLElement;
+
+    it('lists every ticket of the sprint, largest deviation first, linked to Jira and signed by actual vs estimate', () => {
+      const rows = Array.from(sprintCard().querySelectorAll('[data-sprint-rows] li'));
+      expect(rows.length).toBe(2);
+      expect(rows.map((r) => r.querySelector('.ticket-key')?.textContent?.trim())).toEqual(['OMS-2', 'OMS-1']);
+      expect((rows[0].querySelector('a.ticket-key') as HTMLAnchorElement).href).toBe('https://jira/browse/OMS-2');
+      expect(rows[0].querySelector('.dev-badge')?.textContent?.trim()).toBe('+100%');
+      expect(rows[0].textContent).toContain('4 dari 2 jam');
+      expect(rows[1].querySelector('.dev-badge')?.textContent?.trim()).toBe('0%');
+    });
+
+    it('shows "–" instead of a fake 100% when no ticket has tracked time', () => {
+      dashboard.getSprintReport.and.returnValue(of({
+        availableSprints: [], capPercent: 12,
+        report: { ...REPORT, rows: [], totalCount: 0, withinCount: 0, aggregateDeviationPercent: 0, achievementPercent: 100 },
+      }));
+      fixture = TestBed.createComponent(HomeComponent);
+      fixture.detectChanges();
+
+      expect(stat('achievement')).toBe('–');
+      expect(sprintCard().querySelector('[data-sprint-empty]')?.textContent).toContain('Belum ada tiket yang tercatat waktunya');
+      expect(sprintCard().querySelector('.achievement-ring:not(.empty)')).toBeNull();
+    });
+
+    it('"Hitung ulang dari Jira" backfills, reports how many were added and reloads the summary', () => {
+      dashboard.backfillSprint.and.returnValue(of({ added: 8 }));
+      const before = dashboard.getSprintReport.calls.count();
+
+      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(dashboard.backfillSprint).toHaveBeenCalled();
+      expect(toast.success).toHaveBeenCalledWith('Data sprint diperbarui', '8 tiket ditambahkan dari riwayat Jira.');
+      expect(dashboard.getSprintReport.calls.count()).toBe(before + 1);
+    });
+
+    it('tells the user when the backfill fails', () => {
+      dashboard.backfillSprint.and.returnValue(throwError(() => ({ status: 500 })));
+      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(toast.error).toHaveBeenCalled();
     });
   });
 });

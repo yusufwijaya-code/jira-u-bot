@@ -57,7 +57,7 @@
       <span class="stat-icon success"><app-icon name="target" [size]="20" /></span>
       <div>
         <span class="stat-value" data-stat="achievement">
-          {{ report() ? (report()!.achievementPercent | number: '1.0-0') + '%' : '–' }}
+          {{ report() && hasTrackedTickets() ? (report()!.achievementPercent | number: '1.0-0') + '%' : '–' }}
         </span>
         <span class="stat-label">Achievement sprint</span>
       </div>
@@ -203,12 +203,24 @@
 
     <!-- Sprint summary -->
     <section class="card" data-card="sprint">
-      <header class="card-header">
+      <header class="card-header with-actions">
         <span class="card-icon success"><app-icon name="target" [size]="20" /></span>
         <div>
           <h2>Sprint aktif</h2>
           <p>{{ reportBoard() ? reportBoard()!.activeSprint.name : 'Ringkasan estimasi vs aktual tiket kamu.' }}</p>
         </div>
+        <button
+          type="button"
+          class="icon-btn"
+          data-backfill
+          title="Hitung ulang dari Jira"
+          aria-label="Hitung ulang dari Jira"
+          [class.spinning]="backfilling()"
+          [disabled]="backfilling() || reportLoading()"
+          (click)="backfillSprint()"
+        >
+          <app-icon name="refresh" [size]="16" />
+        </button>
       </header>
 
       @if (!boardContext.selected() && boardContext.boards().length > 1) {
@@ -235,8 +247,15 @@
             <div class="skeleton skeleton-row"></div>
           }
         </div>
-      } @else if (!report()) {
-        <div class="empty-inline"><span>Belum ada data sprint aktif untuk tiket kamu.</span></div>
+      } @else if (!report() || !hasTrackedTickets()) {
+        <div class="sprint-empty" data-sprint-empty>
+          <div class="achievement-ring empty"><span>–</span></div>
+          <p>Belum ada tiket yang tercatat waktunya di sprint ini.</p>
+          <button type="button" class="btn btn-soft btn-sm" [class.loading]="backfilling()" [disabled]="backfilling()" (click)="backfillSprint()">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="btn-label"><app-icon name="refresh" [size]="14" /> Hitung ulang dari Jira</span>
+          </button>
+        </div>
       } @else {
         <div class="sprint-summary">
           <div class="achievement-ring" [style.--p]="report()!.achievementPercent">
@@ -250,14 +269,21 @@
           </dl>
         </div>
 
-        @if (topDeviations().length) {
-          <h3 class="sub-title">Deviasi terbesar</h3>
-          <ul class="mini-list deviation-list">
-            @for (r of topDeviations(); track r.issueKey) {
-              <li>
-                <span class="ticket-key">{{ r.issueKey }}</span>
-                <span class="ticket-summary">{{ r.task }}</span>
-                <span class="dev-badge" [class.within]="r.within">{{ r.deviationPercent > 0 ? '+' : '' }}{{ r.deviationPercent | number: '1.0-0' }}%</span>
+        @if (sprintRows().length) {
+          <h3 class="sub-title">Deviasi per tiket <span class="sub-count">{{ sprintRows().length }} tiket</span></h3>
+          <ul class="mini-list deviation-list" data-sprint-rows>
+            @for (r of sprintRows(); track r.issueKey) {
+              <li [class.within]="r.within">
+                @if (jiraUrl(r.issueKey); as url) {
+                  <a class="ticket-key" [href]="url" target="_blank" rel="noopener">{{ r.issueKey }}</a>
+                } @else {
+                  <span class="ticket-key">{{ r.issueKey }}</span>
+                }
+                <span class="dev-text">
+                  <span class="ticket-summary">{{ r.task }}</span>
+                  <small>{{ r.actualHours | number: '1.0-1' }} dari {{ r.estimatedHours | number: '1.0-1' }} jam</small>
+                </span>
+                <span class="dev-badge" [class.within]="r.within">{{ r.deviationPercent < 0.5 ? '' : r.over ? '+' : '−' }}{{ r.deviationPercent | number: '1.0-0' }}%</span>
               </li>
             }
           </ul>

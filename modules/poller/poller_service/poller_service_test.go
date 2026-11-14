@@ -262,10 +262,15 @@ func newTestPoller(jiraClient *fakeJiraClientService, issueSession *fakeIssueSes
 
 func storyPointsPtr(v float64) *float64 { return &v }
 
+// activeSprintRaw puts a test ticket in an active sprint — only those are
+// tracked (Tech Spec "Active Sprint Tracking & Changelog Backfill").
+var activeSprintRaw = json.RawMessage(`[{"id": 8294, "name": "OMS Sprint 23 - 2026", "state": "active", "boardId": 28}]`)
+
 func assignedIssue(key, email string, sp float64) jira_client_dto.Issue {
 	return jira_client_dto.Issue{
 		Key: key,
 		Fields: jira_client_dto.IssueFields{
+			SprintRaw:   activeSprintRaw,
 			StoryPoints: storyPointsPtr(sp),
 			// AccountID reuses the email string as a stand-in identifier —
 			// see fakeRegistrationRepositoryForPoller.FindUserByJiraAccountID.
@@ -733,6 +738,7 @@ func TestPollOnce_SteadyStateRefreshesAssigneeEmailAndIssueSummary(t *testing.T)
 	jiraClient := &fakeJiraClientService{
 		issues: []jira_client_dto.Issue{
 			{Key: "OMS-1", Fields: jira_client_dto.IssueFields{
+				SprintRaw:   activeSprintRaw,
 				StoryPoints: storyPointsPtr(3),
 				Assignee:    &jira_client_dto.Assignee{AccountID: "reassigned@esb.co.id", EmailAddress: "reassigned@esb.co.id", DisplayName: "Reassigned"},
 				Summary:     "Updated summary",
@@ -816,6 +822,7 @@ func assignedCoreIssue(key, email string, sp float64) jira_client_dto.Issue {
 	return jira_client_dto.Issue{
 		Key: key,
 		Fields: jira_client_dto.IssueFields{
+			SprintRaw:       activeSprintRaw,
 			StoryPointsCore: storyPointsPtr(sp), // CORE project's field, customfield_11053
 			Assignee:        &jira_client_dto.Assignee{AccountID: email, EmailAddress: email, DisplayName: email},
 		},
@@ -854,6 +861,7 @@ func TestPollOnce_TracksIssueWhenAssigneeEmailIsBlankButAccountIDMatchesRegister
 			{
 				Key: "CORE-10782",
 				Fields: jira_client_dto.IssueFields{
+					SprintRaw:       activeSprintRaw,
 					StoryPointsCore: storyPointsPtr(1.5),
 					Assignee:        &jira_client_dto.Assignee{AccountID: "acc-rio-123", EmailAddress: "", DisplayName: "Rio Adhi Pratama"},
 				},
@@ -1022,5 +1030,70 @@ func TestPollOnce_NewSessionStartsAtRunStartReopenedAtLastEntry(t *testing.T) {
 				t.Errorf("session started at %v, want %v", got, want)
 			}
 		})
+	}
+}
+
+// --- active sprint only (Tech Spec "Active Sprint Tracking & Changelog Backfill") ---
+
+func staleIssue(key, email string, sprints string) jira_client_dto.Issue {
+	issue := assignedCoreIssue(key, email, 2)
+	issue.Fields.SprintRaw = json.RawMessage(sprints)
+	return issue
+}
+
+func TestPollOnce_IgnoresTicketsOutsideAnActiveSprint(t *testing.T) {
+	jiraClient := &fakeJiraClientService{issues: []jira_client_dto.Issue{
+		staleIssue("CORE-8033", "dev@esb.co.id", `[{"id": 2393, "name": "Core Sprint 13", "state": "closed", "boardId": 26}]`),
+		staleIssue("CORE-9000", "dev@esb.co.id", `null`), // never put in a sprint
+		assignedCoreIssue("CORE-10955", "dev@esb.co.id", 4),
+	}}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "CORE-10955" {
+		t.Errorf("opened = %v, want only the active-sprint ticket CORE-10955", issueSession.openAtCalls)
+	}
+	if len(reminderEngine.evaluateCalls) != 1 {
+		t.Errorf("evaluated = %v, want only CORE-10955", reminderEngine.evaluateCalls)
+	}
+
+	// Startup backfill applies the same rule.
+	issueSession = newFakeIssueSessionServiceForPoller()
+	poller = newTestPoller(jiraClient, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+	if err := poller.backfillActiveSessions(context.Background()); err != nil {
+		t.Fatalf("backfillActiveSessions: %v", err)
+	}
+	if len(issueSession.openAtCalls) != 1 || issueSession.openAtCalls[0] != "CORE-10955" {
+		t.Errorf("startup backfill opened = %v, want only CORE-10955", issueSession.openAtCalls)
+	}
+}
+
+func TestPollOnce_ClosesStaleSessionWithoutTimeOrNotice(t *testing.T) {
+	jiraClient := &fakeJiraClientService{
+		issues:      []jira_client_dto.Issue{staleIssue("CORE-8033", "dev@esb.co.id", `[{"id": 2393, "name": "Core Sprint 13", "state": "closed", "boardId": 26}]`)},
+		issueStatus: "Code Completed",
+	}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	started := time.Date(2025, 6, 23, 8, 21, 0, 0, time.UTC)
+	issueSession.sessions["CORE-8033"] = &issue_session_dto.IssueSession{
+		IssueKey: "CORE-8033", StoryPoints: 2, FlagActive: true, CurrentSessionStartedDate: &started, AssigneeEmail: "dev@esb.co.id",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(jiraClient, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	added, closed := issueSession.closeCalls["CORE-8033"]
+	if !closed || added != 0 {
+		t.Errorf("CloseSession(CORE-8033) closed=%v added=%d, want closed with 0 seconds", closed, added)
+	}
+	if len(reminderEngine.evaluateCalls)+len(reminderEngine.notifyEarlyCompletionCalls)+len(reminderEngine.notifyReturnedToTodoCalls) != 0 {
+		t.Errorf("reminder engine called (%v / %v / %v), want nothing for a stale ticket",
+			reminderEngine.evaluateCalls, reminderEngine.notifyEarlyCompletionCalls, reminderEngine.notifyReturnedToTodoCalls)
 	}
 }

@@ -94,6 +94,24 @@ func (p *pollerServiceImpl) resolveEligibility(ctx context.Context, issue jira_c
 	return user.Email, true
 }
 
+// splitByActiveSprint implements Tech Spec "Active Sprint Tracking &
+// Changelog Backfill" AC1.1: a ticket is only tracked while it sits in an
+// ACTIVE sprint (subtasks carry their parent's sprint in Jira). Tickets in
+// a tracked status without one — e.g. left in CODE REVIEW since a sprint
+// closed in 2025 — are returned as stale keys.
+func splitByActiveSprint(issues []jira_client_dto.Issue) (inSprint []jira_client_dto.Issue, stale map[string]bool) {
+	inSprint = make([]jira_client_dto.Issue, 0, len(issues))
+	stale = map[string]bool{}
+	for _, issue := range issues {
+		if _, ok := issue.Fields.ActiveSprint(); ok {
+			inSprint = append(inSprint, issue)
+		} else {
+			stale[issue.Key] = true
+		}
+	}
+	return inSprint, stale
+}
+
 // filterEligible returns the eligible subset of issues alongside a
 // issueKey -> registered-email map (see resolveEligibility) for callers
 // that need the resolved email when opening/updating sessions.
@@ -137,6 +155,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		return fmt.Errorf("poller: SearchCodeProcessIssues failed: %w", err)
 	}
 	issues, resolvedEmails := p.filterEligible(ctx, issues)
+	issues, staleKeys := splitByActiveSprint(issues)
 
 	currentByKey := make(map[string]jira_client_dto.Issue, len(issues))
 	for _, issue := range issues {
@@ -157,6 +176,15 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 	// Code Process or CODE REVIEW — moving between those keeps it here).
 	for key, session := range activeByKey {
 		if _, stillThere := currentByKey[key]; stillThere {
+			continue
+		}
+		// Still in a tracked status but no longer in an active sprint
+		// (AC1.2): stop tracking without adding time or sending a notice —
+		// whatever happened outside the sprint isn't sprint work.
+		if staleKeys[key] {
+			if err := p.issueSession.CloseSession(ctx, key, 0); err != nil {
+				return fmt.Errorf("poller: CloseSession(%s) (not in an active sprint) failed: %w", key, err)
+			}
 			continue
 		}
 		additionalSeconds := int64(0)
@@ -265,6 +293,7 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 		return fmt.Errorf("poller: backfill SearchCodeProcessIssues failed: %w", err)
 	}
 	issues, resolvedEmails := p.filterEligible(ctx, issues)
+	issues, _ = splitByActiveSprint(issues)
 
 	for _, issue := range issues {
 		_, found, err := p.issueSession.GetSessionByIssueKey(ctx, issue.Key)

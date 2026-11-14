@@ -40,6 +40,7 @@ import (
 	"nudge/modules/reminder_engine/reminder_engine_service"
 	"nudge/modules/reminder_log/reminder_log_repository"
 	"nudge/modules/reminder_log/reminder_log_service"
+	"nudge/modules/sprint_backfill/sprint_backfill_service"
 	"nudge/modules/sprint_report/sprint_report_handler"
 	"nudge/modules/sprint_report/sprint_report_service"
 	"nudge/modules/user_avatar/user_avatar_handler"
@@ -166,11 +167,25 @@ func main() {
 		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, registrationRepo, holidayCalendar, boardSvc,
 	)
 
+	// Tech Spec "Active Sprint Tracking & Changelog Backfill": rebuild the
+	// time of active-sprint tickets the poller never saw — at start and
+	// every day at 07:00 WIB, plus the Sprint card's button.
+	sprintBackfillSvc := sprint_backfill_service.NewSprintBackfillService(
+		jiraAgileClient, registrationRepo, jiraCredentialSvc,
+		issue_session_repository.NewSessionBackfillRepository(db), businessHoursSvc, holidayCalendar,
+	)
+
 	shutdownMgr := shutdown.NewManager()
 	shutdownMgr.AddWorker()
 	go func() {
 		defer shutdownMgr.WorkerDone()
 		pollerSvc.Run(shutdownMgr.Context())
+	}()
+
+	shutdownMgr.AddWorker()
+	go func() {
+		defer shutdownMgr.WorkerDone()
+		sprintBackfillSvc.RunDaily(shutdownMgr.Context())
 	}()
 
 	if chatCommandPollerSvc != nil {
@@ -202,7 +217,7 @@ func main() {
 	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
-	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc)
+	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc, sprint_report_handler.WithBackfiller(sprintBackfillSvc))
 
 	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(
 		registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail,

@@ -86,6 +86,14 @@ export class DashboardService {
     return this.http.get<SprintReportResponse>(`${this.base}/report`, { params });
   }
 
+  /**
+   * Rebuilds the caller's untracked active-sprint time from Jira's changelog
+   * (Tech Spec "Active Sprint Tracking & Changelog Backfill").
+   */
+  backfillSprint(): Observable<{ added: number }> {
+    return this.http.post<{ added: number }>(`${this.base}/report/backfill`, {});
+  }
+
   transitionTicket(issueKey: string, target: TransitionTarget): Observable<{ message: string }> {
     return this.http.post<{ message: string }>(
       `${this.base}/tickets/${encodeURIComponent(issueKey)}/transition`,

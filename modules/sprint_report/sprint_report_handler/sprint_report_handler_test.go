@@ -144,3 +144,46 @@ func TestGetReport_UsesSessionEmailNotQueryParam(t *testing.T) {
 		t.Errorf("service called with list=%q generate=%q, want the session's dev@esb.co.id", svc.lastListEmail, svc.lastGenerateEmail)
 	}
 }
+
+// --- POST /report/backfill (Tech Spec "Active Sprint Tracking & Changelog Backfill") ---
+
+type fakeBackfiller struct {
+	email string
+	added int
+	err   error
+}
+
+func (f *fakeBackfiller) RunForEmail(ctx context.Context, email string) (int, error) {
+	f.email = email
+	return f.added, f.err
+}
+
+func TestBackfill_RunsForTheSessionUser(t *testing.T) {
+	b := &fakeBackfiller{added: 8}
+	h := NewSprintReportHandler(&fakeSprintReportService{}, WithBackfiller(b))
+
+	w, c := newReportTestContext("/api/dashboard/report/backfill?email=victim@esb.co.id")
+	c.Request.Method = http.MethodPost
+	h.Backfill(c)
+
+	if w.Code != http.StatusOK || w.Body.String() != `{"added":8}` {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if b.email != "dev@esb.co.id" {
+		t.Errorf("backfilled for %q, want the session user", b.email)
+	}
+}
+
+func TestBackfill_ErrorsAndMissingBackfiller(t *testing.T) {
+	w, c := newReportTestContext("/api/dashboard/report/backfill")
+	NewSprintReportHandler(&fakeSprintReportService{}, WithBackfiller(&fakeBackfiller{err: errors.New("jira down")})).Backfill(c)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("jira failure status = %d, want 500", w.Code)
+	}
+
+	w, c = newReportTestContext("/api/dashboard/report/backfill")
+	NewSprintReportHandler(&fakeSprintReportService{}).Backfill(c)
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("no backfiller status = %d, want 501", w.Code)
+	}
+}

@@ -28,6 +28,9 @@ type JiraAgileClient interface {
 	// dashboard branches. Keys that are malformed or outside CORE/OMS are
 	// dropped; at most MaxRelatedKeys are queried.
 	SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error)
+	// GetChangelog returns an issue's changelog histories (Tech Spec
+	// "Active Sprint Tracking & Changelog Backfill").
+	GetChangelog(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.ChangelogEntry, error)
 	// GetBoard returns a board's name, project and project avatar URL.
 	GetBoard(ctx context.Context, boardID int64) (jira_client_dto.BoardInfo, error)
 	// GetActiveSprints returns a board's active sprint(s) with dates.
@@ -91,6 +94,20 @@ func (s *jiraClientServiceImpl) SearchIssuesByKeysForAssignee(ctx context.Contex
 		return nil, fmt.Errorf("jira_client: SearchIssuesByKeysForAssignee(%s) failed: %w", accountID, err)
 	}
 	return result.Issues, nil
+}
+
+func (s *jiraClientServiceImpl) GetChangelog(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.ChangelogEntry, error) {
+	if !jira_client_dto.IsTrackedProjectKey(issueKey) {
+		return nil, fmt.Errorf("jira_client: GetChangelog: invalid issue key %q", issueKey)
+	}
+	reqURL := fmt.Sprintf("%s/rest/api/3/issue/%s?expand=changelog&fields=status", s.cfg.JiraBaseURL, issueKey)
+	result, err := curl_helper.CurlRequest[jira_client_dto.ChangelogResponse](
+		ctx, reqURL, s.authHeadersFor(cred), nil, http.MethodGet, 10000, true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("jira_client: GetChangelog(%s) failed: %w", issueKey, err)
+	}
+	return result.Changelog.Histories, nil
 }
 
 func (s *jiraClientServiceImpl) GetBoard(ctx context.Context, boardID int64) (jira_client_dto.BoardInfo, error) {
