@@ -191,13 +191,17 @@ func main() {
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
 	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc)
 
-	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail)
+	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(
+		registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail,
+		admin_dashboard_service.WithBoardNamer(boardSvc),
+	)
 	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
 
 	// Admin › User detail: the same settings endpoints, targeting :userID
 	// (Tech Spec "Admin Panel Revamp").
 	adminUserSettings := user_dashboard_handler.NewSettingsHandler(
-		userDashboardSvc, jiraCredentialSvc, userSettingSvc, admin_dashboard_handler.AdminTarget(adminDashboardSvc), nil,
+		userDashboardSvc, jiraCredentialSvc, userSettingSvc, admin_dashboard_handler.AdminTarget(adminDashboardSvc),
+		admin_dashboard_handler.AdminChangeListener(adminDashboardSvc),
 	)
 
 	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings)

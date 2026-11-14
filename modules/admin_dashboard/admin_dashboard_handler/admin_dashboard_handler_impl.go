@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"nudge/modules/admin_dashboard/admin_dashboard_dto"
 	"nudge/modules/admin_dashboard/admin_dashboard_service"
 	"nudge/modules/auth/auth_dto"
 	"nudge/modules/auth/auth_middleware"
@@ -117,6 +118,12 @@ func (h *adminDashboardHandlerImpl) DeleteUserCredential(c *gin.Context) {
 	if err := h.svc.DeleteUserCredential(c.Request.Context(), targetUserID); err != nil {
 		h.handleServiceErr(c, err)
 		return
+	}
+	// Tell the user (Tech Spec "Admin Panel Revamp", AC4.4); best-effort.
+	if user, err := h.svc.GetUser(c.Request.Context(), targetUserID); err == nil {
+		admin := currentUser(c)
+		h.svc.NotifyUserChanged(admin.UserID, admin.Email, user.UserID, user.Email,
+			admin_dashboard_dto.UserChange{Kind: "credential_deleted"})
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

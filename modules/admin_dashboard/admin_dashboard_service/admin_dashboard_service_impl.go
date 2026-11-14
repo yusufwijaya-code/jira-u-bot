@@ -15,6 +15,9 @@ type adminDashboardServiceImpl struct {
 	jiraCredential   jira_credential_service.JiraCredentialService
 	dmNotifier       chat_dm_notifier_service.ChatDMNotifierService
 	selfEmail        string
+	boards           BoardNamer
+	// sendSync makes NotifyUserChanged send inline (tests only).
+	sendSync bool
 }
 
 func NewAdminDashboardService(
@@ -22,13 +25,18 @@ func NewAdminDashboardService(
 	jiraCredential jira_credential_service.JiraCredentialService,
 	dmNotifier chat_dm_notifier_service.ChatDMNotifierService,
 	selfEmail string,
+	opts ...Option,
 ) AdminDashboardService {
-	return &adminDashboardServiceImpl{
+	s := &adminDashboardServiceImpl{
 		registrationRepo: registrationRepo,
 		jiraCredential:   jiraCredential,
 		dmNotifier:       dmNotifier,
 		selfEmail:        selfEmail,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *adminDashboardServiceImpl) ListUsers(ctx context.Context) ([]admin_dashboard_dto.UserRow, error) {

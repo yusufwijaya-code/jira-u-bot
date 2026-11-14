@@ -23,3 +23,13 @@ type BroadcastResult struct {
 	SentCount    int
 	FailedEmails []string
 }
+
+// UserChange is a write an admin made to another user's settings (Tech
+// Spec "Admin Panel Revamp", AC4.1). Kind is one of "notification",
+// "reset", "mute", "unmute", "credential_updated", "credential_deleted";
+// BoardID 0 = the default scope / global mute; Until is set for "mute".
+type UserChange struct {
+	Kind    string
+	BoardID int64
+	Until   *time.Time
+}

@@ -32,6 +32,17 @@ type fakeAdminDashboardService struct {
 	user          admin_dashboard_dto.UserRow
 	getUserErr    error
 	lastGetUserID int64
+	notified      []notifyCall
+}
+
+type notifyCall struct {
+	actingUserID, targetUserID int64
+	actingEmail, targetEmail   string
+	change                     admin_dashboard_dto.UserChange
+}
+
+func (f *fakeAdminDashboardService) NotifyUserChanged(actingUserID int64, actingEmail string, targetUserID int64, targetEmail string, change admin_dashboard_dto.UserChange) {
+	f.notified = append(f.notified, notifyCall{actingUserID, targetUserID, actingEmail, targetEmail, change})
 }
 
 func (f *fakeAdminDashboardService) GetUser(ctx context.Context, userID int64) (admin_dashboard_dto.UserRow, error) {

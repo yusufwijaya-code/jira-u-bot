@@ -42,4 +42,8 @@ type AdminDashboardService interface {
 	// Google Chat API — same constraint as the registration thank-you
 	// note). Returns ErrDMNotConfigured if DM was never set up.
 	BroadcastMessage(ctx context.Context, message string) (admin_dashboard_dto.BroadcastResult, error)
+	// NotifyUserChanged DMs the target user about an admin's change to
+	// their settings — async and best-effort, skipped for the admin's own
+	// account (Tech Spec "Admin Panel Revamp", AC4.1–AC4.3).
+	NotifyUserChanged(actingUserID int64, actingEmail string, targetUserID int64, targetEmail string, change admin_dashboard_dto.UserChange)
 }

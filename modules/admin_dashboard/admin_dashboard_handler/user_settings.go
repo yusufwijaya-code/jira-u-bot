@@ -53,3 +53,13 @@ func loadUser(c *gin.Context, svc admin_dashboard_service.AdminDashboardService)
 	}
 	return user, true
 }
+
+// AdminChangeListener tells the target user (via DM) about an admin's
+// change to their settings (Tech Spec "Admin Panel Revamp", AC4.1).
+func AdminChangeListener(svc admin_dashboard_service.AdminDashboardService) user_dashboard_handler.ChangeListener {
+	return func(c *gin.Context, target user_dashboard_handler.SettingsTarget, ch user_dashboard_handler.SettingsChange) {
+		admin := currentUser(c)
+		svc.NotifyUserChanged(admin.UserID, admin.Email, target.UserID, target.Email,
+			admin_dashboard_dto.UserChange{Kind: string(ch.Kind), BoardID: ch.BoardID, Until: ch.Until})
+	}
+}
