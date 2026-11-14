@@ -238,3 +238,24 @@ func TestBroadcastMessage_ReturnsErrDMNotConfiguredWhenNotifierNil(t *testing.T)
 		t.Errorf("err = %v, want ErrDMNotConfigured", err)
 	}
 }
+
+func TestGetUser_ReturnsRowWithCredential(t *testing.T) {
+	repo := &fakeRegistrationRepoForAdmin{users: []registration_dto.User{
+		{UserID: 3, Email: "other@esb.co.id"},
+		{UserID: 7, Email: "a@esb.co.id", FlagActive: true},
+	}}
+	cred := &fakeJiraCredentialForAdmin{previewByUserID: map[int64]string{7: "••••50CF"}}
+	svc := NewAdminDashboardService(repo, cred, nil, "bot@esb.co.id")
+
+	row, err := svc.GetUser(context.Background(), 7)
+	if err != nil || row.Email != "a@esb.co.id" || !row.HasCredential || row.CredentialMasked != "••••50CF" {
+		t.Errorf("row=%+v err=%v, want a@esb.co.id with credential ••••50CF", row, err)
+	}
+}
+
+func TestGetUser_NotFound(t *testing.T) {
+	svc := NewAdminDashboardService(&fakeRegistrationRepoForAdmin{}, &fakeJiraCredentialForAdmin{}, nil, "")
+	if _, err := svc.GetUser(context.Background(), 99); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("err = %v, want ErrUserNotFound", err)
+	}
+}

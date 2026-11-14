@@ -30,6 +30,7 @@ func SetupRouter(
 	userDashboardHandler user_dashboard_handler.UserDashboardHandler,
 	adminDashboardHandler admin_dashboard_handler.AdminDashboardHandler,
 	sprintReportHandler sprint_report_handler.SprintReportHandler,
+	adminUserSettings *user_dashboard_handler.SettingsHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -64,7 +65,7 @@ func SetupRouter(
 	apiDashboardAdmin := dashboardAPI.Group("/admin")
 	apiDashboardAdmin.Use(auth_middleware.AdminMiddleware(cfg))
 
-	admin_dashboard.Router(dashboardAdmin, apiDashboardAdmin, adminDashboardHandler)
+	admin_dashboard.Router(dashboardAdmin, apiDashboardAdmin, adminDashboardHandler, adminUserSettings)
 
 	return r
 }

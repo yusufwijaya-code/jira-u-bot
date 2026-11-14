@@ -6,6 +6,8 @@ type AdminDashboardHandler interface {
 	// ListUsers returns the admin user list as JSON (Tech Spec "Angular
 	// Dashboard Revamp", Repository 1 Chapter 5).
 	ListUsers(c *gin.Context)
+	// GetUser returns one user row (Tech Spec "Admin Panel Revamp").
+	GetUser(c *gin.Context)
 	ToggleActive(c *gin.Context)
 	EditJiraAccountID(c *gin.Context)
 	DeleteUser(c *gin.Context)

@@ -28,6 +28,15 @@ type fakeAdminDashboardService struct {
 	broadcastResult      admin_dashboard_dto.BroadcastResult
 	broadcastErr         error
 	lastBroadcastMessage string
+
+	user          admin_dashboard_dto.UserRow
+	getUserErr    error
+	lastGetUserID int64
+}
+
+func (f *fakeAdminDashboardService) GetUser(ctx context.Context, userID int64) (admin_dashboard_dto.UserRow, error) {
+	f.lastGetUserID = userID
+	return f.user, f.getUserErr
 }
 
 func (f *fakeAdminDashboardService) ListUsers(ctx context.Context) ([]admin_dashboard_dto.UserRow, error) {

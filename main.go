@@ -194,7 +194,13 @@ func main() {
 	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail)
 	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
 
-	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler)
+	// Admin › User detail: the same settings endpoints, targeting :userID
+	// (Tech Spec "Admin Panel Revamp").
+	adminUserSettings := user_dashboard_handler.NewSettingsHandler(
+		userDashboardSvc, jiraCredentialSvc, userSettingSvc, admin_dashboard_handler.AdminTarget(adminDashboardSvc), nil,
+	)
+
+	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

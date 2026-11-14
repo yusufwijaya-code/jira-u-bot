@@ -59,6 +59,22 @@ func (s *adminDashboardServiceImpl) ListUsers(ctx context.Context) ([]admin_dash
 	return rows, nil
 }
 
+// GetUser filters ListUsers instead of adding a repository query — the
+// registered user base is small and this keeps the credential status logic
+// in one place.
+func (s *adminDashboardServiceImpl) GetUser(ctx context.Context, userID int64) (admin_dashboard_dto.UserRow, error) {
+	rows, err := s.ListUsers(ctx)
+	if err != nil {
+		return admin_dashboard_dto.UserRow{}, err
+	}
+	for _, r := range rows {
+		if r.UserID == userID {
+			return r, nil
+		}
+	}
+	return admin_dashboard_dto.UserRow{}, ErrUserNotFound
+}
+
 func (s *adminDashboardServiceImpl) SetActive(ctx context.Context, actingUserID, targetUserID int64, active bool) error {
 	if actingUserID == targetUserID {
 		return ErrCannotModifySelf

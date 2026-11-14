@@ -17,10 +17,16 @@ var ErrCannotModifySelf = errors.New("admin cannot deactivate or delete their ow
 // user individually.
 var ErrDMNotConfigured = errors.New("personal DM notifier is not configured")
 
+// ErrUserNotFound means no registered user has the requested userID.
+var ErrUserNotFound = errors.New("user not found")
+
 // AdminDashboardService implements Tech Spec "Dashboard Jira Manage",
 // Chapter 10a (user list/lifecycle) and 10b (credential controls).
 type AdminDashboardService interface {
 	ListUsers(ctx context.Context) ([]admin_dashboard_dto.UserRow, error)
+	// GetUser returns one user's row (same shape as ListUsers) or
+	// ErrUserNotFound (Tech Spec "Admin Panel Revamp").
+	GetUser(ctx context.Context, userID int64) (admin_dashboard_dto.UserRow, error)
 	// SetActive toggles a user's flagActive — actingUserID must not equal
 	// targetUserID (AC: self-lockout guard).
 	SetActive(ctx context.Context, actingUserID, targetUserID int64, active bool) error
