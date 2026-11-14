@@ -1,4 +1,4 @@
-import { Component, HostListener, inject } from '@angular/core';
+import { Component, ElementRef, HostListener, ViewChild, inject } from '@angular/core';
 import { AsyncPipe, NgIf } from '@angular/common';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
@@ -22,7 +22,9 @@ export class DashboardShellComponent {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
-  protected logoutHref = `${environment.apiBasePath}/auth/logout`;
+  @ViewChild('userMenu') private userMenu?: ElementRef<HTMLElement>;
+
+  protected logoutHref =`${environment.apiBasePath}/auth/logout`;
   protected menuOpen = false;
   protected sidebarOpen = false;
 
@@ -43,8 +45,7 @@ export class DashboardShellComponent {
     }),
   );
 
-  protected toggleMenu(event: Event): void {
-    event.stopPropagation();
+  protected toggleMenu(): void {
     this.menuOpen = !this.menuOpen;
   }
 
@@ -60,8 +61,30 @@ export class DashboardShellComponent {
     this.sidebarOpen = false;
   }
 
-  @HostListener('document:click')
-  protected onDocumentClick(): void {
+  /**
+   * Closes the user menu on any click (or keyboard focus) outside of it.
+   * Uses a containment check instead of stopPropagation on the trigger, so
+   * it doesn't depend on event ordering and any click elsewhere on the page
+   * — content, sidebar, inputs — reliably closes it.
+   */
+  // Listened on the shell's own host element (which wraps the whole page)
+  // as well as on document: element-level listeners still fire even when
+  // something in the browser (e.g. an extension) swallows events before they
+  // reach document. Handling the same event twice is harmless.
+  @HostListener('pointerdown', ['$event'])
+  @HostListener('click', ['$event'])
+  @HostListener('focusin', ['$event'])
+  @HostListener('document:pointerdown', ['$event'])
+  @HostListener('document:click', ['$event'])
+  @HostListener('document:focusin', ['$event'])
+  protected onDocumentInteraction(event: Event): void {
+    if (!this.menuOpen) {
+      return;
+    }
+    const menu = this.userMenu?.nativeElement;
+    if (menu && event.target instanceof Node && menu.contains(event.target)) {
+      return;
+    }
     this.menuOpen = false;
   }
 

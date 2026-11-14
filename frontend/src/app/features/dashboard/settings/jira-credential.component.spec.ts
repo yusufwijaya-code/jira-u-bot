@@ -107,4 +107,26 @@ describe('JiraCredentialComponent', () => {
 
     expect(boardService.deleteCredential).not.toHaveBeenCalled();
   });
+
+  it('does not show field errors when an empty field is merely focused and left', () => {
+    fixture.componentRef.setInput('hasCredential', false);
+    fixture.detectChanges();
+
+    fixture.componentInstance['form'].controls.jiraEmail.markAsTouched();
+    fixture.componentInstance['form'].controls.apiToken.markAsTouched();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.field-error').length).toBe(0);
+  });
+
+  it('shows the field errors after a submit attempt with an empty form, without calling the API', () => {
+    fixture.componentRef.setInput('hasCredential', false);
+    fixture.detectChanges();
+
+    fixture.componentInstance['onSubmit']();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.field-error').length).toBe(2);
+    expect(boardService.saveCredential).not.toHaveBeenCalled();
+  });
 });

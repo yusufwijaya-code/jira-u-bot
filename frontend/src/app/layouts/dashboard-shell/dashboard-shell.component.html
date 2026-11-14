@@ -9,7 +9,7 @@
       <span class="nav-section">Menu</span>
       <a class="nav-item" routerLink="/dashboard/settings" routerLinkActive="active" (click)="closeSidebar()">
         <app-icon name="settings" />
-        <span>Setting</span>
+        <span>Pengaturan</span>
       </a>
     </nav>
 
@@ -35,20 +35,20 @@
         </div>
       </div>
 
-      <div class="user-menu">
+      <div class="user-menu" #userMenu>
         <button
           type="button"
           class="user-menu-trigger"
           aria-haspopup="menu"
           [attr.aria-expanded]="menuOpen"
-          (click)="toggleMenu($event)"
+          (click)="toggleMenu()"
         >
           <span class="user-avatar">{{ initial$ | async }}</span>
           <span class="user-email">{{ (authService.currentUser$ | async)?.email }}</span>
           <app-icon class="chevron" [class.open]="menuOpen" name="chevron-down" [size]="16" />
         </button>
 
-        <ul class="user-menu-list" role="menu" *ngIf="menuOpen" (click)="closeMenu()">
+        <ul class="user-menu-list" role="menu" *ngIf="menuOpen">
           <li class="user-menu-header" role="none">
             <span class="user-avatar lg">{{ initial$ | async }}</span>
             <div>
@@ -59,13 +59,13 @@
             </div>
           </li>
           <li role="none" *ngIf="(authService.currentUser$ | async)?.isAdmin">
-            <a role="menuitem" routerLink="/dashboard/admin" routerLinkActive="active">
+            <a role="menuitem" routerLink="/dashboard/admin" routerLinkActive="active" (click)="closeMenu()">
               <app-icon name="shield" [size]="16" /> Admin
             </a>
           </li>
           <li role="separator" class="divider"></li>
           <li role="none">
-            <a role="menuitem" class="logout" [href]="logoutHref">
+            <a role="menuitem" class="logout" [href]="logoutHref" (click)="closeMenu()">
               <app-icon name="logout" [size]="16" /> Logout
             </a>
           </li>

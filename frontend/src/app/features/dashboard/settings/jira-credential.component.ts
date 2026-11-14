@@ -21,6 +21,7 @@ export class JiraCredentialComponent implements OnInit {
   protected submitting = false;
   protected deleting = false;
   protected showToken = false;
+  protected submitAttempted = false;
   protected error: string | null = null;
 
   private fb = inject(FormBuilder);
@@ -35,9 +36,19 @@ export class JiraCredentialComponent implements OnInit {
     }) as FormGroup<{ jiraEmail: FormControl<string>; apiToken: FormControl<string> }>;
   }
 
+  /**
+   * A field shows its error only once the user has typed in it and left it,
+   * or after a submit attempt — merely clicking into an empty field and
+   * clicking away again must not paint the form red.
+   */
+  protected showError(name: 'jiraEmail' | 'apiToken'): boolean {
+    const control = this.form.controls[name];
+    return control.invalid && ((control.dirty && control.touched) || this.submitAttempted);
+  }
+
   protected onSubmit(): void {
+    this.submitAttempted = true;
     if (this.form.invalid || this.submitting) {
-      this.form.markAllAsTouched();
       return;
     }
     this.submitting = true;

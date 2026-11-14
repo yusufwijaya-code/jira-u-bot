@@ -59,4 +59,49 @@ describe('DashboardShellComponent', () => {
     fixture.detectChanges();
     expect(menu()!.textContent).toContain('Admin');
   });
+
+  it('stays open when clicking inside the menu itself (e.g. the header)', () => {
+    trigger().click();
+    fixture.detectChanges();
+
+    (el().querySelector('.user-menu-header') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(menu()).not.toBeNull();
+  });
+
+  it('closes when clicking any element elsewhere on the page, including inputs', () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    trigger().click();
+    fixture.detectChanges();
+
+    input.click();
+    fixture.detectChanges();
+
+    expect(menu()).toBeNull();
+    input.remove();
+  });
+
+  it('closes when keyboard focus moves outside the menu', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    trigger().click();
+    fixture.detectChanges();
+
+    outside.focus();
+    fixture.detectChanges();
+
+    expect(menu()).toBeNull();
+    outside.remove();
+  });
+
+  it('toggles closed when the trigger is clicked a second time', () => {
+    trigger().click();
+    fixture.detectChanges();
+    trigger().click();
+    fixture.detectChanges();
+
+    expect(menu()).toBeNull();
+  });
 });

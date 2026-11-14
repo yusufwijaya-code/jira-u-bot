@@ -14,8 +14,8 @@
 - Command interaktif (`/u-mytickets`, `/u-budget <issueKey>`, `/u-overdue`, `/u-team`, `/u-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
 - Command `/u-geser<issueKey>:todo` dan `/u-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi; hint-nya otomatis muncul di tiap pesan reminder & overdue
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
-  - Layout: sidebar kiri (menu **Setting**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
-  - **Setting** — **Reminder preference** (pilih subset tier T-2 jam s/d T-1 menit) dan **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
+  - Layout: sidebar kiri (menu **Pengaturan**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
+  - **Pengaturan** — **Reminder preference** (pilih subset tier T-2 jam s/d T-1 menit) dan **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
   - **Admin** (khusus `ADMIN_EMAIL`) — statistik user, cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user, dan broadcast pengumuman lewat DM
   - Semua data **hanya milik user yang login** (di-scope di server lewat email sesi, termasuk admin)
 
