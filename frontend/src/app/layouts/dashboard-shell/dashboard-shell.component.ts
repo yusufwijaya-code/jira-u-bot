@@ -5,6 +5,8 @@ import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { BoardService } from '../../core/services/board.service';
 import { MuteStateService } from '../../core/services/mute-state.service';
+import { BoardContextService } from '../../core/services/board-context.service';
+import { BoardAvatarComponent } from '../../shared/ui/board-avatar.component';
 import { IconComponent } from '../../shared/ui/icon.component';
 import { environment } from '../../../environments/environment';
 
@@ -16,20 +18,23 @@ interface PageHeading {
 @Component({
   selector: 'app-dashboard-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, BoardAvatarComponent],
   templateUrl: './dashboard-shell.component.html',
 })
 export class DashboardShellComponent implements OnInit {
   protected authService = inject(AuthService);
   protected muteState = inject(MuteStateService);
+  protected boardContext = inject(BoardContextService);
   private boardService = inject(BoardService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
   @ViewChild('userMenu') private userMenu?: ElementRef<HTMLElement>;
+  @ViewChild('boardMenu') private boardMenu?: ElementRef<HTMLElement>;
 
   protected logoutHref =`${environment.apiBasePath}/auth/logout`;
   protected menuOpen = false;
+  protected boardMenuOpen = false;
   protected sidebarOpen = false;
 
   protected initial$ = this.authService.currentUser$.pipe(
@@ -53,9 +58,32 @@ export class DashboardShellComponent implements OnInit {
     // Seeds the top bar mute badge on every dashboard page (e.g. Admin);
     // the Pengaturan page refreshes it again on its own load.
     this.boardService.getSettings().subscribe({
-      next: (res) => this.muteState.set(res.mute),
+      next: (res) => this.muteState.set(res.mute.global),
       error: () => undefined,
     });
+    this.boardContext.load();
+  }
+
+  protected toggleBoardMenu(): void {
+    this.boardMenuOpen = !this.boardMenuOpen;
+    if (this.boardMenuOpen) this.menuOpen = false;
+  }
+
+  protected selectBoard(boardId: number | null): void {
+    this.boardContext.select(boardId);
+    this.boardMenuOpen = false;
+  }
+
+  /** "9–22 Nov" from the sprint's ISO dates (WIB). */
+  protected sprintRange(start: string, end: string): string {
+    if (!start || !end) return '';
+    const fmt = (iso: string, withMonth: boolean) =>
+      new Date(iso).toLocaleDateString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: 'numeric',
+        ...(withMonth ? { month: 'short' } : {}),
+      });
+    return `${fmt(start, false)}–${fmt(end, true)}`;
   }
 
   /** "16.30" today, or "Sen 08.30" for another day — always WIB. */
@@ -68,6 +96,7 @@ export class DashboardShellComponent implements OnInit {
 
   protected toggleMenu(): void {
     this.menuOpen = !this.menuOpen;
+    if (this.menuOpen) this.boardMenuOpen = false;
   }
 
   protected closeMenu(): void {
@@ -99,19 +128,20 @@ export class DashboardShellComponent implements OnInit {
   @HostListener('document:click', ['$event'])
   @HostListener('document:focusin', ['$event'])
   protected onDocumentInteraction(event: Event): void {
-    if (!this.menuOpen) {
-      return;
+    const target = event.target instanceof Node ? event.target : null;
+    const inside = (ref?: ElementRef<HTMLElement>) => !!(target && ref?.nativeElement.contains(target));
+    if (this.menuOpen && !inside(this.userMenu)) {
+      this.menuOpen = false;
     }
-    const menu = this.userMenu?.nativeElement;
-    if (menu && event.target instanceof Node && menu.contains(event.target)) {
-      return;
+    if (this.boardMenuOpen && !inside(this.boardMenu)) {
+      this.boardMenuOpen = false;
     }
-    this.menuOpen = false;
   }
 
   @HostListener('document:keydown.escape')
   protected onEscape(): void {
     this.menuOpen = false;
+    this.boardMenuOpen = false;
     this.sidebarOpen = false;
   }
 }

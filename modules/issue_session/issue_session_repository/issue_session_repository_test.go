@@ -344,3 +344,35 @@ func TestListDistinctSprintNames_ExcludesNullAndEmpty(t *testing.T) {
 		t.Error("empty string must never appear in distinct sprint names")
 	}
 }
+
+func TestUpdateActiveSprint_SetsAndClearsBoardAndSprint(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewIssueSessionRepository(db)
+	ctx := context.Background()
+	cleanupSession(t, repo, "TESTMYSQL-BOARD-1")
+
+	if err := repo.OpenOrResumeSession(ctx, "TESTMYSQL-BOARD-1", "TESTMYSQL", 1, "dev@esb.co.id", "x", ""); err != nil {
+		t.Fatalf("OpenOrResumeSession: %v", err)
+	}
+	session, _, _ := repo.GetSessionByIssueKey(ctx, "TESTMYSQL-BOARD-1")
+	if session.BoardID != nil || session.SprintID != nil {
+		t.Fatalf("new session board/sprint = %v/%v, want nil", session.BoardID, session.SprintID)
+	}
+
+	board, sprint := int64(28), int64(8294)
+	if err := repo.UpdateActiveSprint(ctx, "TESTMYSQL-BOARD-1", &board, &sprint); err != nil {
+		t.Fatalf("UpdateActiveSprint: %v", err)
+	}
+	session, _, _ = repo.GetSessionByIssueKey(ctx, "TESTMYSQL-BOARD-1")
+	if session.BoardID == nil || *session.BoardID != 28 || session.SprintID == nil || *session.SprintID != 8294 {
+		t.Errorf("board/sprint = %v/%v, want 28/8294", session.BoardID, session.SprintID)
+	}
+
+	if err := repo.UpdateActiveSprint(ctx, "TESTMYSQL-BOARD-1", nil, nil); err != nil {
+		t.Fatalf("clear UpdateActiveSprint: %v", err)
+	}
+	session, _, _ = repo.GetSessionByIssueKey(ctx, "TESTMYSQL-BOARD-1")
+	if session.BoardID != nil || session.SprintID != nil {
+		t.Errorf("after clearing board/sprint = %v/%v, want nil", session.BoardID, session.SprintID)
+	}
+}

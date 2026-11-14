@@ -45,4 +45,8 @@ type ReminderMessage struct {
 	// was left; there's no "early" or "late" framing for simply being
 	// pulled back to To Do.
 	IsReturnedToTodo bool
+	// InReview flags a reminder for a ticket that is in its project's
+	// tracked code-review status (CORE "CODE REVIEW") — review time still
+	// counts toward the budget there.
+	InReview bool
 }

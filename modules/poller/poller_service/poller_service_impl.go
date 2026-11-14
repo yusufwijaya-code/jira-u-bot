@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"nudge/modules/board/board_dto"
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
 	"nudge/modules/issue_session/issue_session_dto"
@@ -26,6 +27,14 @@ type pollerServiceImpl struct {
 	reminderEngine   reminder_engine_service.ReminderEngineService
 	registrationRepo registration_repository.RegistrationRepository
 	holidayCalendar  business_hours_dto.HolidayCalendar
+	// boards caches the Jira Agile board of each ticket's active sprint;
+	// optional (nil = board names are never fetched).
+	boards boardRegistry
+}
+
+// boardRegistry is the one board_service capability the poller needs.
+type boardRegistry interface {
+	EnsureKnown(ctx context.Context, boardID int64) (board_dto.Board, error)
 }
 
 func NewPollerService(
@@ -35,6 +44,7 @@ func NewPollerService(
 	reminderEngine reminder_engine_service.ReminderEngineService,
 	registrationRepo registration_repository.RegistrationRepository,
 	holidayCalendar business_hours_dto.HolidayCalendar,
+	boards boardRegistry,
 ) PollerService {
 	return &pollerServiceImpl{
 		jiraClient:       jiraClient,
@@ -43,6 +53,7 @@ func NewPollerService(
 		reminderEngine:   reminderEngine,
 		registrationRepo: registrationRepo,
 		holidayCalendar:  holidayCalendar,
+		boards:           boards,
 	}
 }
 
@@ -141,8 +152,9 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		activeByKey[s.IssueKey] = s
 	}
 
-	// Exit events: DB still has it active, Jira no longer reports it as
-	// "Code Process" this cycle.
+	// Exit events: DB still has it active, Jira no longer reports it in one
+	// of its project's tracked statuses this cycle (OMS: Code Process; CORE:
+	// Code Process or CODE REVIEW — moving between those keeps it here).
 	for key, session := range activeByKey {
 		if _, stillThere := currentByKey[key]; stillThere {
 			continue
@@ -172,18 +184,20 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if session.CurrentSessionStartedDate != nil {
 			startedAt = *session.CurrentSessionStartedDate
 		}
-		switch status {
-		case jira_client_dto.StatusCodeReview:
-			// codeReviewEnteredAt is "now": GetIssueStatus above just confirmed
-			// the ticket is in Code Review this cycle, so the moment this poll
-			// runs is the closest we track to when it actually left Code
-			// Process — there is no separate changelog lookup for the Code
-			// Review transition the way GetLatestCodeProcessEntryTime exists
-			// for entering Code Process.
+		// Tech Spec "CORE: Waktu Code Review Ikut Dihitung" AC1.4: the
+		// project's "done" status (OMS: Code Review, CORE: Code Completed)
+		// means finished; To Do means pulled back; anything else just stops
+		// the clock silently. Matched case-insensitively.
+		rule := jira_client_dto.RuleForIssue(key)
+		switch {
+		case rule.IsDone(status):
+			// finishedAt is "now": GetIssueStatus above just confirmed the
+			// ticket left its tracked statuses this cycle — the closest we
+			// track to the actual transition.
 			if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt, time.Now()); err != nil {
 				log.Printf("poller: NotifyIfEarlyCompletion(%s) failed: %v", key, err)
 			}
-		case jira_client_dto.StatusToDo:
+		case strings.EqualFold(status, jira_client_dto.StatusToDo):
 			if err := p.reminderEngine.NotifyReturnedToTodo(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt); err != nil {
 				log.Printf("poller: NotifyReturnedToTodo(%s) failed: %v", key, err)
 			}
@@ -199,12 +213,9 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if _, alreadyActive := activeByKey[key]; alreadyActive {
 			continue
 		}
-		entryTime, entryFound, err := p.jiraClient.GetLatestCodeProcessEntryTime(ctx, key)
+		entryTime, err := p.sessionStartTime(ctx, key)
 		if err != nil {
-			return fmt.Errorf("poller: GetLatestCodeProcessEntryTime(%s) failed: %w", key, err)
-		}
-		if !entryFound {
-			entryTime = time.Now()
+			return err
 		}
 		if err := p.issueSession.OpenOrResumeSessionAt(ctx, key, projectKeyFromIssueKey(key), storyPointsOf(issue), entryTime, resolvedEmails[key], issue.Fields.Summary, sprintNameOf(issue)); err != nil {
 			return fmt.Errorf("poller: OpenOrResumeSessionAt(%s) failed: %w", key, err)
@@ -231,6 +242,9 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		}
 		if !found {
 			continue
+		}
+		if err := p.recordActiveSprint(ctx, issue, session); err != nil {
+			return fmt.Errorf("poller: UpdateActiveSprint(%s) failed: %w", key, err)
 		}
 		if err := p.reminderEngine.EvaluateAndSend(ctx, issue, *session); err != nil {
 			return fmt.Errorf("poller: EvaluateAndSend(%s) failed: %w", key, err)
@@ -261,12 +275,9 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 			continue
 		}
 
-		entryTime, entryFound, err := p.jiraClient.GetLatestCodeProcessEntryTime(ctx, issue.Key)
+		entryTime, err := p.sessionStartTime(ctx, issue.Key)
 		if err != nil {
-			return fmt.Errorf("poller: backfill GetLatestCodeProcessEntryTime(%s) failed: %w", issue.Key, err)
-		}
-		if !entryFound {
-			entryTime = time.Now()
+			return fmt.Errorf("poller: backfill %w", err)
 		}
 
 		if err := p.issueSession.OpenOrResumeSessionAt(ctx, issue.Key, projectKeyFromIssueKey(issue.Key), storyPointsOf(issue), entryTime, resolvedEmails[issue.Key], issue.Fields.Summary, sprintNameOf(issue)); err != nil {
@@ -275,6 +286,69 @@ func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// recordActiveSprint keeps tr_issuesession.boardID/sprintID in sync with the
+// ticket's ACTIVE sprint (Tech Spec "Per-Board Settings & Active Sprint
+// Dashboard", AC5.1) and updates session in place so the reminder engine
+// immediately uses that board's settings. It only writes when something
+// changed, so steady state costs no extra queries. An unknown board is
+// cached via boards.EnsureKnown; a failure there is logged, never fatal.
+func (p *pollerServiceImpl) recordActiveSprint(ctx context.Context, issue jira_client_dto.Issue, session *issue_session_dto.IssueSession) error {
+	var boardID, sprintID *int64
+	if sprint, ok := issue.Fields.ActiveSprint(); ok {
+		b, sp := sprint.BoardID, sprint.ID
+		boardID, sprintID = &b, &sp
+	}
+	if sameID(session.BoardID, boardID) && sameID(session.SprintID, sprintID) {
+		return nil
+	}
+	if boardID != nil && p.boards != nil {
+		if _, err := p.boards.EnsureKnown(ctx, *boardID); err != nil {
+			log.Printf("poller: board %d lookup failed (retrying next cycle): %v", *boardID, err)
+		}
+	}
+	if err := p.issueSession.UpdateActiveSprint(ctx, issue.Key, boardID, sprintID); err != nil {
+		return err
+	}
+	session.BoardID, session.SprintID = boardID, sprintID
+	return nil
+}
+
+func sameID(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// sessionStartTime picks when a (re)opened session's clock starts (Tech Spec
+// "CORE: Waktu Code Review Ikut Dihitung", AC1.5):
+//   - a ticket never tracked before starts at the beginning of its current
+//     run of tracked statuses — for CORE that includes Code Process time
+//     before it moved to CODE REVIEW;
+//   - a ticket whose (closed) session is being reopened starts at its latest
+//     entry into a tracked status, so time already accumulated is never
+//     counted twice (e.g. a CORE ticket closed when it entered review under
+//     the old rules, reopened by this version).
+//
+// No changelog entry → now.
+func (p *pollerServiceImpl) sessionStartTime(ctx context.Context, issueKey string) (time.Time, error) {
+	runStart, lastEntry, found, err := p.jiraClient.GetTrackedRunTimes(ctx, issueKey)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("poller: GetTrackedRunTimes(%s) failed: %w", issueKey, err)
+	}
+	if !found {
+		return time.Now(), nil
+	}
+	_, existed, err := p.issueSession.GetSessionByIssueKey(ctx, issueKey)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("poller: GetSessionByIssueKey(%s) failed: %w", issueKey, err)
+	}
+	if existed {
+		return lastEntry, nil
+	}
+	return runStart, nil
 }
 
 func storyPointsOf(issue jira_client_dto.Issue) float64 {

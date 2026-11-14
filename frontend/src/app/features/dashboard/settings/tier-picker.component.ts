@@ -1,6 +1,7 @@
 import { Component, computed, input, model, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { SelectComponent, SelectOption } from '../../../shared/ui/select.component';
 import { MAX_TIERS, sortTiers, tierCode, tierDuration, tierMinutes, validateCustomTier } from './tier-codes';
 
 interface TierTile {
@@ -16,7 +17,7 @@ interface TierTile {
 @Component({
   selector: 'app-tier-picker',
   standalone: true,
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, IconComponent, SelectComponent],
   templateUrl: './tier-picker.component.html',
 })
 export class TierPickerComponent {
@@ -33,6 +34,10 @@ export class TierPickerComponent {
   protected readonly max = MAX_TIERS;
   protected addValue: number | null = null;
   protected addUnit: 'm' | 'h' = 'm';
+  protected readonly unitOptions: SelectOption<'m' | 'h'>[] = [
+    { value: 'm', label: 'menit' },
+    { value: 'h', label: 'jam' },
+  ];
   protected addError = signal<string | null>(null);
 
   protected tiles = computed<TierTile[]>(() => {

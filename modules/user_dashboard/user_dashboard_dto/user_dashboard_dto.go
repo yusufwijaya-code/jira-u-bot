@@ -13,6 +13,37 @@ type Card struct {
 	ElapsedLabel    string  `json:"elapsedLabel"`
 	RemainingLabel  string  `json:"remainingLabel"`
 	DeadlineLabel   string  `json:"deadlineLabel"`
+	// ElapsedSeconds / BudgetSeconds back the dashboard's budget progress
+	// bar; only set when HasBudgetDetail.
+	ElapsedSeconds int64 `json:"elapsedSeconds"`
+	BudgetSeconds  int64 `json:"budgetSeconds"`
+	// IssueURL links the card to the ticket in Jira.
+	IssueURL string `json:"issueURL"`
+	// BoardID is the Jira Agile board of the ticket's active sprint (0 =
+	// not in an active sprint).
+	BoardID int64 `json:"boardId"`
+}
+
+// SprintSummary is a board's active sprint.
+type SprintSummary struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+}
+
+// BoardSummary is one entry of the board picker: a board whose active
+// sprint holds tickets assigned to the caller (Tech Spec "Per-Board
+// Settings & Active Sprint Dashboard", AC1.1).
+type BoardSummary struct {
+	BoardID      int64         `json:"boardId"`
+	Name         string        `json:"name"`
+	ProjectKey   string        `json:"projectKey"`
+	ActiveSprint SprintSummary `json:"activeSprint"`
+	TicketCount  int           `json:"ticketCount"`
+	// ReviewTracked: this board's project counts code review time (CORE) —
+	// the dashboard shows a "Sedang di-review" card for it.
+	ReviewTracked bool `json:"reviewTracked"`
 }
 
 // BoardColumn groups Card by Jira status, in first-seen order from the

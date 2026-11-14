@@ -1,6 +1,7 @@
-import { Component, inject, signal } from '@angular/core';
-import { BoardService, MuteRequest } from '../../../core/services/board.service';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { BoardService, MuteRequest, MuteStatus } from '../../../core/services/board.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
+import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
@@ -23,27 +24,38 @@ export function formatWib(date: Date): string {
   });
 }
 
-/** Instant mute actions — no save button (Tech Spec AC4.4). */
+/** The running mute's end, or null when not muted (expired counts as not muted). */
+export function activeUntil(status: MuteStatus | null | undefined): Date | null {
+  if (!status?.active || !status.until) return null;
+  const until = new Date(status.until);
+  return until.getTime() > Date.now() ? until : null;
+}
+
+/**
+ * Instant mute actions — no save button. `boardId` null = the global mute
+ * (shared with the top bar badge); a board id = that board's own mute
+ * (Tech Spec "Per-Board Settings & Active Sprint Dashboard", AC4.1–AC4.2).
+ */
 @Component({
   selector: 'app-mute-panel',
   standalone: true,
   imports: [IconComponent],
   template: `
-    @if (muteState.until(); as until) {
-      <div class="mute-banner" [class.forever]="muteState.forever()">
+    @if (until(); as until) {
+      <div class="mute-banner" [class.forever]="forever()">
         <span class="mute-banner-icon"><app-icon name="bell-off" [size]="20" /></span>
         <div>
-          @if (muteState.forever()) {
-            <strong>Notifikasi dimatikan</strong>
-            <span>Tidak ada notifikasi sampai kamu aktifkan lagi.</span>
+          @if (forever()) {
+            <strong>{{ isBoard() ? 'Notifikasi board ini dimatikan' : 'Notifikasi dimatikan' }}</strong>
+            <span>Tidak ada notifikasi{{ isBoard() ? ' dari board ini' : '' }} sampai kamu aktifkan lagi.</span>
           } @else {
-            <strong>Notifikasi sedang dimute</strong>
+            <strong>{{ isBoard() ? 'Board ini sedang dimute' : 'Notifikasi sedang dimute' }}</strong>
             <span>Sampai {{ formatUntil(until) }} WIB</span>
           }
         </div>
         <button type="button" class="btn btn-ghost btn-sm" [class.loading]="busy()" [disabled]="busy()" (click)="unmute()">
           <span class="spinner" aria-hidden="true"></span>
-          <span class="btn-label">{{ muteState.forever() ? 'Aktifkan lagi' : 'Batalkan' }}</span>
+          <span class="btn-label">{{ forever() ? 'Aktifkan lagi' : 'Batalkan' }}</span>
         </button>
       </div>
     } @else {
@@ -65,12 +77,35 @@ export function formatWib(date: Date): string {
   `,
 })
 export class MutePanelComponent {
-  protected muteState = inject(MuteStateService);
+  /** null = global mute; otherwise this board's mute. */
+  boardId = input<number | null>(null);
+  /** Board scope: the board's mute as loaded by the page. */
+  boardStatus = input<MuteStatus | null>(null);
+  statusChange = output<MuteStatus>();
+
+  private muteState = inject(MuteStateService);
+  private boardContext = inject(BoardContextService);
   private boardService = inject(BoardService);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);
 
   protected busy = signal(false);
+  /** Board scope: the status after the last action here (overrides the input). */
+  private changed = signal<{ boardId: number | null; status: MuteStatus } | null>(null);
+
+  protected isBoard = computed(() => this.boardId() !== null);
+  protected until = computed<Date | null>(() => {
+    if (!this.isBoard()) return this.muteState.until();
+    const last = this.changed();
+    return activeUntil(last && last.boardId === this.boardId() ? last.status : this.boardStatus());
+  });
+  protected forever = computed(() => {
+    if (!this.isBoard()) return this.muteState.forever();
+    const last = this.changed();
+    const status = last && last.boardId === this.boardId() ? last.status : this.boardStatus();
+    return this.until() !== null && !!status?.forever;
+  });
+
   protected readonly options: MuteOption[] = [
     { label: '1 jam', request: { minutes: 60 } },
     { label: '2 jam', request: { minutes: 120 } },
@@ -85,8 +120,10 @@ export class MutePanelComponent {
   protected async mute(option: MuteOption): Promise<void> {
     if (option.forever) {
       const confirmed = await this.confirm.ask({
-        title: 'Matikan semua notifikasi?',
-        message: 'Nudge tidak akan mengirim reminder apa pun sampai kamu mengaktifkannya lagi dari halaman ini.',
+        title: this.isBoard() ? 'Matikan notifikasi board ini?' : 'Matikan semua notifikasi?',
+        message: this.isBoard()
+          ? 'Nudge tidak akan mengirim reminder dari board ini sampai kamu mengaktifkannya lagi.'
+          : 'Nudge tidak akan mengirim reminder apa pun sampai kamu mengaktifkannya lagi dari halaman ini.',
         confirmText: 'Matikan',
         tone: 'danger',
         icon: 'bell-off',
@@ -94,14 +131,14 @@ export class MutePanelComponent {
       if (!confirmed) return;
     }
     this.busy.set(true);
-    this.boardService.mute(option.request).subscribe({
+    this.boardService.mute(option.request, this.boardId()).subscribe({
       next: (status) => {
         this.busy.set(false);
-        this.muteState.set(status);
+        this.apply(status);
         if (option.forever) {
-          this.toast.success('Notifikasi dimatikan', 'Aktifkan lagi kapan saja dari Pengaturan.');
+          this.toast.success(this.isBoard() ? 'Notifikasi board dimatikan' : 'Notifikasi dimatikan', 'Aktifkan lagi kapan saja dari Pengaturan.');
         } else {
-          this.toast.success('Notifikasi dimute', `Mute ${option.label.toLowerCase()} aktif.`);
+          this.toast.success(this.isBoard() ? 'Board dimute' : 'Notifikasi dimute', `Mute ${option.label.toLowerCase()} aktif.`);
         }
       },
       error: () => {
@@ -113,10 +150,10 @@ export class MutePanelComponent {
 
   protected unmute(): void {
     this.busy.set(true);
-    this.boardService.unmute().subscribe({
+    this.boardService.unmute(this.boardId()).subscribe({
       next: (status) => {
         this.busy.set(false);
-        this.muteState.set(status);
+        this.apply(status);
         this.toast.success('Notifikasi aktif kembali', 'Reminder akan dikirim seperti biasa.');
       },
       error: () => {
@@ -124,5 +161,15 @@ export class MutePanelComponent {
         this.toast.error('Gagal membatalkan mute', 'Coba lagi sebentar.');
       },
     });
+  }
+
+  private apply(status: MuteStatus): void {
+    if (this.isBoard()) {
+      this.changed.set({ boardId: this.boardId(), status });
+      this.boardContext.load(); // refresh the picker's muted dot
+    } else {
+      this.muteState.set(status);
+    }
+    this.statusChange.emit(status);
   }
 }

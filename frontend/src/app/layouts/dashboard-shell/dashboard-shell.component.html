@@ -1,13 +1,24 @@
 <div class="app-shell" [class.sidebar-open]="sidebarOpen">
   <aside class="sidebar" aria-label="Navigasi utama">
-    <a class="sidebar-brand" routerLink="/dashboard" (click)="closeSidebar()">
+    <a class="sidebar-brand" routerLink="/dashboard" queryParamsHandling="preserve" (click)="closeSidebar()">
       <img src="favicon.svg" alt="" width="34" height="34" />
       <span class="brand-name">Nudge</span>
     </a>
 
     <nav class="sidebar-nav">
       <span class="nav-section">Menu</span>
-      <a class="nav-item" routerLink="/dashboard/settings" routerLinkActive="active" (click)="closeSidebar()">
+      <a
+        class="nav-item"
+        routerLink="/dashboard"
+        queryParamsHandling="preserve"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        (click)="closeSidebar()"
+      >
+        <app-icon name="home" />
+        <span>Dashboard</span>
+      </a>
+      <a class="nav-item" routerLink="/dashboard/settings" queryParamsHandling="preserve" routerLinkActive="active" (click)="closeSidebar()">
         <app-icon name="settings" />
         <span>Pengaturan</span>
       </a>
@@ -36,6 +47,72 @@
       </div>
 
       <div class="topbar-right">
+        <div class="board-picker" #boardMenu>
+          <button
+            type="button"
+            class="board-picker-trigger"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="boardMenuOpen"
+            (click)="toggleBoardMenu()"
+          >
+            <span class="board-picker-avatar" [class.muted]="boardContext.selected()?.muted?.active">
+              <app-board-avatar [boardId]="boardContext.selected()?.boardId ?? null" [projectKey]="boardContext.selected()?.projectKey ?? ''" [size]="26" />
+            </span>
+            <span class="board-picker-text">
+              @if (boardContext.selected(); as b) {
+                <strong>{{ b.name }}</strong>
+                <small>{{ b.activeSprint.name }}</small>
+              } @else {
+                <strong>Semua board</strong>
+                <small>{{ boardContext.boards().length }} board aktif</small>
+              }
+            </span>
+            <app-icon class="chevron" [class.open]="boardMenuOpen" name="chevron-down" [size]="16" />
+          </button>
+
+          @if (boardMenuOpen) {
+            <ul class="board-menu-list" role="menu">
+              <li role="none">
+                <button type="button" role="menuitem" class="board-option" [class.active]="boardContext.selectedId() === null" (click)="selectBoard(null)">
+                  <app-board-avatar [boardId]="null" [size]="32" />
+                  <span class="board-option-text">
+                    <strong>Semua board</strong>
+                    <small>Gabungan semua sprint aktif · pengaturan default</small>
+                  </span>
+                  @if (boardContext.selectedId() === null) {
+                    <app-icon class="board-check" name="check" [size]="16" />
+                  }
+                </button>
+              </li>
+              @if (boardContext.boards().length) {
+                <li role="separator" class="divider"></li>
+              }
+              @for (b of boardContext.boards(); track b.boardId) {
+                <li role="none">
+                  <button type="button" role="menuitem" class="board-option" [class.active]="boardContext.selectedId() === b.boardId" (click)="selectBoard(b.boardId)">
+                    <span class="board-picker-avatar" [class.muted]="b.muted.active">
+                      <app-board-avatar [boardId]="b.boardId" [projectKey]="b.projectKey" [size]="32" />
+                    </span>
+                    <span class="board-option-text">
+                      <strong>
+                        {{ b.name }}
+                        @if (b.hasCustomSettings) {
+                          <span class="custom-dot" title="Punya pengaturan khusus"></span>
+                        }
+                      </strong>
+                      <small>{{ b.activeSprint.name }}@if (sprintRange(b.activeSprint.startDate, b.activeSprint.endDate)) { · {{ sprintRange(b.activeSprint.startDate, b.activeSprint.endDate) }}}</small>
+                    </span>
+                    <span class="count-pill" [attr.title]="b.ticketCount + ' tiket kamu di sprint ini'"><strong>{{ b.ticketCount }}</strong></span>
+                  </button>
+                </li>
+              }
+              @if (boardContext.loaded() && !boardContext.boards().length) {
+                <li role="none" class="board-menu-empty">Belum ada tiket kamu di sprint aktif mana pun.</li>
+              }
+            </ul>
+          }
+        </div>
+
         @if (muteState.until(); as until) {
           <a
             class="mute-badge"

@@ -2,6 +2,12 @@ package user_dashboard_service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"nudge/modules/board/board_dto"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -10,6 +16,7 @@ import (
 	"nudge/modules/issue_session/issue_session_dto"
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/registration/registration_dto"
+	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
 
 // --- fakes ---
@@ -26,6 +33,11 @@ func (f *fakeJiraClientForDashboard) SearchCodeProcessIssues(ctx context.Context
 }
 func (f *fakeJiraClientForDashboard) GetLatestCodeProcessEntryTime(ctx context.Context, issueKey string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
+}
+
+func (f *fakeJiraClientForDashboard) GetTrackedRunTimes(ctx context.Context, issueKey string) (time.Time, time.Time, bool, error) {
+	t, found, err := f.GetLatestCodeProcessEntryTime(ctx, issueKey)
+	return t, t, found, err
 }
 func (f *fakeJiraClientForDashboard) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
 	return "", false, nil
@@ -163,7 +175,27 @@ func (f *fakeIssueSessionRepoForDashboard) ListDistinctSprintNames(ctx context.C
 }
 
 func newTestService(jiraClient *fakeJiraClientForDashboard, jiraCred *fakeJiraCredentialForDashboard, regRepo *fakeRegistrationRepoForDashboard, sessionRepo *fakeIssueSessionRepoForDashboard) UserDashboardService {
-	return NewUserDashboardService(jiraClient, jiraCred, regRepo, sessionRepo, business_hours_service.NewBusinessHoursService(), business_hours_dto.HolidayCalendar{})
+	return NewUserDashboardService(jiraClient, jiraCred, regRepo, sessionRepo, business_hours_service.NewBusinessHoursService(), business_hours_dto.HolidayCalendar{}, "https://esb-id.atlassian.net/", jiraClient, &fakeBoardsForDashboard{})
+}
+
+// SearchActiveSprintIssuesByAssignee lets the same fake serve the Agile
+// search (the JQL itself is covered in jira_client tests).
+func (f *fakeJiraClientForDashboard) SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
+	return f.SearchAllIssuesByAssignee(ctx, cred, accountID)
+}
+
+type fakeBoardsForDashboard struct{ failFor map[int64]bool }
+
+func (f *fakeBoardsForDashboard) EnsureKnown(ctx context.Context, boardID int64) (board_dto.Board, error) {
+	if f.failFor[boardID] {
+		return board_dto.Board{}, errors.New("jira down")
+	}
+	names := map[int64]string{28: "ESB OMS Board", 26: "ESB Core Board"}
+	return board_dto.Board{BoardID: boardID, Name: names[boardID], ProjectKey: map[int64]string{28: "OMS", 26: "CORE"}[boardID]}, nil
+}
+
+func (f *fakeBoardsForDashboard) ActiveSprint(ctx context.Context, boardID int64) (jira_client_dto.SprintRef, bool, error) {
+	return jira_client_dto.SprintRef{ID: 8294, StartDate: "2026-11-09", EndDate: "2026-11-22"}, true, nil
 }
 
 // --- GetMyBoard ---
@@ -180,7 +212,7 @@ func TestGetMyBoard_GroupsCardsByStatus(t *testing.T) {
 	sessionRepo := &fakeIssueSessionRepoForDashboard{}
 	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
 
-	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id")
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
 	if err != nil {
 		t.Fatalf("GetMyBoard returned error: %v", err)
 	}
@@ -209,7 +241,7 @@ func TestGetMyBoard_AttachesBudgetDetailOnlyForCodeProcessWithSession(t *testing
 	}}
 	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
 
-	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id")
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
 	if err != nil {
 		t.Fatalf("GetMyBoard returned error: %v", err)
 	}
@@ -222,6 +254,9 @@ func TestGetMyBoard_AttachesBudgetDetailOnlyForCodeProcessWithSession(t *testing
 				if !c.HasBudgetDetail {
 					t.Error("OMS-1 (Code Process, has session) should have HasBudgetDetail=true")
 				}
+				if c.BudgetSeconds != 7200 || c.ElapsedSeconds != 1000 {
+					t.Errorf("OMS-1 budget/elapsed = %d/%d, want 7200/1000 (numbers for the progress bar)", c.BudgetSeconds, c.ElapsedSeconds)
+				}
 			case "OMS-2":
 				if c.HasBudgetDetail {
 					t.Error("OMS-2 (Code Process, no session yet) should have HasBudgetDetail=false, not error")
@@ -229,6 +264,9 @@ func TestGetMyBoard_AttachesBudgetDetailOnlyForCodeProcessWithSession(t *testing
 			case "OMS-3":
 				if c.HasBudgetDetail {
 					t.Error("OMS-3 (To Do) should never have HasBudgetDetail")
+				}
+				if c.IssueURL != "https://esb-id.atlassian.net/browse/OMS-3" {
+					t.Errorf("OMS-3 IssueURL = %q, want the Jira browse link (trailing slash trimmed)", c.IssueURL)
 				}
 			}
 		}
@@ -243,7 +281,7 @@ func TestGetMyBoard_UsesPersonalCredentialWhenSet(t *testing.T) {
 	}}
 	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{cred: cred}, regRepo, &fakeIssueSessionRepoForDashboard{})
 
-	if _, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id"); err != nil {
+	if _, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0); err != nil {
 		t.Fatalf("GetMyBoard returned error: %v", err)
 	}
 	if jiraClient.lastCredUsed != cred {
@@ -254,7 +292,7 @@ func TestGetMyBoard_UsesPersonalCredentialWhenSet(t *testing.T) {
 func TestGetMyBoard_ReturnsEmptyBoardForUnknownEmail(t *testing.T) {
 	svc := newTestService(&fakeJiraClientForDashboard{}, &fakeJiraCredentialForDashboard{}, &fakeRegistrationRepoForDashboard{}, &fakeIssueSessionRepoForDashboard{})
 
-	board, err := svc.GetMyBoard(context.Background(), "ghost@esb.co.id")
+	board, err := svc.GetMyBoard(context.Background(), "ghost@esb.co.id", 0)
 	if err != nil || len(board.Columns) != 0 {
 		t.Errorf("GetMyBoard = %+v, %v, want empty board, nil error", board, err)
 	}
@@ -309,5 +347,135 @@ func TestGetOverdueView_OnlyReturnsCallersOwnSessionsPastBudget(t *testing.T) {
 	}
 	if len(overdue) != 1 || overdue[0].IssueKey != "OMS-1" {
 		t.Errorf("overdue = %+v, want only OMS-1 (OMS-3 belongs to another user)", overdue)
+	}
+}
+
+func (f *fakeIssueSessionRepoForDashboard) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	return nil
+}
+
+// --- per board (Tech Spec "Per-Board Settings & Active Sprint Dashboard") ---
+
+func sprintIssue(key, status string, boardID, sprintID int64, sprintName string) jira_client_dto.Issue {
+	raw := fmt.Sprintf(`[{"id": %d, "name": %q, "state": "active", "boardId": %d}]`, sprintID, sprintName, boardID)
+	return jira_client_dto.Issue{Key: key, Fields: jira_client_dto.IssueFields{
+		Summary: key, Status: jira_client_dto.Status{Name: status}, SprintRaw: json.RawMessage(raw),
+	}}
+}
+
+func boardFixture() (*fakeJiraClientForDashboard, *fakeRegistrationRepoForDashboard) {
+	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
+		sprintIssue("OMS-1", "To Do", 28, 8294, "OMS Sprint 23 - 2026"),
+		sprintIssue("OMS-2", "Code Review", 28, 8294, "OMS Sprint 23 - 2026"),
+		sprintIssue("CORE-1", "To Do", 26, 7988, "Core Sprint 23 2026"),
+	}}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
+	}}
+	return jiraClient, regRepo
+}
+
+func cardKeys(board user_dashboard_dto.Board) []string {
+	var keys []string
+	for _, col := range board.Columns {
+		for _, c := range col.Cards {
+			keys = append(keys, fmt.Sprintf("%s@%d", c.IssueKey, c.BoardID))
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func TestGetMyBoard_FiltersToTheSelectedBoardsActiveSprint(t *testing.T) {
+	jiraClient, regRepo := boardFixture()
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, &fakeIssueSessionRepoForDashboard{})
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 28)
+	if err != nil {
+		t.Fatalf("GetMyBoard: %v", err)
+	}
+	if got := cardKeys(board); !reflect.DeepEqual(got, []string{"OMS-1@28", "OMS-2@28"}) {
+		t.Errorf("cards = %v, want only board 28", got)
+	}
+
+	all, _ := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if got := cardKeys(all); len(got) != 3 {
+		t.Errorf("all boards = %v, want every active-sprint ticket", got)
+	}
+}
+
+func TestListBoards_GroupsByActiveSprintBoardWithNamesAndCounts(t *testing.T) {
+	jiraClient, regRepo := boardFixture()
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, &fakeIssueSessionRepoForDashboard{})
+
+	boards, err := svc.ListBoards(context.Background(), "dev@esb.co.id")
+	if err != nil || len(boards) != 2 {
+		t.Fatalf("ListBoards = %+v, %v", boards, err)
+	}
+	// Sorted by name: Core before OMS.
+	if boards[0].BoardID != 26 || boards[0].Name != "ESB Core Board" || boards[0].TicketCount != 1 || boards[0].ProjectKey != "CORE" || !boards[0].ReviewTracked {
+		t.Errorf("boards[0] = %+v", boards[0])
+	}
+	if boards[1].BoardID != 28 || boards[1].TicketCount != 2 || boards[1].ActiveSprint.Name != "OMS Sprint 23 - 2026" || boards[1].ActiveSprint.ID != 8294 || boards[1].ReviewTracked {
+		t.Errorf("boards[1] = %+v", boards[1])
+	}
+	if boards[1].ActiveSprint.StartDate != "2026-11-09" {
+		t.Errorf("sprint dates not filled from the Agile API: %+v", boards[1].ActiveSprint)
+	}
+}
+
+func TestListBoards_UnknownBoardNameFallsBack(t *testing.T) {
+	jiraClient, regRepo := boardFixture()
+	svc := NewUserDashboardService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, &fakeIssueSessionRepoForDashboard{},
+		business_hours_service.NewBusinessHoursService(), business_hours_dto.HolidayCalendar{}, "", jiraClient,
+		&fakeBoardsForDashboard{failFor: map[int64]bool{28: true}})
+
+	boards, err := svc.ListBoards(context.Background(), "dev@esb.co.id")
+	if err != nil {
+		t.Fatalf("ListBoards: %v", err)
+	}
+	for _, b := range boards {
+		if b.BoardID == 28 && b.Name != "Board #28" {
+			t.Errorf("name = %q, want the Board #28 fallback", b.Name)
+		}
+	}
+}
+
+func TestListBoards_UnregisteredUserHasNoBoards(t *testing.T) {
+	jiraClient, _ := boardFixture()
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{}}, &fakeIssueSessionRepoForDashboard{})
+	boards, err := svc.ListBoards(context.Background(), "nobody@esb.co.id")
+	if err != nil || len(boards) != 0 {
+		t.Errorf("ListBoards = %+v, %v; want none", boards, err)
+	}
+}
+
+func TestGetMyBoard_CoreReviewTicketGetsBudgetDetailButOmsReviewDoesNot(t *testing.T) {
+	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
+		{Key: "CORE-1", Fields: jira_client_dto.IssueFields{Summary: "In review", Status: jira_client_dto.Status{Name: "CODE REVIEW"}}},
+		{Key: "OMS-1", Fields: jira_client_dto.IssueFields{Summary: "In review", Status: jira_client_dto.Status{Name: "Code Review"}}},
+	}}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
+	}}
+	sessionRepo := &fakeIssueSessionRepoForDashboard{byIssueKey: map[string]issue_session_dto.IssueSession{
+		"CORE-1": {IssueKey: "CORE-1", StoryPoints: 2, AccumulatedSeconds: 5000, FlagActive: true},
+		"OMS-1":  {IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 5000, FlagActive: true},
+	}}
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if err != nil {
+		t.Fatalf("GetMyBoard: %v", err)
+	}
+	for _, col := range board.Columns {
+		for _, c := range col.Cards {
+			if c.IssueKey == "CORE-1" && (!c.HasBudgetDetail || c.ElapsedSeconds != 5000) {
+				t.Errorf("CORE-1 in CODE REVIEW must carry budget detail, got %+v", c)
+			}
+			if c.IssueKey == "OMS-1" && c.HasBudgetDetail {
+				t.Errorf("OMS-1 in Code Review is not tracked, got budget detail %+v", c)
+			}
+		}
 	}
 }

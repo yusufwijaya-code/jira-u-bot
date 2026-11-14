@@ -19,6 +19,8 @@ import (
 	"nudge/modules/auth/auth_handler"
 	"nudge/modules/auth/auth_service"
 	"nudge/modules/auth/auth_session_repository"
+	"nudge/modules/board/board_repository"
+	"nudge/modules/board/board_service"
 	"nudge/modules/business_hours/business_hours_service"
 	"nudge/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
 	"nudge/modules/chat_command_poller/chat_command_poller_service"
@@ -118,6 +120,9 @@ func main() {
 
 	registrationRepo := registration_repository.NewRegistrationRepository(db)
 
+	jiraAgileClient := jira_client_service.NewJiraAgileClient(&cfg)
+	boardSvc := board_service.NewBoardService(board_repository.NewBoardRepository(db), jiraAgileClient)
+
 	userSettingRepo := user_setting_repository.NewUserSettingRepository(db)
 	userSettingSvc := user_setting_service.NewUserSettingService(userSettingRepo, registrationRepo)
 
@@ -154,7 +159,7 @@ func main() {
 	)
 
 	pollerSvc := poller_service.NewPollerService(
-		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, registrationRepo, holidayCalendar,
+		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, registrationRepo, holidayCalendar, boardSvc,
 	)
 
 	shutdownMgr := shutdown.NewManager()
@@ -179,9 +184,9 @@ func main() {
 	authHandler := auth_handler.NewAuthHandler(authSvc, &cfg)
 
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
-		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar,
+		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
 	)
-	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc)
+	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
 	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc)

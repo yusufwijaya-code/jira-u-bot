@@ -94,7 +94,7 @@ func (r *issueSessionRepositoryImpl) CloseSession(ctx context.Context, issueKey 
 
 const sessionColumns = `issueSessionID, issueKey, projectKey, storyPoints,
 		       accumulatedSeconds, currentSessionStartedDate, flagActive,
-		       lastOverageReminderDate, assigneeEmail, issueSummary, sprintName, createdBy, createdDate`
+		       lastOverageReminderDate, assigneeEmail, issueSummary, sprintName, boardID, sprintID, createdBy, createdDate`
 
 func (r *issueSessionRepositoryImpl) GetActiveSessions(ctx context.Context) ([]issue_session_dto.IssueSession, error) {
 	query := `SELECT ` + sessionColumns + ` FROM tr_issuesession WHERE flagActive = 1`
@@ -168,11 +168,12 @@ func scanIssueSessionRow(scanner rowScanner) (issue_session_dto.IssueSession, er
 	var currentSessionStartedDate sql.NullTime
 	var lastOverageReminderDate sql.NullTime
 	var assigneeEmail, issueSummary, sprintName sql.NullString
+	var boardID, sprintID sql.NullInt64
 
 	err := scanner.Scan(
 		&s.IssueSessionID, &s.IssueKey, &s.ProjectKey, &s.StoryPoints,
 		&s.AccumulatedSeconds, &currentSessionStartedDate, &s.FlagActive,
-		&lastOverageReminderDate, &assigneeEmail, &issueSummary, &sprintName, &s.CreatedBy, &s.CreatedDate,
+		&lastOverageReminderDate, &assigneeEmail, &issueSummary, &sprintName, &boardID, &sprintID, &s.CreatedBy, &s.CreatedDate,
 	)
 	if err != nil {
 		return issue_session_dto.IssueSession{}, err
@@ -189,6 +190,14 @@ func scanIssueSessionRow(scanner rowScanner) (issue_session_dto.IssueSession, er
 	s.AssigneeEmail = assigneeEmail.String
 	s.IssueSummary = issueSummary.String
 	s.SprintName = sprintName.String
+	if boardID.Valid {
+		v := boardID.Int64
+		s.BoardID = &v
+	}
+	if sprintID.Valid {
+		v := sprintID.Int64
+		s.SprintID = &v
+	}
 
 	return s, nil
 }
@@ -247,4 +256,17 @@ func (r *issueSessionRepositoryImpl) ListDistinctSprintNames(ctx context.Context
 		names = append(names, name)
 	}
 	return names, rows.Err()
+}
+
+func (r *issueSessionRepositoryImpl) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	const query = `UPDATE tr_issuesession SET boardID = ?, sprintID = ? WHERE issueKey = ?`
+	_, err := r.db.ExecContext(ctx, query, nullableInt64(boardID), nullableInt64(sprintID), issueKey)
+	return err
+}
+
+func nullableInt64(v *int64) sql.NullInt64 {
+	if v == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *v, Valid: true}
 }

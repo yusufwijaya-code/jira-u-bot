@@ -1,0 +1,302 @@
+<div class="page-stack">
+  <!-- Greeting + notification status -->
+  <section class="hero-strip">
+    <div class="hero-main">
+      <app-board-avatar class="hero-avatar" [boardId]="boardContext.selected()?.boardId ?? null" [projectKey]="boardContext.selected()?.projectKey ?? ''" [size]="48" />
+      <div>
+        <h2>Halo{{ name() ? ', ' + name() : '' }} 👋</h2>
+        @if (boardContext.selected(); as b) {
+          <p>
+            {{ b.name }} — {{ b.activeSprint.name }}
+            @if (sprintRange(b.activeSprint.startDate, b.activeSprint.endDate)) {
+              ({{ sprintRange(b.activeSprint.startDate, b.activeSprint.endDate) }})
+            }
+          </p>
+        } @else {
+          <p>Ringkasan tiket kamu di semua sprint aktif ({{ boardContext.boards().length }} board).</p>
+        }
+      </div>
+    </div>
+    <a class="notif-status" routerLink="/dashboard/settings" [class.muted]="notifState() === 'muted'" [class.off]="notifState() === 'off'">
+      <app-icon [name]="notifState() === 'on' ? 'bell' : 'bell-off'" [size]="16" />
+      <span>
+        @switch (notifState()) {
+          @case ('off') { Notifikasi dimatikan }
+          @case ('muted') { {{ muteState.active() ? 'Notifikasi dimute' : 'Board ini dimute' }} }
+          @default { Notifikasi aktif }
+        }
+      </span>
+      <app-icon name="chevron-right" [size]="14" />
+    </a>
+  </section>
+
+  <!-- Stats -->
+  <div class="stat-grid stat-grid-4">
+    <div class="stat-card" style="--i: 0">
+      <span class="stat-icon"><app-icon name="clock" [size]="20" /></span>
+      <div>
+        <span class="stat-value" data-stat="active">{{ boardLoading() ? '–' : active().length }}</span>
+        <span class="stat-label">Sedang dikerjakan</span>
+      </div>
+    </div>
+    <div class="stat-card" style="--i: 1">
+      <span class="stat-icon danger"><app-icon name="alert-circle" [size]="20" /></span>
+      <div>
+        <span class="stat-value" data-stat="overdue">{{ boardLoading() ? '–' : overdueCount() }}</span>
+        <span class="stat-label">Lewat budget</span>
+      </div>
+    </div>
+    <div class="stat-card" style="--i: 2">
+      <span class="stat-icon accent"><app-icon name="layers" [size]="20" /></span>
+      <div>
+        <span class="stat-value" data-stat="total">{{ boardLoading() ? '–' : cards().length }}</span>
+        <span class="stat-label">Total tiket saya</span>
+      </div>
+    </div>
+    <div class="stat-card" style="--i: 3">
+      <span class="stat-icon success"><app-icon name="target" [size]="20" /></span>
+      <div>
+        <span class="stat-value" data-stat="achievement">
+          {{ report() ? (report()!.achievementPercent | number: '1.0-0') + '%' : '–' }}
+        </span>
+        <span class="stat-label">Achievement sprint</span>
+      </div>
+    </div>
+  </div>
+
+  @if (boardError()) {
+    <section class="card empty-state">
+      <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+      <p class="msg error">{{ boardError() }}</p>
+      <button type="button" class="btn btn-ghost" (click)="loadBoard()">
+        <app-icon name="refresh" [size]="16" /> Coba lagi
+      </button>
+    </section>
+  }
+
+  <!-- Active tickets with budget -->
+  @if (!boardError()) {
+    <section class="card" data-card="active">
+      <header class="card-header with-actions">
+        <span class="card-icon"><app-icon name="clock" [size]="20" /></span>
+        <div>
+          <h2>Sedang dikerjakan</h2>
+          <p>Tiket Code Process kamu di sprint aktif dan pemakaian budget waktunya.</p>
+        </div>
+        <button type="button" class="icon-btn" title="Muat ulang" aria-label="Muat ulang" (click)="loadBoard()" [disabled]="boardLoading()">
+          <app-icon name="refresh" [size]="16" />
+        </button>
+      </header>
+
+      @if (boardLoading()) {
+        <div class="table-skeleton" aria-busy="true">
+          @for (i of [1, 2, 3]; track i) {
+            <div class="skeleton skeleton-row"></div>
+          }
+        </div>
+      } @else if (active().length === 0) {
+        <div class="empty-inline">
+          <app-icon name="check-circle" [size]="18" />
+          <span>Tidak ada tiket di Code Process. Santai dulu ☕</span>
+        </div>
+      } @else {
+        <ul class="ticket-list">
+          @for (t of active(); track t.issueKey; let i = $index) {
+            <ng-container *ngTemplateOutlet="ticketRow; context: { $implicit: t, i: i, review: false }" />
+          }
+        </ul>
+      }
+    </section>
+  }
+
+  <!-- Tickets in code review (projects that count review time, e.g. CORE) -->
+  @if (!boardError() && showReview()) {
+    <section class="card" data-card="review">
+      <header class="card-header">
+        <span class="card-icon info"><app-icon name="eye" [size]="20" /></span>
+        <div>
+          <h2>Sedang di-review</h2>
+          <p>Tiket CODE REVIEW kamu — waktu review tetap dihitung ke budget sampai Code Completed.</p>
+        </div>
+      </header>
+
+      @if (boardLoading()) {
+        <div class="table-skeleton" aria-busy="true">
+          @for (i of [1, 2]; track i) {
+            <div class="skeleton skeleton-row"></div>
+          }
+        </div>
+      } @else if (reviewing().length === 0) {
+        <div class="empty-inline">
+          <app-icon name="check-circle" [size]="18" />
+          <span>Tidak ada tiket yang sedang di-review.</span>
+        </div>
+      } @else {
+        <ul class="ticket-list">
+          @for (t of reviewing(); track t.issueKey; let i = $index) {
+            <ng-container *ngTemplateOutlet="ticketRow; context: { $implicit: t, i: i, review: true }" />
+          }
+        </ul>
+      }
+    </section>
+  }
+
+  <div class="dash-grid">
+    <!-- Tickets by status -->
+    @if (!boardError()) {
+      <section class="card" data-card="status">
+        <header class="card-header">
+          <span class="card-icon accent"><app-icon name="layers" [size]="20" /></span>
+          <div>
+            <h2>Tiket saya per status</h2>
+            <p>Tiket yang di-assign ke kamu di sprint aktif.</p>
+          </div>
+        </header>
+
+        @if (boardLoading()) {
+          <div class="table-skeleton" aria-busy="true">
+            @for (i of [1, 2]; track i) {
+              <div class="skeleton skeleton-row"></div>
+            }
+          </div>
+        } @else if (groups().length === 0) {
+          <div class="empty-inline"><span>Belum ada tiket yang di-assign ke kamu.</span></div>
+        } @else {
+          @for (g of groups(); track g.status) {
+            <div class="status-group">
+              <button type="button" class="status-head" (click)="toggleGroup(g.status)" [attr.aria-expanded]="isExpanded(g.status)">
+                <span class="status-name">{{ g.status }}</span>
+                <span class="count-pill"><strong>{{ g.cards.length }}</strong></span>
+              </button>
+              <ul class="mini-list">
+                @for (c of isExpanded(g.status) ? g.cards : g.cards.slice(0, preview); track c.issueKey) {
+                  <li>
+                    <a [href]="c.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ c.issueKey }}</a>
+                    <span class="ticket-summary">{{ c.summary }}</span>
+                  </li>
+                }
+              </ul>
+              @if (g.cards.length > preview) {
+                <button type="button" class="link-btn" (click)="toggleGroup(g.status)">
+                  {{ isExpanded(g.status) ? 'Tampilkan lebih sedikit' : '+' + (g.cards.length - preview) + ' lainnya' }}
+                </button>
+              }
+            </div>
+          }
+        }
+      </section>
+    }
+
+    <!-- Sprint summary -->
+    <section class="card" data-card="sprint">
+      <header class="card-header">
+        <span class="card-icon success"><app-icon name="target" [size]="20" /></span>
+        <div>
+          <h2>Sprint aktif</h2>
+          <p>{{ reportBoard() ? reportBoard()!.activeSprint.name : 'Ringkasan estimasi vs aktual tiket kamu.' }}</p>
+        </div>
+      </header>
+
+      @if (!boardContext.selected() && boardContext.boards().length > 1) {
+        <div class="board-tabs" role="tablist">
+          @for (b of boardContext.boards(); track b.boardId) {
+            <button
+              type="button"
+              role="tab"
+              class="board-tab"
+              [class.active]="reportBoard()?.boardId === b.boardId"
+              [attr.aria-selected]="reportBoard()?.boardId === b.boardId"
+              (click)="reportTab.set(b.boardId)"
+            >
+              <app-board-avatar [boardId]="b.boardId" [projectKey]="b.projectKey" [size]="18" />
+              {{ b.projectKey || b.name }}
+            </button>
+          }
+        </div>
+      }
+
+      @if (reportLoading()) {
+        <div class="table-skeleton" aria-busy="true">
+          @for (i of [1, 2]; track i) {
+            <div class="skeleton skeleton-row"></div>
+          }
+        </div>
+      } @else if (!report()) {
+        <div class="empty-inline"><span>Belum ada data sprint aktif untuk tiket kamu.</span></div>
+      } @else {
+        <div class="sprint-summary">
+          <div class="achievement-ring" [style.--p]="report()!.achievementPercent">
+            <span>{{ report()!.achievementPercent | number: '1.0-0' }}%</span>
+          </div>
+          <dl class="sprint-facts">
+            <div><dt>Dalam budget</dt><dd>{{ report()!.withinCount }} / {{ report()!.totalCount }} tiket</dd></div>
+            <div><dt>Estimasi</dt><dd>{{ report()!.sumEstimatedHours | number: '1.0-1' }} jam</dd></div>
+            <div><dt>Aktual</dt><dd>{{ report()!.sumActualHours | number: '1.0-1' }} jam</dd></div>
+            <div><dt>Deviasi total</dt><dd [class.negative]="report()!.aggregateDeviationPercent > report()!.capPercent">{{ report()!.aggregateDeviationPercent | number: '1.0-1' }}%</dd></div>
+          </dl>
+        </div>
+
+        @if (topDeviations().length) {
+          <h3 class="sub-title">Deviasi terbesar</h3>
+          <ul class="mini-list deviation-list">
+            @for (r of topDeviations(); track r.issueKey) {
+              <li>
+                <span class="ticket-key">{{ r.issueKey }}</span>
+                <span class="ticket-summary">{{ r.task }}</span>
+                <span class="dev-badge" [class.within]="r.within">{{ r.deviationPercent > 0 ? '+' : '' }}{{ r.deviationPercent | number: '1.0-0' }}%</span>
+              </li>
+            }
+          </ul>
+        }
+      }
+    </section>
+  </div>
+</div>
+
+<ng-template #ticketRow let-t let-i="i" let-review="review">
+            <li class="ticket-row" [attr.data-level]="t.hasBudgetDetail ? t.level : 'untracked'" [style.--i]="i">
+              <div class="ticket-main">
+                <div class="ticket-title">
+                  @if (!boardContext.selected() && boardOf(t); as b) {
+                    <app-board-avatar class="ticket-board" [boardId]="b.boardId" [projectKey]="b.projectKey" [size]="18" [attr.title]="b.name" />
+                  }
+                  <a class="ticket-key" [href]="t.issueURL" target="_blank" rel="noopener">{{ t.issueKey }}</a>
+                  <span class="ticket-summary">{{ t.summary }}</span>
+                </div>
+                @if (t.hasBudgetDetail) {
+                  <div class="budget-bar" role="progressbar" [attr.aria-valuenow]="t.percent" aria-valuemin="0" aria-valuemax="100">
+                    <span class="budget-fill" [style.width.%]="t.percent > 100 ? 100 : t.percent"></span>
+                  </div>
+                  <div class="ticket-meta">
+                    <span class="budget-pct">{{ t.percent }}%</span>
+                    <span>{{ t.storyPoints | number: '1.0-1' }} SP</span>
+                    @if (t.level === 'over') {
+                      <span class="meta-strong">Lewat {{ t.remainingLabel }}</span>
+                    } @else {
+                      <span>Sisa {{ t.remainingLabel }}</span>
+                      <span>Deadline {{ t.deadlineLabel }}</span>
+                    }
+                  </div>
+                } @else {
+                  <div class="ticket-meta"><span>Budget belum terhitung — tunggu poll berikutnya.</span></div>
+                }
+              </div>
+              <div class="ticket-actions">
+                @if (!review) {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-soft"
+                  [class.loading]="movingKey() === t.issueKey"
+                  [disabled]="movingKey() !== null"
+                  (click)="move(t, 'code-review')"
+                >
+                  <span class="spinner" aria-hidden="true"></span>
+                  <span class="btn-label"><app-icon name="send" [size]="14" /> Code Review</span>
+                </button>
+                }
+                <button type="button" class="btn btn-sm btn-ghost" [disabled]="movingKey() !== null" (click)="move(t, 'todo')">
+                  To Do
+                </button>
+              </div>
+            </li>
+</ng-template>

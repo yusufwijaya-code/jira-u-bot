@@ -14,9 +14,14 @@ import (
 // own tickets - callers pass the session's email, never a request param, and
 // there is no admin exception.
 type UserDashboardService interface {
-	// GetMyBoard returns every OMS/CORE ticket assigned to email,
-	// regardless of status, grouped by status (spec AC3.1/AC3.2).
-	GetMyBoard(ctx context.Context, email string) (user_dashboard_dto.Board, error)
+	// GetMyBoard returns email's tickets in ACTIVE sprints, grouped by
+	// status — only boardID's active sprint when boardID > 0, every active
+	// sprint when 0 (Tech Spec "Per-Board Settings & Active Sprint
+	// Dashboard", AC2.1).
+	GetMyBoard(ctx context.Context, email string, boardID int64) (user_dashboard_dto.Board, error)
+	// ListBoards returns the boards whose active sprint holds tickets
+	// assigned to email, ordered by name (AC1.1).
+	ListBoards(ctx context.Context, email string) ([]user_dashboard_dto.BoardSummary, error)
 	// GetTeamView returns email's own active (Code Process) tickets.
 	GetTeamView(ctx context.Context, email string) (user_dashboard_dto.TeamView, error)
 	// GetOverdueView returns email's own active tickets whose elapsed

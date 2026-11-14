@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"errors"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 )
@@ -39,7 +40,51 @@ var addUserSettingSQL string
 //go:embed 0009_add_reminderlog_delivery_status.sql
 var addReminderLogDeliveryStatusSQL string
 
+//go:embed 0010_add_board.sql
+var addBoardSQL string
+
+//go:embed 0011_issuesession_board.sql
+var addIssueSessionBoardSQL string
+
+//go:embed 0011b_issuesession_sprint.sql
+var addIssueSessionSprintSQL string
+
+//go:embed 0012_user_setting_board.sql
+var addUserSettingBoardSQL string
+
+//go:embed 0012b_user_setting_use_default.sql
+var addUserSettingUseDefaultSQL string
+
+//go:embed 0012c_user_setting_board_pk.sql
+var userSettingBoardPKSQL string
+
+// mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
+// every package in parallel and each one calls Apply against the same
+// schema, so concurrent DDL/backfill can collide. Every step is
+// idempotent, so re-running Apply is always safe.
+const (
+	mysqlDeadlockErrNo        = 1213
+	mysqlLockWaitTimeoutErrNo = 1205
+	applyAttempts             = 5
+)
+
 func Apply(db *sql.DB) error {
+	var err error
+	for attempt := 1; attempt <= applyAttempts; attempt++ {
+		if err = apply(db); err == nil || !isRetryable(err) {
+			return err
+		}
+		time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+	}
+	return err
+}
+
+func isRetryable(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	return errors.As(err, &mysqlErr) && (mysqlErr.Number == mysqlDeadlockErrNo || mysqlErr.Number == mysqlLockWaitTimeoutErrNo)
+}
+
+func apply(db *sql.DB) error {
 	if _, err := db.Exec(initSQL); err != nil {
 		return err
 	}
@@ -75,7 +120,53 @@ func Apply(db *sql.DB) error {
 	if _, err := db.Exec(addUserSettingSQL); err != nil {
 		return err
 	}
-	return addColumnIfNotExists(db, addReminderLogDeliveryStatusSQL)
+	if err := addColumnIfNotExists(db, addReminderLogDeliveryStatusSQL); err != nil {
+		return err
+	}
+	return applyPerBoardSettings(db)
+}
+
+// applyPerBoardSettings (Tech Spec "Per-Board Settings & Active Sprint
+// Dashboard"): board cache, the active board/sprint of each tracked session,
+// and ms_user_setting keyed by (userID, boardID) where boardID 0 is the
+// user's default for every board.
+func applyPerBoardSettings(db *sql.DB) error {
+	if _, err := db.Exec(addBoardSQL); err != nil {
+		return err
+	}
+	for _, alter := range []string{addIssueSessionBoardSQL, addIssueSessionSprintSQL, addUserSettingBoardSQL, addUserSettingUseDefaultSQL} {
+		if err := addColumnIfNotExists(db, alter); err != nil {
+			return err
+		}
+	}
+	// The PK swap is not naturally idempotent — only run it while the
+	// primary key doesn't include boardID yet. Existing rows keep
+	// boardID = 0, i.e. they become each user's default settings.
+	done, err := userSettingPKHasBoard(db)
+	if err != nil || done {
+		return err
+	}
+	if _, err := db.Exec(userSettingBoardPKSQL); err != nil {
+		// Another process (go test runs packages in parallel against the
+		// same schema) may have swapped it between the check and the ALTER.
+		if done, checkErr := userSettingPKHasBoard(db); checkErr == nil && done {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func userSettingPKHasBoard(db *sql.DB) (bool, error) {
+	var n int
+	err := db.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'ms_user_setting'
+		  AND CONSTRAINT_NAME = 'PRIMARY'
+		  AND COLUMN_NAME = 'boardID'
+	`).Scan(&n)
+	return n > 0, err
 }
 
 // applyAddJiraAccountID runs 0002_add_jira_account_id.sql's ALTER TABLE —

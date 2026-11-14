@@ -1,6 +1,9 @@
 package jira_client_dto
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func floatPtr(v float64) *float64 { return &v }
 
@@ -101,5 +104,32 @@ func TestActiveSprintName_LegacyStringFormatFallback(t *testing.T) {
 	name, found := f.ActiveSprintName()
 	if !found || name != "Sprint 20" {
 		t.Errorf("ActiveSprintName() = %q, %v, want %q, true", name, found, "Sprint 20")
+	}
+}
+
+func TestActiveSprint_ReturnsActiveSprintWithBoard(t *testing.T) {
+	f := IssueFields{SprintRaw: json.RawMessage(`[
+		{"id": 8293, "name": "OMS Sprint 22 - 2026", "state": "closed", "boardId": 28},
+		{"id": 8294, "name": "OMS Sprint 23 - 2026", "state": "active", "boardId": 28, "startDate": "2026-11-09T01:00:00.000Z", "endDate": "2026-11-22T10:00:00.000Z"}
+	]`)}
+	got, ok := f.ActiveSprint()
+	if !ok || got.ID != 8294 || got.BoardID != 28 || got.Name != "OMS Sprint 23 - 2026" {
+		t.Errorf("ActiveSprint = %+v, %v; want sprint 8294 on board 28", got, ok)
+	}
+}
+
+func TestActiveSprint_FalseWithoutActiveSprint(t *testing.T) {
+	for name, raw := range map[string]string{
+		"null":        `null`,
+		"empty":       ``,
+		"only closed": `[{"id": 1, "name": "S1", "state": "closed", "boardId": 28}]`,
+		"no board":    `[{"id": 2, "name": "S2", "state": "active"}]`,
+		"legacy":      `["com.atlassian.greenhopper...[name=S1,state=ACTIVE]"]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := (IssueFields{SprintRaw: json.RawMessage(raw)}).ActiveSprint(); ok {
+				t.Errorf("ActiveSprint(%s) = true, want false", raw)
+			}
+		})
 	}
 }

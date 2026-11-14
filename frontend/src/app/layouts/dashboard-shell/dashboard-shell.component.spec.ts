@@ -5,6 +5,8 @@ import { DashboardShellComponent } from './dashboard-shell.component';
 import { AuthService } from '../../core/services/auth.service';
 import { BoardService } from '../../core/services/board.service';
 import { MuteStateService } from '../../core/services/mute-state.service';
+import { BoardContextService, BoardSummary } from '../../core/services/board-context.service';
+import { signal } from '@angular/core';
 import { of } from 'rxjs';
 
 describe('DashboardShellComponent', () => {
@@ -15,14 +17,37 @@ describe('DashboardShellComponent', () => {
   const trigger = () => el().querySelector('.user-menu-trigger') as HTMLButtonElement;
   const menu = () => el().querySelector('.user-menu-list');
 
+  const OMS: BoardSummary = {
+    boardId: 28,
+    name: 'ESB OMS Board',
+    projectKey: 'OMS',
+    activeSprint: { id: 8294, name: 'OMS Sprint 23 - 2026', startDate: '2026-11-09T01:00:00.000Z', endDate: '2026-11-22T10:00:00.000Z' },
+    ticketCount: 17,
+    hasCustomSettings: true,
+    muted: { active: false, until: null },
+  };
+  let boardContext: any;
+  const boardTrigger = () => el().querySelector('.board-picker-trigger') as HTMLButtonElement;
+  const boardMenu = () => el().querySelector('.board-menu-list');
+
   beforeEach(async () => {
+    boardContext = {
+      boards: signal<BoardSummary[]>([OMS]),
+      loaded: signal(true),
+      selectedId: signal<number | null>(null),
+      selected: () => boardContext.boards().find((b: BoardSummary) => b.boardId === boardContext.selectedId()) ?? null,
+      avatarUrl: (id: number) => '/avatar/' + id,
+      load: jasmine.createSpy('load'),
+      select: jasmine.createSpy('select').and.callFake((id: number | null) => boardContext.selectedId.set(id)),
+    };
     user$ = new BehaviorSubject<any>({ email: 'dev@esb.co.id', isAdmin: false });
     await TestBed.configureTestingModule({
       imports: [DashboardShellComponent],
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: { currentUser$: user$ } },
-        { provide: BoardService, useValue: { getSettings: () => of({ mute: { active: false, until: null } }) } },
+        { provide: BoardService, useValue: { getSettings: () => of({ mute: { global: { active: false, until: null }, board: null } }) } },
+        { provide: BoardContextService, useValue: boardContext },
       ],
     }).compileComponents();
 
@@ -130,5 +155,50 @@ describe('DashboardShellComponent', () => {
     fixture.detectChanges();
     const badge = el().querySelector('.mute-badge.forever');
     expect(badge?.textContent).toContain('Notif dimatikan');
+  });
+
+  it('loads the boards and shows "Semua board" by default', () => {
+    expect(boardContext.load).toHaveBeenCalled();
+    expect(boardTrigger().textContent).toContain('Semua board');
+    expect(boardTrigger().textContent).toContain('1 board aktif');
+  });
+
+  it('opens the board menu with every board, its sprint, ticket count and custom dot', () => {
+    boardTrigger().click();
+    fixture.detectChanges();
+
+    const options = Array.from(el().querySelectorAll('.board-option'));
+    expect(options.length).toBe(2);
+    expect(options[1].textContent).toContain('ESB OMS Board');
+    expect(options[1].textContent).toContain('OMS Sprint 23 - 2026');
+    expect(options[1].querySelector('.count-pill')?.textContent).toContain('17');
+    expect(options[1].querySelector('.custom-dot')).not.toBeNull();
+  });
+
+  it('selects a board, closes the menu and shows it on the trigger', () => {
+    boardTrigger().click();
+    fixture.detectChanges();
+    (el().querySelectorAll('.board-option')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(boardContext.select).toHaveBeenCalledWith(28);
+    expect(boardMenu()).toBeNull();
+    expect(boardTrigger().textContent).toContain('ESB OMS Board');
+    expect(boardTrigger().querySelector('img')?.getAttribute('src')).toBe('/avatar/28');
+  });
+
+  it('closes the board menu on an outside click and only one menu is open at a time', () => {
+    boardTrigger().click();
+    fixture.detectChanges();
+    trigger().click();
+    fixture.detectChanges();
+    expect(boardMenu()).toBeNull();
+    expect(menu()).not.toBeNull();
+
+    boardTrigger().click();
+    fixture.detectChanges();
+    document.body.click();
+    fixture.detectChanges();
+    expect(boardMenu()).toBeNull();
   });
 });

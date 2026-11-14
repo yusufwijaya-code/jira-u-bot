@@ -35,6 +35,11 @@ func (f *fakeJiraClientServiceForChat) SearchCodeProcessIssues(ctx context.Conte
 func (f *fakeJiraClientServiceForChat) GetLatestCodeProcessEntryTime(ctx context.Context, issueKey string) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }
+
+func (f *fakeJiraClientServiceForChat) GetTrackedRunTimes(ctx context.Context, issueKey string) (time.Time, time.Time, bool, error) {
+	t, found, err := f.GetLatestCodeProcessEntryTime(ctx, issueKey)
+	return t, t, found, err
+}
 func (f *fakeJiraClientServiceForChat) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
 	return "", false, nil
 }
@@ -620,4 +625,8 @@ func TestRouteCommand_GeserReturnsFriendlyMessageWhenTransitionIssueFails(t *tes
 	if got == "" {
 		t.Error("RouteCommand() must return a friendly error message, not empty")
 	}
+}
+
+func (f *fakeIssueSessionRepoForChat) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	return nil
 }

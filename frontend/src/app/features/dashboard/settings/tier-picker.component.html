@@ -31,14 +31,11 @@
       [(ngModel)]="addValue"
       (keydown.enter)="$event.preventDefault(); add()"
     />
-    <select [(ngModel)]="addUnit" aria-label="Satuan tier">
-      <option value="m">menit</option>
-      <option value="h">jam</option>
-    </select>
+    <app-select class="ui-select-sm" [(ngModel)]="addUnit" [options]="unitOptions" ariaLabel="Satuan tier" />
     <button type="button" class="btn btn-soft btn-sm" (click)="add()">
       <app-icon name="plus" [size]="14" /> Tambah
     </button>
-    <span class="count-pill"><strong>{{ selected().length }}</strong> / {{ max }} aktif</span>
+    <span class="count-pill" [attr.title]="'Maksimal ' + max + ' tier'"><strong>{{ selected().length }}</strong> tier dipilih · maks. {{ max }}</span>
   </div>
   @if (addError()) {
     <p class="field-error">{{ addError() }}</p>

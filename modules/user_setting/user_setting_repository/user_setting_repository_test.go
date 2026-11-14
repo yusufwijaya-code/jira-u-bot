@@ -25,26 +25,27 @@ func insertTestUser(t *testing.T, db *sql.DB, email string) int64 {
 	return id
 }
 
-func TestFindByUserID_NotFoundForUserWithoutRow(t *testing.T) {
+func TestFindRow_NotFoundForUserWithoutRow(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewUserSettingRepository(db)
 	userID := insertTestUser(t, db, "testmysql-us-1@esb.co.id")
 
-	_, found, err := repo.FindByUserID(context.Background(), userID)
+	_, found, err := repo.FindRow(context.Background(), userID, 0)
 	if err != nil || found {
-		t.Errorf("FindByUserID = found %v, err %v; want not found", found, err)
+		t.Errorf("FindRow = found %v, err %v; want not found", found, err)
 	}
 }
 
-func TestUpsertNotification_RoundTripsEveryField(t *testing.T) {
+func TestUpsertNotification_RoundTripsEveryFieldPerBoard(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewUserSettingRepository(db)
 	ctx := context.Background()
 	userID := insertTestUser(t, db, "testmysql-us-2@esb.co.id")
 
 	repeat := 30
-	in := user_setting_dto.UserSetting{
+	def := user_setting_dto.UserSetting{
 		UserID:               userID,
+		BoardID:              0,
 		ReminderTiers:        []string{"2h", "45m"},
 		OverageTiers:         []string{"1h", "15m"},
 		OverageRepeatMinutes: &repeat,
@@ -52,65 +53,103 @@ func TestUpsertNotification_RoundTripsEveryField(t *testing.T) {
 		NotifyReturnedToTodo: true,
 		QuietHours:           &user_setting_dto.QuietHours{Start: "22:00", End: "06:00"},
 	}
-	if err := repo.UpsertNotification(ctx, in); err != nil {
-		t.Fatalf("UpsertNotification: %v", err)
+	if err := repo.UpsertNotification(ctx, def); err != nil {
+		t.Fatalf("UpsertNotification(default): %v", err)
+	}
+	board := def
+	board.BoardID = 28
+	board.ReminderTiers = []string{"1h"}
+	board.OverageRepeatMinutes = nil
+	board.QuietHours = nil
+	if err := repo.UpsertNotification(ctx, board); err != nil {
+		t.Fatalf("UpsertNotification(board): %v", err)
 	}
 
-	got, found, err := repo.FindByUserID(ctx, userID)
+	got, found, err := repo.FindRow(ctx, userID, 0)
 	if err != nil || !found {
-		t.Fatalf("FindByUserID = found %v, err %v", found, err)
+		t.Fatalf("FindRow(default) = found %v, err %v", found, err)
 	}
-	if !reflect.DeepEqual(got.ReminderTiers, in.ReminderTiers) || !reflect.DeepEqual(got.OverageTiers, in.OverageTiers) {
-		t.Errorf("tiers = %v / %v", got.ReminderTiers, got.OverageTiers)
-	}
-	if got.OverageRepeatMinutes == nil || *got.OverageRepeatMinutes != 30 || got.NotifyEarlyFinish || !got.NotifyReturnedToTodo {
-		t.Errorf("unexpected %+v", got)
-	}
-	if got.QuietHours == nil || got.QuietHours.Start != "22:00" || got.QuietHours.End != "06:00" {
-		t.Errorf("QuietHours = %+v, want 22:00-06:00", got.QuietHours)
+	if !reflect.DeepEqual(got.ReminderTiers, def.ReminderTiers) || !reflect.DeepEqual(got.OverageTiers, def.OverageTiers) ||
+		got.OverageRepeatMinutes == nil || *got.OverageRepeatMinutes != 30 || got.NotifyEarlyFinish || !got.NotifyReturnedToTodo ||
+		got.QuietHours == nil || got.QuietHours.Start != "22:00" || got.UseDefault {
+		t.Errorf("default row = %+v", got)
 	}
 
-	// Second upsert switches repeat off and disables quiet hours.
-	in.OverageRepeatMinutes = nil
-	in.QuietHours = nil
-	if err := repo.UpsertNotification(ctx, in); err != nil {
-		t.Fatalf("second UpsertNotification: %v", err)
+	gotBoard, found, err := repo.FindRow(ctx, userID, 28)
+	if err != nil || !found {
+		t.Fatalf("FindRow(board) = found %v, err %v", found, err)
 	}
-	got, _, _ = repo.FindByUserID(ctx, userID)
-	if got.OverageRepeatMinutes != nil || got.QuietHours != nil {
-		t.Errorf("after update got repeat %v quiet %+v, want both nil", got.OverageRepeatMinutes, got.QuietHours)
+	if gotBoard.BoardID != 28 || gotBoard.UseDefault || !reflect.DeepEqual(gotBoard.ReminderTiers, []string{"1h"}) || gotBoard.OverageRepeatMinutes != nil || gotBoard.QuietHours != nil {
+		t.Errorf("board row = %+v, want its own custom values", gotBoard)
+	}
+
+	rows, err := repo.ListRows(ctx, userID)
+	if err != nil || len(rows) != 2 || rows[0].BoardID != 0 || rows[1].BoardID != 28 {
+		t.Errorf("ListRows = %+v, %v; want default then board 28", rows, err)
 	}
 }
 
-func TestSetMutedUntil_CreatesRowWithDefaultsAndClears(t *testing.T) {
+func TestSetUseDefault_KeepsTheBoardMute(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewUserSettingRepository(db)
+	ctx := context.Background()
+	userID := insertTestUser(t, db, "testmysql-us-5@esb.co.id")
+
+	custom := user_setting_dto.Default()
+	custom.UserID, custom.BoardID = userID, 28
+	if err := repo.UpsertNotification(ctx, custom); err != nil {
+		t.Fatalf("UpsertNotification: %v", err)
+	}
+	until := time.Now().Add(time.Hour).Truncate(time.Second)
+	if err := repo.SetMutedUntil(ctx, userID, 28, &until); err != nil {
+		t.Fatalf("SetMutedUntil: %v", err)
+	}
+	if err := repo.SetUseDefault(ctx, userID, 28); err != nil {
+		t.Fatalf("SetUseDefault: %v", err)
+	}
+
+	got, _, _ := repo.FindRow(ctx, userID, 28)
+	if !got.UseDefault || got.MutedUntil == nil || !got.MutedUntil.Equal(until) {
+		t.Errorf("row = useDefault %v, muted %v; want following default with the mute kept", got.UseDefault, got.MutedUntil)
+	}
+}
+
+func TestSetMutedUntil_CreatesRowsAndClears(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	repo := NewUserSettingRepository(db)
 	ctx := context.Background()
 	userID := insertTestUser(t, db, "testmysql-us-3@esb.co.id")
 
 	until := time.Now().Add(time.Hour).Truncate(time.Second)
-	if err := repo.SetMutedUntil(ctx, userID, &until); err != nil {
-		t.Fatalf("SetMutedUntil: %v", err)
+	if err := repo.SetMutedUntil(ctx, userID, 0, &until); err != nil {
+		t.Fatalf("SetMutedUntil(global): %v", err)
 	}
-	got, found, err := repo.FindByUserID(ctx, userID)
-	if err != nil || !found {
-		t.Fatalf("FindByUserID = found %v, err %v", found, err)
-	}
-	if got.MutedUntil == nil || !got.MutedUntil.Equal(until) {
-		t.Errorf("MutedUntil = %v, want %v", got.MutedUntil, until)
-	}
-	// The row was created by the mute alone, so every other column holds
-	// the table defaults (= legacy behavior).
-	if !reflect.DeepEqual(got.ReminderTiers, user_setting_dto.DefaultReminderTiers) || got.OverageRepeatMinutes == nil || *got.OverageRepeatMinutes != 5 {
-		t.Errorf("defaults not applied: %+v", got)
+	if err := repo.SetMutedUntil(ctx, userID, 26, &until); err != nil {
+		t.Fatalf("SetMutedUntil(board): %v", err)
 	}
 
-	if err := repo.SetMutedUntil(ctx, userID, nil); err != nil {
-		t.Fatalf("clear SetMutedUntil: %v", err)
+	def, found, err := repo.FindRow(ctx, userID, 0)
+	if err != nil || !found || def.MutedUntil == nil || !def.MutedUntil.Equal(until) || def.UseDefault {
+		t.Fatalf("default row = %+v, found %v, err %v", def, found, err)
 	}
-	got, _, _ = repo.FindByUserID(ctx, userID)
-	if got.MutedUntil != nil {
-		t.Errorf("MutedUntil = %v after clearing, want nil", got.MutedUntil)
+	if !reflect.DeepEqual(def.ReminderTiers, user_setting_dto.DefaultReminderTiers) || def.OverageRepeatMinutes == nil || *def.OverageRepeatMinutes != 5 {
+		t.Errorf("a row created by a mute must hold the table defaults, got %+v", def)
+	}
+	board, _, _ := repo.FindRow(ctx, userID, 26)
+	if !board.UseDefault || board.MutedUntil == nil {
+		t.Errorf("a board row created by a mute must follow the default, got %+v", board)
+	}
+
+	if err := repo.SetMutedUntil(ctx, userID, 26, nil); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	board, _, _ = repo.FindRow(ctx, userID, 26)
+	if board.MutedUntil != nil {
+		t.Errorf("board mute = %v after clearing, want nil", board.MutedUntil)
+	}
+	def, _, _ = repo.FindRow(ctx, userID, 0)
+	if def.MutedUntil == nil {
+		t.Error("clearing the board mute must not touch the global mute")
 	}
 }
 
@@ -121,10 +160,10 @@ func TestSetMutedUntil_ForeverSentinelRoundTrips(t *testing.T) {
 	userID := insertTestUser(t, db, "testmysql-us-4@esb.co.id")
 
 	forever := user_setting_dto.MuteForeverUntil
-	if err := repo.SetMutedUntil(ctx, userID, &forever); err != nil {
+	if err := repo.SetMutedUntil(ctx, userID, 0, &forever); err != nil {
 		t.Fatalf("SetMutedUntil(forever): %v", err)
 	}
-	got, _, err := repo.FindByUserID(ctx, userID)
+	got, _, err := repo.FindRow(ctx, userID, 0)
 	if err != nil || !got.IsMutedForever() || !got.IsMuted(time.Now()) {
 		t.Errorf("MutedUntil = %v, err %v; want the forever sentinel back", got.MutedUntil, err)
 	}

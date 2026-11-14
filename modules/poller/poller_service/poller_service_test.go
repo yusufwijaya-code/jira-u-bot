@@ -2,7 +2,9 @@ package poller_service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"nudge/modules/board/board_dto"
 	"testing"
 	"time"
 
@@ -23,6 +25,8 @@ type fakeJiraClientService struct {
 	changelogErr       error
 	issueStatus        string
 	issueStatusErr     error
+	// runStart / lastEntry, when set, drive GetTrackedRunTimes directly.
+	runStart, lastEntry time.Time
 }
 
 func (f *fakeJiraClientService) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -31,6 +35,14 @@ func (f *fakeJiraClientService) SearchCodeProcessIssues(ctx context.Context) ([]
 
 func (f *fakeJiraClientService) GetLatestCodeProcessEntryTime(ctx context.Context, issueKey string) (time.Time, bool, error) {
 	return f.changelogEntryTime, f.changelogFound, f.changelogErr
+}
+
+func (f *fakeJiraClientService) GetTrackedRunTimes(ctx context.Context, issueKey string) (time.Time, time.Time, bool, error) {
+	if !f.runStart.IsZero() {
+		return f.runStart, f.lastEntry, true, nil
+	}
+	t, found, err := f.GetLatestCodeProcessEntryTime(ctx, issueKey)
+	return t, t, found, err
 }
 
 func (f *fakeJiraClientService) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
@@ -67,6 +79,8 @@ type fakeIssueSessionServiceForPoller struct {
 	openAtCalls   []string
 	updateSPCalls map[string]float64
 	closeCalls    map[string]int64
+
+	activeSprintCalls int
 }
 
 func newFakeIssueSessionServiceForPoller() *fakeIssueSessionServiceForPoller {
@@ -860,5 +874,153 @@ func TestPollOnce_TracksIssueWhenAssigneeEmailIsBlankButAccountIDMatchesRegister
 	}
 	if issueSession.sessions["CORE-10782"].AssigneeEmail != "acc-rio-123" {
 		t.Errorf("AssigneeEmail = %q, want the REGISTERED email (%q in this fake), not the blank Jira-reported one", issueSession.sessions["CORE-10782"].AssigneeEmail, "acc-rio-123")
+	}
+}
+
+func (f *fakeIssueSessionServiceForPoller) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	f.activeSprintCalls++
+	if s, ok := f.sessions[issueKey]; ok {
+		s.BoardID, s.SprintID = boardID, sprintID
+	}
+	return nil
+}
+
+type fakeBoardRegistry struct{ ensured []int64 }
+
+func (f *fakeBoardRegistry) EnsureKnown(ctx context.Context, boardID int64) (board_dto.Board, error) {
+	f.ensured = append(f.ensured, boardID)
+	return board_dto.Board{BoardID: boardID}, nil
+}
+
+func TestPollOnce_RecordsActiveSprintBoardOnlyWhenItChanges(t *testing.T) {
+	issue := assignedIssue("OMS-1", "dev@esb.co.id", 2)
+	issue.Fields.SprintRaw = json.RawMessage(`[{"id": 8294, "name": "OMS Sprint 23", "state": "active", "boardId": 28}]`)
+	jiraClient := &fakeJiraClientService{issues: []jira_client_dto.Issue{issue}}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-time.Minute)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 2, FlagActive: true, CurrentSessionStartedDate: &start}
+	poller := newTestPoller(jiraClient, issueSession, &fakeReminderEngineService{}, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+	boards := &fakeBoardRegistry{}
+	poller.boards = boards
+
+	for i := 0; i < 2; i++ {
+		if err := poller.pollOnce(context.Background()); err != nil {
+			t.Fatalf("pollOnce %d returned error: %v", i, err)
+		}
+	}
+
+	s := issueSession.sessions["OMS-1"]
+	if s.BoardID == nil || *s.BoardID != 28 || s.SprintID == nil || *s.SprintID != 8294 {
+		t.Errorf("session board/sprint = %v/%v, want 28/8294", s.BoardID, s.SprintID)
+	}
+	if issueSession.activeSprintCalls != 1 || len(boards.ensured) != 1 {
+		t.Errorf("UpdateActiveSprint calls = %d, EnsureKnown calls = %d; want 1 each (the second poll is unchanged)", issueSession.activeSprintCalls, len(boards.ensured))
+	}
+}
+
+// --- per-project tracking rules (Tech Spec "CORE: Waktu Code Review Ikut Dihitung") ---
+
+func activeSession(key string) *issue_session_dto.IssueSession {
+	start := time.Now().Add(-10 * time.Minute)
+	return &issue_session_dto.IssueSession{
+		IssueKey: key, StoryPoints: 3, FlagActive: true,
+		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
+	}
+}
+
+func TestPollOnce_CoreExitToCodeCompletedTriggersEarlyCompletion(t *testing.T) {
+	issueSession := newFakeIssueSessionServiceForPoller()
+	issueSession.sessions["CORE-1"] = activeSession("CORE-1")
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(&fakeJiraClientService{issueStatus: "Code Completed"}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller())
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if len(reminderEngine.notifyEarlyCompletionCalls) != 1 || reminderEngine.notifyEarlyCompletionCalls[0] != "CORE-1" {
+		t.Errorf("notifyEarlyCompletionCalls = %v, want [CORE-1]", reminderEngine.notifyEarlyCompletionCalls)
+	}
+}
+
+func TestPollOnce_CoreExitToFeedbackStopsSilently(t *testing.T) {
+	issueSession := newFakeIssueSessionServiceForPoller()
+	issueSession.sessions["CORE-1"] = activeSession("CORE-1")
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(&fakeJiraClientService{issueStatus: "Feedback"}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller())
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if issueSession.closeCalls["CORE-1"] == 0 && issueSession.sessions["CORE-1"].FlagActive {
+		t.Error("the session must be closed")
+	}
+	if len(reminderEngine.notifyEarlyCompletionCalls)+len(reminderEngine.notifyReturnedToTodoCalls) != 0 {
+		t.Error("leaving to Feedback must not send any notice")
+	}
+}
+
+func TestPollOnce_OmsDoneStatusIsMatchedCaseInsensitively(t *testing.T) {
+	issueSession := newFakeIssueSessionServiceForPoller()
+	issueSession.sessions["OMS-1"] = activeSession("OMS-1")
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(&fakeJiraClientService{issueStatus: "CODE REVIEW"}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller())
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if len(reminderEngine.notifyEarlyCompletionCalls) != 1 {
+		t.Errorf("notifyEarlyCompletionCalls = %v, want OMS-1 even with different casing", reminderEngine.notifyEarlyCompletionCalls)
+	}
+}
+
+func TestPollOnce_CoreTicketInReviewKeepsItsSessionOpen(t *testing.T) {
+	issue := assignedIssue("CORE-1", "dev@esb.co.id", 3)
+	issue.Fields.Status = jira_client_dto.Status{Name: "CODE REVIEW"}
+	issueSession := newFakeIssueSessionServiceForPoller()
+	issueSession.sessions["CORE-1"] = activeSession("CORE-1")
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(&fakeJiraClientService{issues: []jira_client_dto.Issue{issue}}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if issueSession.closeCalls["CORE-1"] != 0 || !issueSession.sessions["CORE-1"].FlagActive {
+		t.Error("a CORE ticket still in CODE REVIEW must keep its session open")
+	}
+	if len(reminderEngine.evaluateCalls) != 1 {
+		t.Errorf("evaluateCalls = %v, want reminders to keep running during review", reminderEngine.evaluateCalls)
+	}
+}
+
+func TestPollOnce_NewSessionStartsAtRunStartReopenedAtLastEntry(t *testing.T) {
+	runStart := time.Date(2026, 11, 10, 9, 0, 0, 0, time.Local)
+	lastEntry := time.Date(2026, 11, 11, 14, 0, 0, 0, time.Local)
+
+	for name, existed := range map[string]bool{"new": false, "reopened": true} {
+		t.Run(name, func(t *testing.T) {
+			issue := assignedIssue("CORE-1", "dev@esb.co.id", 3)
+			issueSession := newFakeIssueSessionServiceForPoller()
+			if existed {
+				closed := activeSession("CORE-1")
+				closed.FlagActive = false
+				closed.CurrentSessionStartedDate = nil
+				closed.AccumulatedSeconds = 3600
+				issueSession.sessions["CORE-1"] = closed
+			}
+			jiraClient := &fakeJiraClientService{issues: []jira_client_dto.Issue{issue}, runStart: runStart, lastEntry: lastEntry}
+			poller := newTestPoller(jiraClient, issueSession, &fakeReminderEngineService{}, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+
+			if err := poller.pollOnce(context.Background()); err != nil {
+				t.Fatalf("pollOnce: %v", err)
+			}
+			got := issueSession.sessions["CORE-1"].CurrentSessionStartedDate
+			want := runStart
+			if existed {
+				want = lastEntry
+			}
+			if got == nil || !got.Equal(want) {
+				t.Errorf("session started at %v, want %v", got, want)
+			}
+		})
 	}
 }

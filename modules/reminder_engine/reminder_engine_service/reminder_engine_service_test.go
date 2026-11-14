@@ -34,12 +34,21 @@ func (f *fakeReminderLogService) LogReminder(ctx context.Context, issueKey, tier
 	return nil
 }
 
-// fakeUserSettings returns a fixed setting per email (defaults otherwise).
+// fakeUserSettings returns a fixed setting per email (defaults otherwise)
+// and records the board each lookup was for.
 type fakeUserSettings struct {
-	byEmail map[string]user_setting_dto.UserSetting
+	byEmail       map[string]user_setting_dto.UserSetting
+	byEmailBoard  map[string]map[int64]user_setting_dto.UserSetting
+	requestedFrom []int64
 }
 
-func (f *fakeUserSettings) GetForEmail(ctx context.Context, email string) user_setting_dto.UserSetting {
+func (f *fakeUserSettings) GetEffectiveForEmail(ctx context.Context, email string, boardID int64) user_setting_dto.UserSetting {
+	f.requestedFrom = append(f.requestedFrom, boardID)
+	if boards, ok := f.byEmailBoard[email]; ok {
+		if s, ok := boards[boardID]; ok {
+			return s
+		}
+	}
 	if s, ok := f.byEmail[email]; ok {
 		return s
 	}
@@ -1187,5 +1196,73 @@ func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T)
 	}
 	if len(webhookNotifier.sentMessages) != 0 {
 		t.Errorf("webhookNotifier.sentMessages = %d, want 0", len(webhookNotifier.sentMessages))
+	}
+}
+
+func (f *fakeIssueSessionService) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	return nil
+}
+
+// --- per-board settings (Tech Spec "Per-Board Settings & Active Sprint Dashboard") ---
+
+func TestEvaluateAndSend_UsesTheSettingsOfTheTicketsBoard(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	boardSetting := user_setting_dto.Default()
+	boardSetting.ReminderTiers = []string{"45m"}
+	settings := &fakeUserSettings{byEmailBoard: map[string]map[int64]user_setting_dto.UserSetting{
+		"anwar@esb.co.id": {28: boardSetting},
+	}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{}, newAlwaysOpenBusinessHours(),
+		reminderLog, &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}},
+		notifier, nil, "", settings,
+	)
+
+	board := int64(28)
+	session := issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 8200, // remaining 2600s <= 45m
+		AssigneeEmail: "anwar@esb.co.id", BoardID: &board,
+	}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(settings.requestedFrom) == 0 || settings.requestedFrom[0] != 28 {
+		t.Errorf("settings requested for boards %v, want 28", settings.requestedFrom)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "45m" {
+		t.Errorf("sentMessages = %+v, want board 28's 45m tier", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_TicketWithoutActiveSprintUsesDefaultScope(t *testing.T) {
+	settings := &fakeUserSettings{}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{}, newAlwaysOpenBusinessHours(),
+		newFakeReminderLogService(), &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}},
+		&fakeGoogleChatNotifierService{}, nil, "", settings,
+	)
+	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 1000, AssigneeEmail: "anwar@esb.co.id"}
+	engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session)
+
+	if len(settings.requestedFrom) == 0 || settings.requestedFrom[0] != 0 {
+		t.Errorf("settings requested for boards %v, want 0 (default)", settings.requestedFrom)
+	}
+}
+
+func TestEvaluateAndSend_MarksCoreReviewTickets(t *testing.T) {
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := newTestEngine(newFakeReminderLogService(), &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}}, notifier)
+
+	issue := testIssue("anwar@esb.co.id", "Anwar")
+	issue.Key = "CORE-1"
+	issue.Fields.Status = jira_client_dto.Status{Name: "CODE REVIEW"}
+	session := issue_session_dto.IssueSession{IssueKey: "CORE-1", StoryPoints: 3, AccumulatedSeconds: 9100}
+
+	if err := engine.EvaluateAndSend(context.Background(), issue, session); err != nil {
+		t.Fatalf("EvaluateAndSend: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || !notifier.sentMessages[0].InReview {
+		t.Errorf("sentMessages = %+v, want one reminder flagged InReview", notifier.sentMessages)
 	}
 }

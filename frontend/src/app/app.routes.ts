@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { LoginComponent } from './features/login/login.component';
 import { DashboardShellComponent } from './layouts/dashboard-shell/dashboard-shell.component';
 import { SettingsComponent } from './features/dashboard/settings/settings.component';
+import { HomeComponent } from './features/dashboard/home/home.component';
 import { AdminComponent } from './features/dashboard/admin/admin.component';
 import { AuthGuard } from './core/guards/auth.guard';
 import { AdminGuard } from './core/guards/admin.guard';
@@ -13,7 +14,13 @@ export const routes: Routes = [
     component: DashboardShellComponent,
     canActivate: [AuthGuard],
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'settings' },
+      {
+        path: '',
+        pathMatch: 'full',
+        component: HomeComponent,
+        title: 'Dashboard · Nudge',
+        data: { heading: 'Dashboard', subheading: 'Ringkasan tiket dan budget waktu kamu' },
+      },
       {
         path: 'settings',
         component: SettingsComponent,

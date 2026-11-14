@@ -30,6 +30,14 @@ const StoryPointFieldIDCoreEstimate = "customfield_10125"
 // OTHER status never triggers this notice.
 const StatusCodeReview = "Code Review"
 
+// StatusCodeReviewCore / StatusCodeCompletedCore are CORE's spelling of its
+// review and "finished" statuses (verified live 2026-11-14) — see
+// TrackingRule.
+const (
+	StatusCodeReviewCore    = "CODE REVIEW"
+	StatusCodeCompletedCore = "Code Completed"
+)
+
 // StatusToDo is the destination status the poller checks for to send the
 // "returned to To Do" notice — whether a ticket got there via /u-geser or
 // a manual Jira change.

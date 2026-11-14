@@ -5,24 +5,28 @@ import { BoardService } from '../../../core/services/board.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
+import { BoardContextService } from '../../../core/services/board-context.service';
 
 describe('MutePanelComponent', () => {
   let fixture: ComponentFixture<MutePanelComponent>;
   let boardService: jasmine.SpyObj<BoardService>;
   let toast: jasmine.SpyObj<ToastService>;
   let muteState: MuteStateService;
+  let boardContext: jasmine.SpyObj<BoardContextService>;
   const el = () => fixture.nativeElement as HTMLElement;
   const inOneHour = () => new Date(Date.now() + 3600_000).toISOString();
 
   beforeEach(async () => {
     boardService = jasmine.createSpyObj('BoardService', ['mute', 'unmute']);
     toast = jasmine.createSpyObj('ToastService', ['success', 'error', 'info']);
+    boardContext = jasmine.createSpyObj('BoardContextService', ['load']);
 
     await TestBed.configureTestingModule({
       imports: [MutePanelComponent],
       providers: [
         { provide: BoardService, useValue: boardService },
         { provide: ToastService, useValue: toast },
+        { provide: BoardContextService, useValue: boardContext },
       ],
     }).compileComponents();
 
@@ -44,7 +48,7 @@ describe('MutePanelComponent', () => {
     (el().querySelectorAll('.mute-actions button')[0] as HTMLButtonElement).click();
     fixture.detectChanges();
 
-    expect(boardService.mute).toHaveBeenCalledWith({ minutes: 60 });
+    expect(boardService.mute).toHaveBeenCalledWith({ minutes: 60 }, null);
     expect(muteState.active()).toBeTrue();
     expect(el().querySelector('.mute-banner')?.textContent).toContain('Notifikasi sedang dimute');
     expect(toast.success).toHaveBeenCalled();
@@ -53,7 +57,7 @@ describe('MutePanelComponent', () => {
   it('mutes until tomorrow', () => {
     boardService.mute.and.returnValue(of({ active: true, until: inOneHour() }));
     (el().querySelectorAll('.mute-actions button')[2] as HTMLButtonElement).click();
-    expect(boardService.mute).toHaveBeenCalledWith({ until: 'tomorrow' });
+    expect(boardService.mute).toHaveBeenCalledWith({ until: 'tomorrow' }, null);
   });
 
   it('cancels an active mute', () => {
@@ -100,10 +104,45 @@ describe('MutePanelComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(boardService.mute).toHaveBeenCalledWith({ until: 'forever' });
+    expect(boardService.mute).toHaveBeenCalledWith({ until: 'forever' }, null);
     expect(muteState.forever()).toBeTrue();
     const banner = el().querySelector('.mute-banner.forever');
     expect(banner?.textContent).toContain('Notifikasi dimatikan');
     expect(banner?.querySelector('button')?.textContent).toContain('Aktifkan lagi');
+  });
+
+  describe('board scope', () => {
+    beforeEach(() => {
+      fixture.componentRef.setInput('boardId', 28);
+      fixture.componentRef.setInput('boardStatus', { active: false, until: null });
+      fixture.detectChanges();
+    });
+
+    it('mutes only the board, leaves the global mute alone and refreshes the picker', () => {
+      boardService.mute.and.returnValue(of({ active: true, until: inOneHour() }));
+      const emitted = jasmine.createSpy('statusChange');
+      fixture.componentInstance.statusChange.subscribe(emitted);
+
+      (el().querySelectorAll('.mute-actions button')[0] as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(boardService.mute).toHaveBeenCalledWith({ minutes: 60 }, 28);
+      expect(muteState.active()).toBeFalse();
+      expect(boardContext.load).toHaveBeenCalled();
+      expect(emitted).toHaveBeenCalled();
+      expect(el().querySelector('.mute-banner')?.textContent).toContain('Board ini sedang dimute');
+    });
+
+    it('shows the board mute from the input and unmutes the board', () => {
+      fixture.componentRef.setInput('boardStatus', { active: true, until: inOneHour() });
+      fixture.detectChanges();
+      boardService.unmute.and.returnValue(of({ active: false, until: null }));
+
+      (el().querySelector('.mute-banner button') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(boardService.unmute).toHaveBeenCalledWith(28);
+      expect(el().querySelector('.mute-actions')).not.toBeNull();
+    });
   });
 });

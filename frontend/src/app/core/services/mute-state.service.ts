@@ -1,4 +1,4 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
 import { MuteStatus } from './board.service';
 
 /**
@@ -22,7 +22,12 @@ export class MuteStateService {
   readonly forever = computed(() => this.active() && !!this.status().forever);
 
   constructor() {
-    setInterval(() => this.now.set(Date.now()), 30_000);
+    // Outside the Angular zone: a never-ending interval inside it would keep
+    // the app permanently "unstable" (breaks whenStable/testability). The
+    // signal update still re-renders the views that read it.
+    inject(NgZone).runOutsideAngular(() => {
+      setInterval(() => this.now.set(Date.now()), 30_000);
+    });
   }
 
   set(status: MuteStatus): void {

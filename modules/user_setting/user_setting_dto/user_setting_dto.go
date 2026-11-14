@@ -55,16 +55,33 @@ type QuietHours struct {
 	End   string `json:"end"`
 }
 
-// UserSetting is one user's notification settings. Tier slices hold
-// canonical tier codes (see CanonicalTierCode), ordered largest-first.
+// DefaultBoardID is the boardID of a user's "default for every board" row.
+const DefaultBoardID int64 = 0
+
+// UserSetting is one user's notification settings for one scope. Tier
+// slices hold canonical tier codes (see CanonicalTierCode), ordered
+// largest-first.
+//
+// As a stored row (repository), MutedUntil is that row's own mute: the
+// global mute on the default row (BoardID 0), the board mute on a board row.
+// As an EFFECTIVE setting (service GetEffective*), the notification fields
+// are the ones that apply to the board, MutedUntil is the global mute and
+// BoardMutedUntil the board's own mute (Tech Spec "Per-Board Settings &
+// Active Sprint Dashboard").
 type UserSetting struct {
-	UserID               int64
+	UserID int64
+	// BoardID is the Jira Agile board (DefaultBoardID = every board).
+	BoardID int64
+	// UseDefault (board rows only): notification fields follow the default
+	// row; the row may still carry a board mute.
+	UseDefault           bool
 	ReminderTiers        []string
 	OverageTiers         []string
 	OverageRepeatMinutes *int
 	NotifyEarlyFinish    bool
 	NotifyReturnedToTodo bool
 	MutedUntil           *time.Time
+	BoardMutedUntil      *time.Time
 	QuietHours           *QuietHours
 }
 
@@ -85,14 +102,25 @@ func Default() UserSetting {
 // a single mutedUntil column instead of a separate flag.
 var MuteForeverUntil = time.Date(9999, 12, 31, 23, 59, 59, 0, Jakarta)
 
-// IsMutedForever reports whether the mute is the "selamanya" sentinel.
+// IsMutedForever reports whether the (global / row) mute is the "selamanya"
+// sentinel.
 func (s UserSetting) IsMutedForever() bool {
-	return s.MutedUntil != nil && s.MutedUntil.Year() >= 9999
+	return IsForever(s.MutedUntil)
 }
 
-// IsMuted reports whether a temporary mute is still running at now.
+// IsForever reports whether a mute timestamp is the "selamanya" sentinel.
+func IsForever(until *time.Time) bool {
+	return until != nil && until.Year() >= 9999
+}
+
+// MuteActive reports whether a mute timestamp is still running at now.
+func MuteActive(until *time.Time, now time.Time) bool {
+	return until != nil && until.After(now)
+}
+
+// IsMuted reports whether the global mute OR the board mute is running.
 func (s UserSetting) IsMuted(now time.Time) bool {
-	return s.MutedUntil != nil && s.MutedUntil.After(now)
+	return MuteActive(s.MutedUntil, now) || MuteActive(s.BoardMutedUntil, now)
 }
 
 // InQuietHours reports whether now (evaluated in WIB) falls inside the

@@ -1,0 +1,1 @@
+ALTER TABLE tr_issuesession ADD COLUMN sprintID BIGINT NULL AFTER boardID;

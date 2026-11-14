@@ -8,13 +8,17 @@
 
 - Polling tiket Jira (project OMS & CORE) tiap 10 detik, hanya untuk assignee yang sudah registrasi
 - Reminder bertingkat yang bisa diatur per user: default T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-5 menit, T-1 menit, lalu notifikasi "budget habis" dan overage berulang tiap 5 menit
-- Notifikasi "selesai lebih awal" saat tiket pindah ke Code Review sebelum budget habis
+- Notifikasi "selesai lebih awal" saat tiket pindah ke status selesai (OMS: Code Review, CORE: Code Completed) sebelum budget habis
+- Aturan tracking per project (`jira_client_dto/tracking_rules.go`): OMS dihitung hanya saat **Code Process**; CORE dihitung saat **Code Process + CODE REVIEW** dan berhenti saat keluar dari keduanya (reminder tetap dikirim selama review, pesannya ditandai "CODE REVIEW")
 - Elapsed time dihitung berbasis jam kerja (08:30–17:30 WIB, istirahat 12:00–13:00) dan kalender libur
 - Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
 - Command interaktif (`/u-mytickets`, `/u-budget <issueKey>`, `/u-overdue`, `/u-team`, `/u-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
 - Command `/u-geser<issueKey>:todo` dan `/u-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi; hint-nya otomatis muncul di tiap pesan reminder & overdue
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
-  - Layout: sidebar kiri (menu **Pengaturan**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
+  - **Per board Jira**: pemilih board di navbar (ikon project dari Jira, via proxy `GET /api/dashboard/boards/:id/avatar`) berisi "Semua board" + board yang sprint aktifnya berisi tiket kamu. Board tiket = board dari sprint **aktif**-nya (field sprint Jira). Dashboard & Pengaturan mengikuti board terpilih (`?board=` di URL, diingat di browser)
+  - Pengaturan per board: "Semua board" = pengaturan default; board tanpa pengaturan khusus mengikuti default (tombol **Atur khusus board ini** / **Kembalikan ke default**); mute dua level (semua board + per board). Disimpan di `ms_user_setting` dengan kunci `(userID, boardID)`, `boardID = 0` = default; cache board di `ms_board`
+  - Layout: sidebar kiri (menu **Dashboard** dan **Pengaturan**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
+  - **Dashboard** (halaman awal) — sapaan + status notif, 4 statistik (sedang dikerjakan, lewat budget, total tiket, achievement sprint), tiket Code Process dengan progress bar budget (hijau/oranye ≥80%/merah lewat budget) dan tombol geser ke Code Review / To Do, semua tiket per status (link ke Jira), dan ringkasan sprint terbaru (dipilih dari nomor + tahun sprint di namanya). Untuk board CORE ada card **Sedang di-review** (tiket CODE REVIEW beserta budget-nya) di bawah "Sedang dikerjakan"
   - **Pengaturan** — setting notifikasi per user (tabel `ms_user_setting`; tanpa baris = default yang sama dengan perilaku lama):
     - **Reminder sebelum budget habis** — pilih tier preset atau tambah tier custom (1 menit–8 jam, maks. 10)
     - **Reminder setelah lewat budget** — tier `T+` (mis. +15 menit, +1 jam), lalu ulang tiap 5/10/15/30/60 menit atau berhenti
@@ -29,7 +33,7 @@
 
 - Nama aplikasi: **Nudge**; base path `/nudge` (env `BASE_PATH`), Go module `nudge`
 - Ikon: `frontend/public/favicon.svg` (sumber), plus `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png` hasil render-nya, dan `manifest.webmanifest`
-- Design system di `frontend/src/styles.scss` (token warna indigo `--primary` + aksen amber `--accent`, font Plus Jakarta Sans); komponen UI bersama: `shared/ui/icon.component.ts` (ikon SVG inline), `core/ui/toast.service.ts` + `core/ui/confirm.service.ts` (toast & dialog konfirmasi, di-render oleh `shared/ui/overlays.component.ts`)
+- Design system di `frontend/src/styles.scss` (token warna indigo `--primary` + aksen amber `--accent`, font Plus Jakarta Sans); komponen UI bersama: `shared/ui/icon.component.ts` (ikon SVG inline), `core/ui/toast.service.ts` + `core/ui/confirm.service.ts` (toast & dialog konfirmasi, di-render oleh `shared/ui/overlays.component.ts`), dropdown custom `shared/ui/select.component.ts` dan pemilih jam `shared/ui/time-picker.component.ts` (pengganti `<select>`/`<input type="time">` native)
 - Command bot Google Chat tetap memakai prefix `/u-`
 
 ## Tech Stack

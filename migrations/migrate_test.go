@@ -174,3 +174,38 @@ func TestApply_EnforcesUniqueEmailOnMsUser(t *testing.T) {
 		t.Fatal("expected UNIQUE constraint violation on duplicate email, got nil error")
 	}
 }
+
+func TestApply_PerBoardSettingsSchema(t *testing.T) {
+	db := openTestConn(t)
+	if err := Apply(db); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	// Running it twice must be a no-op (idempotent PK swap).
+	if err := Apply(db); err != nil {
+		t.Fatalf("second Apply returned error: %v", err)
+	}
+
+	var pkCols string
+	err := db.QueryRow(`
+		SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION)
+		FROM information_schema.KEY_COLUMN_USAGE
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ms_user_setting' AND CONSTRAINT_NAME = 'PRIMARY'
+	`).Scan(&pkCols)
+	if err != nil || pkCols != "userID,boardID" {
+		t.Errorf("ms_user_setting PK = %q, %v; want userID,boardID", pkCols, err)
+	}
+
+	for table, cols := range map[string][]string{
+		"ms_board":        {"boardID", "boardName", "projectKey", "avatarURL"},
+		"tr_issuesession": {"boardID", "sprintID"},
+		"ms_user_setting": {"boardID", "useDefault"},
+	} {
+		for _, col := range cols {
+			var n int
+			db.QueryRow(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`, table, col).Scan(&n)
+			if n != 1 {
+				t.Errorf("%s.%s missing", table, col)
+			}
+		}
+	}
+}

@@ -1,0 +1,1 @@
+ALTER TABLE ms_user_setting DROP PRIMARY KEY, ADD PRIMARY KEY (userID, boardID);

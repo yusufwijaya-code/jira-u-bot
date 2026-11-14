@@ -1,0 +1,1 @@
+ALTER TABLE ms_user_setting ADD COLUMN useDefault TINYINT(1) NOT NULL DEFAULT 0 AFTER boardID;

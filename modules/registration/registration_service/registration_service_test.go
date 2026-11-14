@@ -26,6 +26,11 @@ func (f *fakeJiraClientServiceForRegistration) GetLatestCodeProcessEntryTime(ctx
 	return time.Time{}, false, nil
 }
 
+func (f *fakeJiraClientServiceForRegistration) GetTrackedRunTimes(ctx context.Context, issueKey string) (time.Time, time.Time, bool, error) {
+	t, found, err := f.GetLatestCodeProcessEntryTime(ctx, issueKey)
+	return t, t, found, err
+}
+
 func (f *fakeJiraClientServiceForRegistration) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
 	return f.accountID, f.found, f.err
 }

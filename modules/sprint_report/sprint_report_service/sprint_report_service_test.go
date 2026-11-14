@@ -191,3 +191,7 @@ func TestGenerateReport_ExcludesOtherUsersTickets(t *testing.T) {
 		t.Errorf("report = %+v, want only the caller's own ticket MINE", report)
 	}
 }
+
+func (f *fakeIssueSessionRepoForReport) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	return nil
+}

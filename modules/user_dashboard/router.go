@@ -13,8 +13,11 @@ import (
 func Router(api *gin.RouterGroup, handler user_dashboard_handler.UserDashboardHandler) {
 	api.GET("/settings", handler.GetSettings)
 	api.PUT("/settings/notification", handler.UpdateNotificationSettings)
+	api.DELETE("/settings/notification", handler.ResetNotificationSettings)
 	api.POST("/settings/mute", handler.Mute)
 	api.DELETE("/settings/mute", handler.Unmute)
+	api.GET("/boards", handler.ListBoards)
+	api.GET("/boards/:boardId/avatar", handler.BoardAvatar)
 	api.GET("/board", handler.GetBoard)
 	api.GET("/team", handler.GetTeam)
 	api.GET("/overdue", handler.GetOverdue)

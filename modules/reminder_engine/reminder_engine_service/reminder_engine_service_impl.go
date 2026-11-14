@@ -19,11 +19,13 @@ import (
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
-// UserSettingReader is the one user_setting capability the engine needs.
-// GetForEmail never fails — it falls back to defaults (Tech Spec "Dynamic
-// User Notification Settings", AC6.1).
+// UserSettingReader is the one user_setting capability the engine needs:
+// the EFFECTIVE settings of an assignee for the board of the ticket's active
+// sprint (0 = no active sprint → the user's default). Never fails — it
+// falls back to defaults (Tech Spec "Per-Board Settings & Active Sprint
+// Dashboard", AC5.2).
 type UserSettingReader interface {
-	GetForEmail(ctx context.Context, email string) user_setting_dto.UserSetting
+	GetEffectiveForEmail(ctx context.Context, email string, boardID int64) user_setting_dto.UserSetting
 }
 
 type reminderEngineServiceImpl struct {
@@ -81,13 +83,37 @@ func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_ch
 	return e.dmNotifier
 }
 
-// settingsFor returns the assignee's notification settings. The settings of
-// the ticket's ASSIGNEE always apply, whichever channel delivers it.
-func (e *reminderEngineServiceImpl) settingsFor(ctx context.Context, email string) user_setting_dto.UserSetting {
+// settingsFor returns the assignee's effective settings for boardID. The
+// settings of the ticket's ASSIGNEE always apply, whichever channel
+// delivers it.
+func (e *reminderEngineServiceImpl) settingsFor(ctx context.Context, email string, boardID int64) user_setting_dto.UserSetting {
 	if e.userSettings == nil {
 		return user_setting_dto.Default()
 	}
-	return e.userSettings.GetForEmail(ctx, email)
+	return e.userSettings.GetEffectiveForEmail(ctx, email, boardID)
+}
+
+// inReview reports whether the ticket sits in its project's tracked review
+// status (CORE "CODE REVIEW") — the message then says review time counts.
+func inReview(issue jira_client_dto.Issue) bool {
+	return jira_client_dto.RuleForIssue(issue.Key).IsReview(issue.Fields.Status.Name)
+}
+
+func boardOf(session issue_session_dto.IssueSession) int64 {
+	if session.BoardID == nil {
+		return user_setting_dto.DefaultBoardID
+	}
+	return *session.BoardID
+}
+
+// boardOfIssue looks the ticket's board up from its tracked session — the
+// early-completion / returned-to-todo notices only get the issue key.
+func (e *reminderEngineServiceImpl) boardOfIssue(ctx context.Context, issueKey string) int64 {
+	session, found, err := e.issueSession.GetSessionByIssueKey(ctx, issueKey)
+	if err != nil || !found || session == nil {
+		return user_setting_dto.DefaultBoardID
+	}
+	return boardOf(*session)
 }
 
 // ApplicableTiers returns, largest-first, the DEFAULT tiers strictly shorter
@@ -134,7 +160,7 @@ func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue j
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	assigneeName := e.resolveAssigneeDisplayName(ctx, issue.Fields.Assignee)
 	issueURL := fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issue.Key)
-	setting := e.settingsFor(ctx, session.AssigneeEmail)
+	setting := e.settingsFor(ctx, session.AssigneeEmail, boardOf(session))
 
 	if elapsedSeconds > budgetSeconds {
 		return e.sendOverageIfDue(ctx, issue, session, setting, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
@@ -233,6 +259,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 		ElapsedSeconds:       elapsedSeconds,
 		Tier:                 target,
 		IsOverage:            false,
+		InReview:             inReview(issue),
 		Deadline:             deadline,
 		CodeProcessStartedAt: codeProcessStartedAt(session.CurrentSessionStartedDate),
 	}
@@ -332,6 +359,7 @@ func (e *reminderEngineServiceImpl) sendOverage(ctx context.Context, issue jira_
 		ElapsedSeconds:       elapsedSeconds,
 		Tier:                 tier,
 		IsOverage:            true,
+		InReview:             inReview(issue),
 		CodeProcessStartedAt: codeProcessStartedAt(session.CurrentSessionStartedDate),
 	}
 
@@ -355,7 +383,7 @@ func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context,
 	if elapsedSeconds >= budgetSeconds {
 		return nil
 	}
-	setting := e.settingsFor(ctx, assigneeEmail)
+	setting := e.settingsFor(ctx, assigneeEmail, e.boardOfIssue(ctx, issueKey))
 	if !setting.NotifyEarlyFinish || setting.IsSilenced(time.Now()) {
 		return nil // AC3.1, AC4.3
 	}
@@ -387,7 +415,7 @@ func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context,
 }
 
 func (e *reminderEngineServiceImpl) NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error {
-	setting := e.settingsFor(ctx, assigneeEmail)
+	setting := e.settingsFor(ctx, assigneeEmail, e.boardOfIssue(ctx, issueKey))
 	if !setting.NotifyReturnedToTodo || setting.IsSilenced(time.Now()) {
 		return nil // AC3.2, AC4.3
 	}

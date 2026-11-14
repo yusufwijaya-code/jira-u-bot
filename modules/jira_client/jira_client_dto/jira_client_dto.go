@@ -38,8 +38,61 @@ type IssueFields struct {
 }
 
 type sprintObject struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	State     string `json:"state"`
+	BoardID   int64  `json:"boardId"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+}
+
+// SprintRef is one sprint as Jira reports it — on an issue's Sprint field or
+// from the Agile API.
+type SprintRef struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	State     string `json:"state"`
+	BoardID   int64  `json:"boardId"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
+}
+
+// ActiveSprint returns the issue's sprint whose state is "active" — the
+// board that sprint belongs to is the ticket's board (Tech Spec "Per-Board
+// Settings & Active Sprint Dashboard"). Unlike ActiveSprintName there is no
+// fallback to a closed sprint: no active sprint means no board.
+func (f IssueFields) ActiveSprint() (SprintRef, bool) {
+	if len(f.SprintRaw) == 0 || string(f.SprintRaw) == "null" {
+		return SprintRef{}, false
+	}
+	var sprints []sprintObject
+	if err := json.Unmarshal(f.SprintRaw, &sprints); err != nil {
+		return SprintRef{}, false
+	}
+	for _, s := range sprints {
+		if s.State == "active" && s.BoardID > 0 {
+			return SprintRef(s), true
+		}
+	}
+	return SprintRef{}, false
+}
+
+// BoardInfo is GET /rest/agile/1.0/board/{id}. Jira boards have no avatar
+// of their own — location.avatarURI is the board's project avatar, which is
+// what Jira shows next to the board too.
+type BoardInfo struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Location struct {
+		ProjectKey string `json:"projectKey"`
+		AvatarURI  string `json:"avatarURI"`
+	} `json:"location"`
+}
+
+// SprintPage is GET /rest/agile/1.0/board/{id}/sprint.
+type SprintPage struct {
+	Values []SprintRef `json:"values"`
 }
 
 var legacySprintNamePattern = regexp.MustCompile(`name=([^,\]]+)`)

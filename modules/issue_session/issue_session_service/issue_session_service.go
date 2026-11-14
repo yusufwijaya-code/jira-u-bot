@@ -15,4 +15,7 @@ type IssueSessionService interface {
 	GetActiveSessions(ctx context.Context) ([]issue_session_dto.IssueSession, error)
 	GetSessionByIssueKey(ctx context.Context, issueKey string) (*issue_session_dto.IssueSession, bool, error)
 	UpdateLastOverageReminder(ctx context.Context, issueKey string) error
+	// UpdateActiveSprint records the ticket's active sprint and its board
+	// (nil = not in an active sprint).
+	UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error
 }

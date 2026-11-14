@@ -139,3 +139,7 @@ func TestCalculateElapsedSeconds_WithActiveSession(t *testing.T) {
 		t.Errorf("CalculateElapsedSeconds() = %d, want approximately %d (AccumulatedSeconds + live business seconds since CurrentSessionStartedDate)", got, want)
 	}
 }
+
+func (f *fakeIssueSessionRepository) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	return nil
+}

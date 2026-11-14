@@ -10,6 +10,7 @@ import (
 	"nudge/base/helpers/curl_helper"
 	"nudge/config"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 type googleChatNotifierServiceImpl struct {
@@ -102,8 +103,11 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 		fmt.Sprintf("*Assignee:* %s", msg.AssigneeName),
 		fmt.Sprintf("*Masuk Code Process:* %s", FormatDeadline(msg.CodeProcessStartedAt)),
 	}
+	if msg.InReview {
+		lines = append(lines, "*Status:* CODE REVIEW (waktu review tetap dihitung)")
+	}
 	if msg.IsEarlyCompletion {
-		lines = append(lines, fmt.Sprintf("*Pindah ke Code Review:* %s", FormatDeadline(msg.CodeReviewEnteredAt)))
+		lines = append(lines, fmt.Sprintf("*Pindah ke %s:* %s", jira_client_dto.RuleForIssue(msg.IssueKey).DoneStatus, FormatDeadline(msg.CodeReviewEnteredAt)))
 	}
 	lines = append(lines,
 		fmt.Sprintf("*Story Point:* %.1f SP (budget %.1f jam, dihitung dari %.1f SP × 1 jam/SP)", msg.StoryPoints, budgetHours, msg.StoryPoints),

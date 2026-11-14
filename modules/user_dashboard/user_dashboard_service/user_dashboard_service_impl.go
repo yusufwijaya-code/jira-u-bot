@@ -2,10 +2,13 @@ package user_dashboard_service
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
+	"nudge/modules/board/board_dto"
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
@@ -26,6 +29,21 @@ type userDashboardServiceImpl struct {
 	issueSessionRepo issue_session_repository.IssueSessionRepository
 	businessHours    business_hours_service.BusinessHoursService
 	holidayCalendar  business_hours_dto.HolidayCalendar
+	jiraBaseURL      string
+	agile            activeSprintSearcher
+	boards           boardDirectory
+}
+
+// activeSprintSearcher is the one jira_client_service.JiraAgileClient
+// capability this service needs.
+type activeSprintSearcher interface {
+	SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error)
+}
+
+// boardDirectory is the board_service slice this service needs.
+type boardDirectory interface {
+	EnsureKnown(ctx context.Context, boardID int64) (board_dto.Board, error)
+	ActiveSprint(ctx context.Context, boardID int64) (jira_client_dto.SprintRef, bool, error)
 }
 
 func NewUserDashboardService(
@@ -35,6 +53,9 @@ func NewUserDashboardService(
 	issueSessionRepo issue_session_repository.IssueSessionRepository,
 	businessHours business_hours_service.BusinessHoursService,
 	holidayCalendar business_hours_dto.HolidayCalendar,
+	jiraBaseURL string,
+	agile activeSprintSearcher,
+	boards boardDirectory,
 ) UserDashboardService {
 	return &userDashboardServiceImpl{
 		jiraClient:       jiraClient,
@@ -43,16 +64,28 @@ func NewUserDashboardService(
 		issueSessionRepo: issueSessionRepo,
 		businessHours:    businessHours,
 		holidayCalendar:  holidayCalendar,
+		jiraBaseURL:      strings.TrimRight(jiraBaseURL, "/"),
+		agile:            agile,
+		boards:           boards,
 	}
 }
 
-func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string) (user_dashboard_dto.Board, error) {
+func (s *userDashboardServiceImpl) issueURL(issueKey string) string {
+	if s.jiraBaseURL == "" {
+		return ""
+	}
+	return s.jiraBaseURL + "/browse/" + issueKey
+}
+
+// activeSprintIssues returns email's tickets in open sprints (empty for an
+// unregistered user).
+func (s *userDashboardServiceImpl) activeSprintIssues(ctx context.Context, email string) ([]jira_client_dto.Issue, error) {
 	user, found, err := s.registrationRepo.FindUserByEmail(ctx, email)
 	if err != nil {
-		return user_dashboard_dto.Board{}, err
+		return nil, err
 	}
 	if !found {
-		return user_dashboard_dto.Board{}, nil
+		return nil, nil
 	}
 
 	// A credential resolution error (e.g. decrypt failure) falls back to
@@ -62,8 +95,15 @@ func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string)
 	if credErr != nil {
 		log.Printf("user_dashboard_service: ResolveCredential(%s) failed, falling back to central credential: %v", email, credErr)
 	}
+	return s.agile.SearchActiveSprintIssuesByAssignee(ctx, cred, user.JiraAccountID)
+}
 
-	issues, err := s.jiraClient.SearchAllIssuesByAssignee(ctx, cred, user.JiraAccountID)
+func activeBoardOf(issue jira_client_dto.Issue) (jira_client_dto.SprintRef, bool) {
+	return issue.Fields.ActiveSprint()
+}
+
+func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string, boardID int64) (user_dashboard_dto.Board, error) {
+	issues, err := s.activeSprintIssues(ctx, email)
 	if err != nil {
 		return user_dashboard_dto.Board{}, err
 	}
@@ -71,7 +111,14 @@ func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string)
 	board := user_dashboard_dto.Board{}
 	columnIndex := map[string]int{}
 	for _, issue := range issues {
+		sprint, inSprint := activeBoardOf(issue)
+		if boardID > 0 && (!inSprint || sprint.BoardID != boardID) {
+			continue
+		}
 		card := s.buildCard(ctx, issue)
+		if inSprint {
+			card.BoardID = sprint.BoardID
+		}
 
 		idx, ok := columnIndex[card.Status]
 		if !ok {
@@ -84,6 +131,60 @@ func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string)
 	return board, nil
 }
 
+func (s *userDashboardServiceImpl) ListBoards(ctx context.Context, email string) ([]user_dashboard_dto.BoardSummary, error) {
+	issues, err := s.activeSprintIssues(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	byBoard := map[int64]*user_dashboard_dto.BoardSummary{}
+	var order []int64
+	for _, issue := range issues {
+		sprint, ok := activeBoardOf(issue)
+		if !ok {
+			continue
+		}
+		summary, seen := byBoard[sprint.BoardID]
+		if !seen {
+			summary = &user_dashboard_dto.BoardSummary{
+				BoardID:    sprint.BoardID,
+				ProjectKey: jira_client_dto.ProjectKeyOf(issue.Key),
+				ActiveSprint: user_dashboard_dto.SprintSummary{
+					ID: sprint.ID, Name: sprint.Name, StartDate: sprint.StartDate, EndDate: sprint.EndDate,
+				},
+			}
+			byBoard[sprint.BoardID] = summary
+			order = append(order, sprint.BoardID)
+		}
+		summary.TicketCount++
+	}
+
+	out := make([]user_dashboard_dto.BoardSummary, 0, len(order))
+	for _, id := range order {
+		summary := *byBoard[id]
+		summary.Name = fmt.Sprintf("Board #%d", id)
+		if b, err := s.boards.EnsureKnown(ctx, id); err != nil {
+			log.Printf("user_dashboard_service: board %d lookup failed: %v", id, err)
+		} else {
+			summary.Name = b.Name
+			if b.ProjectKey != "" {
+				summary.ProjectKey = b.ProjectKey
+			}
+		}
+		summary.ReviewTracked = jira_client_dto.RuleFor(summary.ProjectKey).TracksReview()
+		// The issue's Sprint field usually carries the dates; fall back to
+		// the Agile API (cached) when it doesn't.
+		if summary.ActiveSprint.StartDate == "" || summary.ActiveSprint.EndDate == "" {
+			if sprint, found, err := s.boards.ActiveSprint(ctx, id); err == nil && found && sprint.ID == summary.ActiveSprint.ID {
+				summary.ActiveSprint.StartDate, summary.ActiveSprint.EndDate = sprint.StartDate, sprint.EndDate
+			}
+		}
+		out = append(out, summary)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 // buildCard implements spec AC3.2: a Code Process ticket with a tracked
 // session gets budget detail attached; every other ticket (including a
 // Code Process ticket the poller hasn't captured yet — a brief race, not
@@ -93,9 +194,12 @@ func (s *userDashboardServiceImpl) buildCard(ctx context.Context, issue jira_cli
 		IssueKey: issue.Key,
 		Summary:  issue.Fields.Summary,
 		Status:   issue.Fields.Status.Name,
+		IssueURL: s.issueURL(issue.Key),
 	}
 
-	if !strings.EqualFold(card.Status, jira_client_dto.StatusCodeProcess) {
+	// Budget detail for every status whose time counts — CORE also counts
+	// CODE REVIEW (Tech Spec "CORE: Waktu Code Review Ikut Dihitung").
+	if !jira_client_dto.RuleForIssue(issue.Key).IsTracked(card.Status) {
 		return card
 	}
 
@@ -119,6 +223,11 @@ func (s *userDashboardServiceImpl) attachBudgetDetail(card *user_dashboard_dto.C
 	card.ElapsedLabel = google_chat_notifier_service.FormatDuration(elapsedSeconds)
 	card.RemainingLabel = google_chat_notifier_service.FormatDuration(remainingSeconds)
 	card.DeadlineLabel = google_chat_notifier_service.FormatDeadline(deadline)
+	card.ElapsedSeconds = elapsedSeconds
+	card.BudgetSeconds = budgetSeconds
+	if card.IssueURL == "" {
+		card.IssueURL = s.issueURL(session.IssueKey)
+	}
 }
 
 // GetTeamView returns email's own active (Code Process) tickets, grouped by

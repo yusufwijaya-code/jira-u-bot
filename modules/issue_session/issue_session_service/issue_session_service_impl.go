@@ -46,6 +46,10 @@ func (s *issueSessionServiceImpl) UpdateLastOverageReminder(ctx context.Context,
 	return s.repo.UpdateLastOverageReminder(ctx, issueKey)
 }
 
+func (s *issueSessionServiceImpl) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
+	return s.repo.UpdateActiveSprint(ctx, issueKey, boardID, sprintID)
+}
+
 // CalculateElapsedSeconds returns a session's total elapsed time: its
 // accumulated seconds from past Code Process periods, plus live business-hours
 // elapsed since CurrentSessionStartedDate if a session is currently active.

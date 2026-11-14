@@ -9,11 +9,12 @@ import (
 
 type JiraClientService interface {
 	SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error)
-	// GetLatestCodeProcessEntryTime returns the timestamp of the MOST RECENT
-	// transition into "Code Process" for issueKey — not the first one ever.
-	// Used only at poller startup to backfill tickets already mid-flight
-	// (spec Business Logic point 7); steady-state polling never calls this.
-	GetLatestCodeProcessEntryTime(ctx context.Context, issueKey string) (time.Time, bool, error)
+	// GetTrackedRunTimes reads the issue's changelog against its project's
+	// TrackingRule (Tech Spec "CORE: Waktu Code Review Ikut Dihitung"):
+	// runStart = when the current run of tracked statuses began (last entry
+	// from an UNtracked status), lastEntry = the most recent transition into
+	// any tracked status. found=false when it never entered one.
+	GetTrackedRunTimes(ctx context.Context, issueKey string) (runStart, lastEntry time.Time, found bool, err error)
 	// LookupUserByEmail reports whether a Jira account matches email and,
 	// if so, its accountId — the canonical identifier for matching
 	// registered users against issue assignees later (Jira hides

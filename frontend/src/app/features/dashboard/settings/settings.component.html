@@ -40,8 +40,44 @@
       ></app-jira-credential>
     </section>
 
+    <!-- Scope: default for every board vs one board -->
+    <section class="scope-bar" [attr.data-scope]="scopeBoardId() === null ? 'default' : useDefault() && !editingCustom() ? 'following' : 'custom'">
+      <app-board-avatar [boardId]="scopeBoardId()" [projectKey]="scopeBoard()?.projectKey ?? ''" [size]="40" />
+      <div class="scope-text">
+        @if (scopeBoardId() === null) {
+          <strong>Pengaturan default semua board</strong>
+          <span>Dipakai oleh setiap board yang belum punya pengaturan khusus. Pilih board di navbar untuk mengatur board tertentu.</span>
+        } @else if (useDefault() && !editingCustom()) {
+          <strong>{{ scopeName() }} mengikuti pengaturan default</strong>
+          <span>Perubahan di "Semua board" otomatis berlaku di sini. Atur khusus kalau board ini butuh ritme yang berbeda.</span>
+        } @else if (useDefault() && editingCustom()) {
+          <strong>Mengatur khusus {{ scopeName() }}</strong>
+          <span>Mulai dari pengaturan default. Simpan salah satu kartu untuk menerapkan pengaturan khusus board ini.</span>
+        } @else {
+          <strong>{{ scopeName() }} <span class="scope-badge">Pengaturan khusus</span></strong>
+          <span>Board ini tidak terpengaruh perubahan di pengaturan default.</span>
+        }
+      </div>
+      <div class="scope-actions">
+        @if (scopeBoardId() !== null && useDefault() && !editingCustom()) {
+          <button type="button" class="btn btn-primary btn-sm" (click)="startCustom()">
+            <app-icon name="settings" [size]="14" /> Atur khusus board ini
+          </button>
+        }
+        @if (scopeBoardId() !== null && useDefault() && editingCustom()) {
+          <button type="button" class="btn btn-ghost btn-sm" (click)="cancelCustom()">Batal</button>
+        }
+        @if (scopeBoardId() !== null && !useDefault()) {
+          <button type="button" class="btn btn-ghost btn-sm" [class.loading]="resetting()" [disabled]="resetting()" (click)="resetToDefault()">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="btn-label"><app-icon name="refresh" [size]="14" /> Kembalikan ke default</span>
+          </button>
+        }
+      </div>
+    </section>
+
     <!-- 1. Pre-budget tiers -->
-    <section class="card" data-card="reminder">
+    <section class="card" data-card="reminder" [class.readonly]="readOnly()" [attr.inert]="readOnly() ? '' : null">
       <header class="card-header">
         <span class="card-icon"><app-icon name="bell" [size]="20" /></span>
         <div>
@@ -61,7 +97,7 @@
     </section>
 
     <!-- 2. Post-budget tiers + repeat -->
-    <section class="card" data-card="overage">
+    <section class="card" data-card="overage" [class.readonly]="readOnly()" [attr.inert]="readOnly() ? '' : null">
       <header class="card-header">
         <span class="card-icon danger"><app-icon name="clock" [size]="20" /></span>
         <div>
@@ -80,15 +116,12 @@
       <div class="repeat-row">
         <label class="field">
           <span class="field-label"><app-icon name="repeat" [size]="14" /> Setelah tier terakhir</span>
-          <select
-            aria-label="Pengulangan setelah tier terakhir"
+          <app-select
+            ariaLabel="Pengulangan setelah tier terakhir"
+            [options]="repeatOptions"
             [ngModel]="d.overageRepeatMinutes"
             (ngModelChange)="patch({ overageRepeatMinutes: $event })"
-          >
-            @for (opt of repeatOptions; track opt.label) {
-              <option [ngValue]="opt.value">{{ opt.label }}</option>
-            }
-          </select>
+          />
         </label>
         <div class="timeline-preview">
           <span class="timeline-label">Alur notif</span>
@@ -99,7 +132,7 @@
     </section>
 
     <!-- 3. Event toggles -->
-    <section class="card" data-card="events">
+    <section class="card" data-card="events" [class.readonly]="readOnly()" [attr.inert]="readOnly() ? '' : null">
       <header class="card-header">
         <span class="card-icon"><app-icon name="zap" [size]="20" /></span>
         <div>
@@ -146,12 +179,30 @@
         </div>
       </header>
 
-      <div class="subsection">
-        <h3>Mute sementara</h3>
-        <app-mute-panel />
-      </div>
+      @if (scopeBoardId() === null) {
+        <div class="subsection">
+          <h3>Mute semua board</h3>
+          <app-mute-panel />
+        </div>
+      } @else {
+        <div class="subsection">
+          <h3>Mute board ini</h3>
+          <app-mute-panel [boardId]="scopeBoardId()" [boardStatus]="boardMute()" (statusChange)="boardMute.set($event)" />
+        </div>
+        <div class="subsection global-mute-status" [class.active]="globalMuteUntil()">
+          <app-icon [name]="globalMuteUntil() ? 'bell-off' : 'bell'" [size]="16" />
+          <span>
+            @if (globalMuteUntil(); as until) {
+              Mute semua board aktif {{ globalMute()?.forever ? '(dimatikan)' : 'sampai ' + formatWib(until) + ' WIB' }} — board ini ikut dibungkam.
+            } @else {
+              Mute semua board tidak aktif.
+            }
+          </span>
+          <button type="button" class="link-btn" (click)="boardContext.select(null)">Atur di Semua board</button>
+        </div>
+      }
 
-      <div class="subsection">
+      <div class="subsection" [class.readonly]="readOnly()" [attr.inert]="readOnly() ? '' : null">
         <label class="toggle-row">
           <span class="toggle-text">
             <strong>Jam tenang harian</strong>
@@ -168,12 +219,12 @@
           <div class="time-range">
             <label class="field">
               <span class="field-label">Mulai</span>
-              <input type="time" [value]="quietStart" (change)="setQuietTime('start', $any($event.target).value)" />
+              <app-time-picker ariaLabel="Jam tenang mulai" [value]="quietStart" (valueChange)="setQuietTime('start', $event)" />
             </label>
             <span class="time-range-sep">sampai</span>
             <label class="field">
               <span class="field-label">Selesai</span>
-              <input type="time" [value]="quietEnd" (change)="setQuietTime('end', $any($event.target).value)" />
+              <app-time-picker ariaLabel="Jam tenang selesai" [value]="quietEnd" (valueChange)="setQuietTime('end', $event)" />
             </label>
           </div>
         }
@@ -191,6 +242,9 @@
       }
     </p>
     <span class="spacer"></span>
+    @if (readOnly()) {
+      <span class="readonly-note"><app-icon name="lock" [size]="14" /> Mengikuti default</span>
+    } @else {
     <button
       type="button"
       class="btn btn-primary"
@@ -201,5 +255,6 @@
       <span class="spinner" aria-hidden="true"></span>
       <span class="btn-label">Simpan</span>
     </button>
+    }
   </div>
 </ng-template>

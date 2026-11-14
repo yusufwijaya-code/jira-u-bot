@@ -28,7 +28,7 @@ func TestSearchCodeProcessIssues_ParsesIssueList(t *testing.T) {
 			t.Errorf("path = %s, want /rest/api/3/search/jql", r.URL.Path)
 		}
 		jql := r.URL.Query().Get("jql")
-		if jql != `project in (CORE, OMS) AND status = "Code Process"` {
+		if jql != `(project = CORE AND status in ("Code Process", "CODE REVIEW")) OR (project = OMS AND status in ("Code Process"))` {
 			t.Errorf("jql = %q, unexpected", jql)
 		}
 
@@ -88,76 +88,65 @@ func TestSearchCodeProcessIssues_SendsBasicAuthHeader(t *testing.T) {
 	}
 }
 
-func TestGetLatestCodeProcessEntryTime_FindsMostRecentTransition(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
-			"changelog": map[string]any{
-				"histories": []map[string]any{
-					{
-						"created": "2026-10-12T10:58:19.429+0700",
-						"items": []map[string]any{
-							{"field": "status", "fromString": "To Do", "toString": "Code Process"},
-						},
-					},
-					{
-						"created": "2026-10-20T09:00:00.000+0700",
-						"items": []map[string]any{
-							{"field": "status", "fromString": "Feedback", "toString": "Code Process"},
-						},
-					},
-					{
-						"created": "2026-10-15T09:00:00.000+0700",
-						"items": []map[string]any{
-							{"field": "status", "fromString": "Code Process", "toString": "Feedback"},
-						},
-					},
-				},
-			},
-		})
+func changelogServer(t *testing.T, histories []map[string]any) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"changelog": map[string]any{"histories": histories}})
 	}))
+}
+
+func statusChange(created, from, to string) map[string]any {
+	return map[string]any{"created": created, "items": []map[string]any{{"field": "status", "fromString": from, "toString": to}}}
+}
+
+var wib = time.FixedZone("", 7*3600)
+
+func TestGetTrackedRunTimes_OmsLatestCodeProcessEntry(t *testing.T) {
+	server := changelogServer(t, []map[string]any{
+		statusChange("2026-10-12T10:58:19.429+0700", "To Do", "Code Process"),
+		statusChange("2026-10-20T09:00:00.000+0700", "Feedback", "Code Process"),
+		statusChange("2026-10-15T09:00:00.000+0700", "Code Process", "Feedback"),
+	})
 	defer server.Close()
 
-	svc := NewJiraClientService(newTestConfig(server.URL))
-
-	entryTime, found, err := svc.GetLatestCodeProcessEntryTime(context.Background(), "OMS-1")
-	if err != nil {
-		t.Fatalf("GetLatestCodeProcessEntryTime returned error: %v", err)
+	runStart, lastEntry, found, err := NewJiraClientService(newTestConfig(server.URL)).GetTrackedRunTimes(context.Background(), "OMS-1")
+	if err != nil || !found {
+		t.Fatalf("found %v, err %v", found, err)
 	}
-	if !found {
-		t.Fatal("found = false, want true")
-	}
-
-	want := time.Date(2026, 10, 20, 9, 0, 0, 0, time.FixedZone("", 7*3600))
-	if !entryTime.Equal(want) {
-		t.Errorf("entryTime = %v, want %v (the LATEST entry into Code Process, not the first — there are two entry events here, 10-12 and 10-20)", entryTime, want)
+	want := time.Date(2026, 10, 20, 9, 0, 0, 0, wib)
+	if !runStart.Equal(want) || !lastEntry.Equal(want) {
+		t.Errorf("runStart %v lastEntry %v, want both %v (the LATEST entry, not the first)", runStart, lastEntry, want)
 	}
 }
 
-func TestGetLatestCodeProcessEntryTime_NotFoundWhenNeverEnteredCodeProcess(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
-			"changelog": map[string]any{
-				"histories": []map[string]any{
-					{
-						"created": "2026-10-12T10:58:19.429+0700",
-						"items": []map[string]any{
-							{"field": "status", "fromString": "To Do", "toString": "Code Review"},
-						},
-					},
-				},
-			},
-		})
-	}))
+func TestGetTrackedRunTimes_CoreReviewDoesNotRestartTheRun(t *testing.T) {
+	server := changelogServer(t, []map[string]any{
+		statusChange("2026-11-10T09:00:00.000+0700", "To Do", "Code Process"),
+		statusChange("2026-11-11T14:00:00.000+0700", "Code Process", "CODE REVIEW"),
+	})
 	defer server.Close()
 
-	svc := NewJiraClientService(newTestConfig(server.URL))
-
-	_, found, err := svc.GetLatestCodeProcessEntryTime(context.Background(), "OMS-1")
-	if err != nil {
-		t.Fatalf("GetLatestCodeProcessEntryTime returned error: %v", err)
+	runStart, lastEntry, found, err := NewJiraClientService(newTestConfig(server.URL)).GetTrackedRunTimes(context.Background(), "CORE-1")
+	if err != nil || !found {
+		t.Fatalf("found %v, err %v", found, err)
 	}
-	if found {
-		t.Error("found = true, want false — no history item transitions into Code Process")
+	if !runStart.Equal(time.Date(2026, 11, 10, 9, 0, 0, 0, wib)) {
+		t.Errorf("runStart = %v, want the Code Process entry (CP → CODE REVIEW keeps the run going)", runStart)
+	}
+	if !lastEntry.Equal(time.Date(2026, 11, 11, 14, 0, 0, 0, wib)) {
+		t.Errorf("lastEntry = %v, want the CODE REVIEW entry", lastEntry)
+	}
+}
+
+func TestGetTrackedRunTimes_OmsReviewIsNotTracked(t *testing.T) {
+	server := changelogServer(t, []map[string]any{
+		statusChange("2026-10-12T10:58:19.429+0700", "To Do", "Code Review"),
+	})
+	defer server.Close()
+
+	_, _, found, err := NewJiraClientService(newTestConfig(server.URL)).GetTrackedRunTimes(context.Background(), "OMS-1")
+	if err != nil || found {
+		t.Errorf("found = %v, err = %v; OMS Code Review is not tracked", found, err)
 	}
 }
 

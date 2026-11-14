@@ -9,9 +9,15 @@ type UserDashboardHandler interface {
 	// UpdateNotificationSettings saves tiers, overage behavior, toggles and
 	// quiet hours (everything but mute).
 	UpdateNotificationSettings(c *gin.Context)
-	// Mute / Unmute start or clear a temporary mute instantly.
+	// ResetNotificationSettings makes a board follow the default again.
+	ResetNotificationSettings(c *gin.Context)
+	// Mute / Unmute start or clear a mute instantly (global or one board).
 	Mute(c *gin.Context)
 	Unmute(c *gin.Context)
+	// ListBoards returns the board picker entries; BoardAvatar proxies a
+	// board's project avatar.
+	ListBoards(c *gin.Context)
+	BoardAvatar(c *gin.Context)
 	// GetBoard, GetTeam and GetOverdue return JSON scoped to the logged-in
 	// user's own tickets (email taken from the session, admin included).
 	GetBoard(c *gin.Context)

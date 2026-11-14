@@ -7,13 +7,22 @@ import (
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
+// UserSettingRepository stores ms_user_setting rows keyed by (userID,
+// boardID); boardID 0 is the user's default for every board.
 type UserSettingRepository interface {
-	// FindByUserID returns the stored row; found=false means the user has
-	// never saved settings (callers fall back to user_setting_dto.Default).
-	FindByUserID(ctx context.Context, userID int64) (setting user_setting_dto.UserSetting, found bool, err error)
-	// UpsertNotification writes every field except mutedUntil.
+	// FindRow returns one stored row; found=false if it doesn't exist.
+	FindRow(ctx context.Context, userID, boardID int64) (setting user_setting_dto.UserSetting, found bool, err error)
+	// ListRows returns every row of the user (default + boards).
+	ListRows(ctx context.Context, userID int64) ([]user_setting_dto.UserSetting, error)
+	// UpsertNotification writes every notification field of
+	// setting.BoardID's row (not the mute) and marks it as custom
+	// (useDefault = 0).
 	UpsertNotification(ctx context.Context, setting user_setting_dto.UserSetting) error
-	// SetMutedUntil sets (or with nil, clears) the temporary mute, creating
-	// the row with defaults if it doesn't exist yet.
-	SetMutedUntil(ctx context.Context, userID int64, until *time.Time) error
+	// SetUseDefault switches a board row back to following the default
+	// (keeps its mute). No-op if the row doesn't exist.
+	SetUseDefault(ctx context.Context, userID, boardID int64) error
+	// SetMutedUntil sets (or with nil, clears) the mute of (userID,
+	// boardID), creating the row if needed — a new board row follows the
+	// default (useDefault = 1).
+	SetMutedUntil(ctx context.Context, userID, boardID int64, until *time.Time) error
 }

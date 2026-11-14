@@ -404,3 +404,21 @@ func TestTierLabel_HandlesCustomTierCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildMessageText_ShowsReviewStatusLine(t *testing.T) {
+	msg := google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", Tier: "30m", BudgetSeconds: 7200, ElapsedSeconds: 6000, InReview: true}
+	if text := BuildMessageText(msg); !strings.Contains(text, "*Status:* CODE REVIEW (waktu review tetap dihitung)") {
+		t.Errorf("text missing the review status line:\n%s", text)
+	}
+	msg.InReview = false
+	if text := BuildMessageText(msg); strings.Contains(text, "CODE REVIEW") {
+		t.Errorf("a non-review reminder must not mention CODE REVIEW:\n%s", text)
+	}
+}
+
+func TestBuildMessageText_EarlyCompletionUsesTheProjectsDoneStatus(t *testing.T) {
+	msg := google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IsEarlyCompletion: true}
+	if text := BuildMessageText(msg); !strings.Contains(text, "*Pindah ke Code Completed:*") {
+		t.Errorf("CORE early completion must mention Code Completed: %s", text)
+	}
+}
