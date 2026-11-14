@@ -23,9 +23,11 @@ import (
 type userDashboardHandlerImpl struct {
 	dashboardSvc    user_dashboard_service.UserDashboardService
 	chatInteractive chat_interactive_service.ChatInteractiveService
-	jiraCredential  jira_credential_service.JiraCredentialService
-	userSettings    user_setting_service.UserSettingService
 	avatars         AvatarSource
+	// settings serves the settings / credential / board-list endpoints for
+	// the session's own user (shared with the admin mount, see
+	// SettingsHandler).
+	settings *SettingsHandler
 }
 
 // AvatarSource serves a board's (project) avatar image — board_service.
@@ -43,9 +45,8 @@ func NewUserDashboardHandler(
 	return &userDashboardHandlerImpl{
 		dashboardSvc:    dashboardSvc,
 		chatInteractive: chatInteractive,
-		jiraCredential:  jiraCredential,
-		userSettings:    userSettings,
 		avatars:         avatars,
+		settings:        NewSettingsHandler(dashboardSvc, jiraCredential, userSettings, SessionTarget, nil),
 	}
 }
 
@@ -91,7 +92,7 @@ func nonNil(tiers []string) []string {
 
 // boardParam reads ?board= (Tech Spec "Per-Board Settings & Active Sprint
 // Dashboard"): empty or 0 = all boards / the default scope. It only ever
-// filters the caller's own data. Writes a 400 and returns ok=false when it
+// filters the target's own data. Writes a 400 and returns ok=false when it
 // isn't a non-negative integer.
 func boardParam(c *gin.Context) (int64, bool) {
 	raw := c.Query("board")
@@ -106,186 +107,31 @@ func boardParam(c *gin.Context) (int64, bool) {
 	return id, true
 }
 
-// GetSettings returns the caller's EFFECTIVE settings for the scope, both
-// mute levels and the Jira credential status. Identity always comes from
-// the session.
-func (h *userDashboardHandlerImpl) GetSettings(c *gin.Context) {
-	boardID, ok := boardParam(c)
-	if !ok {
-		return
-	}
-	user := currentUser(c)
-	ctx := c.Request.Context()
-
-	setting, err := h.userSettings.GetEffective(ctx, user.UserID, boardID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
-		return
-	}
-
-	credentialMasked, hasCredential, _ := h.jiraCredential.MaskedPreview(ctx, user.UserID)
-
-	now := time.Now()
-	scope := "board"
-	var boardMute any
-	if boardID == user_setting_dto.DefaultBoardID {
-		scope = "default"
-	} else {
-		boardMute = muteStateJSON(setting.BoardMutedUntil, now)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"scope":        scope,
-		"boardId":      boardID,
-		"useDefault":   setting.UseDefault,
-		"notification": notificationJSON(setting),
-		"mute": gin.H{
-			"global": muteStateJSON(setting.MutedUntil, now),
-			"board":  boardMute,
-		},
-		// Kept for older clients: the pre-budget tiers as before.
-		"tierPreference": gin.H{"tiers": nonNil(setting.ReminderTiers)},
-		"credential": gin.H{
-			"hasCredential": hasCredential,
-			"maskedPreview": credentialMasked,
-		},
-	})
-}
-
-func (h *userDashboardHandlerImpl) UpdateNotificationSettings(c *gin.Context) {
-	boardID, ok := boardParam(c)
-	if !ok {
-		return
-	}
-	var in user_setting_dto.NotificationInput
-	if err := c.ShouldBindJSON(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-
-	saved, err := h.userSettings.SaveNotification(c.Request.Context(), currentUser(c).UserID, boardID, in)
-	if err != nil {
-		var verr *user_setting_dto.ValidationError
-		if errors.As(err, &verr) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": verr.Message, "fields": gin.H{verr.Field: verr.Message}})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
-		return
-	}
-	c.JSON(http.StatusOK, notificationJSON(saved))
-}
-
-// ResetNotificationSettings makes a board follow the default again (AC3.4).
-func (h *userDashboardHandlerImpl) ResetNotificationSettings(c *gin.Context) {
-	boardID, ok := boardParam(c)
-	if !ok {
-		return
-	}
-	if boardID == user_setting_dto.DefaultBoardID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "pilih board yang mau dikembalikan ke default"})
-		return
-	}
-	user := currentUser(c)
-	if err := h.userSettings.ResetToDefault(c.Request.Context(), user.UserID, boardID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset settings"})
-		return
-	}
-	setting, err := h.userSettings.GetEffective(c.Request.Context(), user.UserID, boardID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
-		return
-	}
-	c.JSON(http.StatusOK, notificationJSON(setting))
-}
-
 type muteRequest struct {
 	Minutes *int   `json:"minutes"`
 	Until   string `json:"until"`
 }
 
-// Mute mutes globally (no board) or one board (AC4.1, AC4.2).
-func (h *userDashboardHandlerImpl) Mute(c *gin.Context) {
-	boardID, ok := boardParam(c)
-	if !ok {
-		return
-	}
-	var req muteRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-		return
-	}
-
-	now := time.Now()
-	var until time.Time
-	switch {
-	case req.Minutes != nil && req.Until == "":
-		if *req.Minutes < 1 || *req.Minutes > user_setting_dto.MaxMuteMinutes {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "durasi mute harus 1 sampai 1440 menit"})
-			return
-		}
-		until = now.Add(time.Duration(*req.Minutes) * time.Minute)
-	case req.Minutes == nil && req.Until == "tomorrow":
-		until = user_setting_dto.TomorrowMorning(now)
-	case req.Minutes == nil && req.Until == "forever":
-		// Off until the user unmutes (the "matikan notif" switch).
-		until = user_setting_dto.MuteForeverUntil
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "isi salah satu: minutes, until=\"tomorrow\", atau until=\"forever\""})
-		return
-	}
-
-	if err := h.userSettings.MuteUntil(c.Request.Context(), currentUser(c).UserID, boardID, until); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mute"})
-		return
-	}
-	c.JSON(http.StatusOK, muteActiveJSON(until))
+type saveCredentialRequest struct {
+	JiraEmail string `json:"jiraEmail"`
+	APIToken  string `json:"apiToken"`
 }
 
-func (h *userDashboardHandlerImpl) Unmute(c *gin.Context) {
-	boardID, ok := boardParam(c)
-	if !ok {
-		return
-	}
-	if err := h.userSettings.Unmute(c.Request.Context(), currentUser(c).UserID, boardID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmute"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"active": false, "until": nil, "forever": false})
+// The settings, mute, board-list and credential endpoints act on the
+// session's own user — see SettingsHandler.
+
+func (h *userDashboardHandlerImpl) GetSettings(c *gin.Context) { h.settings.GetSettings(c) }
+func (h *userDashboardHandlerImpl) UpdateNotificationSettings(c *gin.Context) {
+	h.settings.UpdateNotification(c)
 }
-
-// ListBoards returns the board picker entries (AC1.1, AC1.2).
-func (h *userDashboardHandlerImpl) ListBoards(c *gin.Context) {
-	user := currentUser(c)
-	ctx := c.Request.Context()
-
-	boards, err := h.dashboardSvc.ListBoards(ctx, user.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load boards"})
-		return
-	}
-	states, err := h.userSettings.BoardStates(ctx, user.UserID)
-	if err != nil {
-		states = map[int64]user_setting_service.BoardState{}
-	}
-
-	now := time.Now()
-	out := make([]gin.H, 0, len(boards))
-	for _, b := range boards {
-		state := states[b.BoardID]
-		out = append(out, gin.H{
-			"boardId":           b.BoardID,
-			"name":              b.Name,
-			"projectKey":        b.ProjectKey,
-			"activeSprint":      b.ActiveSprint,
-			"ticketCount":       b.TicketCount,
-			"reviewTracked":     b.ReviewTracked,
-			"hasCustomSettings": state.Custom,
-			"muted":             muteStateJSON(state.MutedUntil, now),
-		})
-	}
-	c.JSON(http.StatusOK, gin.H{"boards": out})
+func (h *userDashboardHandlerImpl) ResetNotificationSettings(c *gin.Context) {
+	h.settings.ResetNotification(c)
 }
+func (h *userDashboardHandlerImpl) Mute(c *gin.Context)             { h.settings.Mute(c) }
+func (h *userDashboardHandlerImpl) Unmute(c *gin.Context)           { h.settings.Unmute(c) }
+func (h *userDashboardHandlerImpl) ListBoards(c *gin.Context)       { h.settings.ListBoards(c) }
+func (h *userDashboardHandlerImpl) SaveCredential(c *gin.Context)   { h.settings.SaveCredential(c) }
+func (h *userDashboardHandlerImpl) DeleteCredential(c *gin.Context) { h.settings.DeleteCredential(c) }
 
 // BoardAvatar proxies the board's project avatar (AC1.3, AC1.5).
 func (h *userDashboardHandlerImpl) BoardAvatar(c *gin.Context) {
@@ -309,39 +155,6 @@ func (h *userDashboardHandlerImpl) BoardAvatar(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "private, max-age=86400")
 	c.Data(http.StatusOK, contentType, body)
-}
-
-type saveCredentialRequest struct {
-	JiraEmail string `json:"jiraEmail"`
-	APIToken  string `json:"apiToken"`
-}
-
-func (h *userDashboardHandlerImpl) SaveCredential(c *gin.Context) {
-	var req saveCredentialRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.JiraEmail == "" || req.APIToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "jiraEmail and apiToken are required"})
-		return
-	}
-
-	user := currentUser(c)
-	if err := h.jiraCredential.UpsertCredential(c.Request.Context(), user.UserID, req.JiraEmail, req.APIToken); err != nil {
-		if err == jira_credential_service.ErrEncryptionKeyNotConfigured {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "fitur ini belum dikonfigurasi server, hubungi admin"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save credential"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func (h *userDashboardHandlerImpl) DeleteCredential(c *gin.Context) {
-	user := currentUser(c)
-	if err := h.jiraCredential.DeleteCredential(c.Request.Context(), user.UserID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete credential"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
