@@ -177,15 +177,3 @@ func (s *userDashboardServiceImpl) cardFromSession(session issue_session_dto.Iss
 	s.attachBudgetDetail(&card, session)
 	return card
 }
-
-func (s *userDashboardServiceImpl) SetReminderTierPreference(ctx context.Context, email, csv string) error {
-	return s.registrationRepo.UpdateReminderTierPreference(ctx, email, csv)
-}
-
-func (s *userDashboardServiceImpl) GetReminderTierPreference(ctx context.Context, email string) (*string, error) {
-	user, found, err := s.registrationRepo.FindUserByEmail(ctx, email)
-	if err != nil || !found {
-		return nil, err
-	}
-	return user.ReminderTierPreference, nil
-}

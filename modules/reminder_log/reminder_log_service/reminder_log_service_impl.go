@@ -21,3 +21,7 @@ func (s *reminderLogServiceImpl) HasTierBeenSent(ctx context.Context, issueKey, 
 func (s *reminderLogServiceImpl) LogReminderSent(ctx context.Context, issueKey, tier string) error {
 	return s.repo.LogReminderSent(ctx, issueKey, tier)
 }
+
+func (s *reminderLogServiceImpl) LogReminder(ctx context.Context, issueKey, tier, status string) error {
+	return s.repo.LogReminder(ctx, issueKey, tier, status)
+}

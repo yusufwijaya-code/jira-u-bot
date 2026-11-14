@@ -7,7 +7,7 @@
 ## Fitur
 
 - Polling tiket Jira (project OMS & CORE) tiap 10 detik, hanya untuk assignee yang sudah registrasi
-- Reminder bertingkat: T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-5 menit, T-1 menit, plus notifikasi overage berulang
+- Reminder bertingkat yang bisa diatur per user: default T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-5 menit, T-1 menit, lalu notifikasi "budget habis" dan overage berulang tiap 5 menit
 - Notifikasi "selesai lebih awal" saat tiket pindah ke Code Review sebelum budget habis
 - Elapsed time dihitung berbasis jam kerja (08:30–17:30 WIB, istirahat 12:00–13:00) dan kalender libur
 - Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
@@ -15,7 +15,13 @@
 - Command `/u-geser<issueKey>:todo` dan `/u-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi; hint-nya otomatis muncul di tiap pesan reminder & overdue
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
   - Layout: sidebar kiri (menu **Pengaturan**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
-  - **Pengaturan** — **Reminder preference** (pilih subset tier T-2 jam s/d T-1 menit) dan **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
+  - **Pengaturan** — setting notifikasi per user (tabel `ms_user_setting`; tanpa baris = default yang sama dengan perilaku lama):
+    - **Reminder sebelum budget habis** — pilih tier preset atau tambah tier custom (1 menit–8 jam, maks. 10)
+    - **Reminder setelah lewat budget** — tier `T+` (mis. +15 menit, +1 jam), lalu ulang tiap 5/10/15/30/60 menit atau berhenti
+    - **Jenis notifikasi** — on/off notif "selesai lebih awal" dan "balik ke To Do"
+    - **Mute & jam tenang** — mute 1 jam / 2 jam / sampai besok 08:30, dan jam tenang harian (WIB); reminder yang jatuh tempo saat itu dilewati (`tr_reminderlog.deliveryStatus = skipped`), notif lewat budget langsung lanjut setelahnya. Badge 🔕 muncul di topbar saat mute aktif
+    - Kalau beberapa tier terlewati sekaligus, hanya tier paling relevan yang dikirim
+  - **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
   - **Admin** (khusus `ADMIN_EMAIL`) — statistik user, cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user, dan broadcast pengumuman lewat DM
   - Semua data **hanya milik user yang login** (di-scope di server lewat email sesi, termasuk admin)
 

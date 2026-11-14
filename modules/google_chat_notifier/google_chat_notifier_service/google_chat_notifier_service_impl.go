@@ -179,20 +179,24 @@ func FormatDeadline(t time.Time) string {
 		t.Hour(), t.Minute(), t.Second())
 }
 
+// tierLabel renders a tier code as the reminder header label: "2h" →
+// "T-2 jam", "45m" → "T-45 menit". Works for any custom tier code; an
+// unparseable code is shown as-is.
 func tierLabel(tier string) string {
-	switch tier {
-	case "2h":
-		return "T-2 jam"
-	case "1h":
-		return "T-1 jam"
-	case "30m":
-		return "T-30 menit"
-	case "15m":
-		return "T-15 menit"
-	case "5m":
-		return "T-5 menit"
-	case "1m":
-		return "T-1 menit"
+	if len(tier) < 2 {
+		return tier
+	}
+	n, unit := tier[:len(tier)-1], tier[len(tier)-1]
+	for _, r := range n {
+		if r < '0' || r > '9' {
+			return tier
+		}
+	}
+	switch unit {
+	case 'h':
+		return "T-" + n + " jam"
+	case 'm':
+		return "T-" + n + " menit"
 	default:
 		return tier
 	}

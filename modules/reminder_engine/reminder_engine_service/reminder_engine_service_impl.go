@@ -3,7 +3,7 @@ package reminder_engine_service
 import (
 	"context"
 	"fmt"
-	"strings"
+	"sort"
 	"time"
 
 	"nudge/modules/business_hours/business_hours_dto"
@@ -16,20 +16,14 @@ import (
 	"nudge/modules/registration/registration_repository"
 	"nudge/modules/reminder_log/reminder_log_dto"
 	"nudge/modules/reminder_log/reminder_log_service"
+	"nudge/modules/user_setting/user_setting_dto"
 )
 
-const overageRepeatInterval = 5 * time.Minute
-
-var tierDurations = []struct {
-	Tier     string
-	Duration time.Duration
-}{
-	{reminder_log_dto.Tier2h, 2 * time.Hour},
-	{reminder_log_dto.Tier1h, 1 * time.Hour},
-	{reminder_log_dto.Tier30m, 30 * time.Minute},
-	{reminder_log_dto.Tier15m, 15 * time.Minute},
-	{reminder_log_dto.Tier5m, 5 * time.Minute},
-	{reminder_log_dto.Tier1m, 1 * time.Minute},
+// UserSettingReader is the one user_setting capability the engine needs.
+// GetForEmail never fails — it falls back to defaults (Tech Spec "Dynamic
+// User Notification Settings", AC6.1).
+type UserSettingReader interface {
+	GetForEmail(ctx context.Context, email string) user_setting_dto.UserSetting
 }
 
 type reminderEngineServiceImpl struct {
@@ -42,8 +36,12 @@ type reminderEngineServiceImpl struct {
 	webhookNotifier  google_chat_notifier_service.GoogleChatNotifierService
 	dmNotifier       google_chat_notifier_service.GoogleChatNotifierService
 	selfEmail        string
+	userSettings     UserSettingReader
 }
 
+// NewReminderEngineService wires the engine. userSettings may be nil, in
+// which case every assignee gets user_setting_dto.Default (= the legacy
+// fixed behavior).
 func NewReminderEngineService(
 	jiraBaseURL string,
 	holidayCalendar business_hours_dto.HolidayCalendar,
@@ -54,6 +52,7 @@ func NewReminderEngineService(
 	webhookNotifier google_chat_notifier_service.GoogleChatNotifierService,
 	dmNotifier google_chat_notifier_service.GoogleChatNotifierService,
 	selfEmail string,
+	userSettings UserSettingReader,
 ) ReminderEngineService {
 	return &reminderEngineServiceImpl{
 		jiraBaseURL:      jiraBaseURL,
@@ -65,6 +64,7 @@ func NewReminderEngineService(
 		webhookNotifier:  webhookNotifier,
 		dmNotifier:       dmNotifier,
 		selfEmail:        selfEmail,
+		userSettings:     userSettings,
 	}
 }
 
@@ -81,15 +81,40 @@ func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_ch
 	return e.dmNotifier
 }
 
+// settingsFor returns the assignee's notification settings. The settings of
+// the ticket's ASSIGNEE always apply, whichever channel delivers it.
+func (e *reminderEngineServiceImpl) settingsFor(ctx context.Context, email string) user_setting_dto.UserSetting {
+	if e.userSettings == nil {
+		return user_setting_dto.Default()
+	}
+	return e.userSettings.GetForEmail(ctx, email)
+}
+
+// ApplicableTiers returns, largest-first, the DEFAULT tiers strictly shorter
+// than budgetSeconds (spec AC2.2). Per-user tiers go through
+// applicableTiers instead.
 func (e *reminderEngineServiceImpl) ApplicableTiers(budgetSeconds int64) []string {
+	return applicableTiers(user_setting_dto.DefaultReminderTiers, budgetSeconds)
+}
+
+func applicableTiers(codes []string, budgetSeconds int64) []string {
 	budget := time.Duration(budgetSeconds) * time.Second
 	var tiers []string
-	for _, td := range tierDurations {
-		if budget > td.Duration {
-			tiers = append(tiers, td.Tier)
+	for _, code := range sortedLargestFirst(codes) {
+		d := user_setting_dto.TierDuration(code)
+		if d > 0 && budget > d {
+			tiers = append(tiers, code)
 		}
 	}
 	return tiers
+}
+
+func sortedLargestFirst(codes []string) []string {
+	out := append([]string(nil), codes...)
+	sort.SliceStable(out, func(i, j int) bool {
+		return user_setting_dto.TierDuration(out[i]) > user_setting_dto.TierDuration(out[j])
+	})
+	return out
 }
 
 // codeProcessStartedAt defensively unwraps the session's current-session
@@ -103,26 +128,18 @@ func codeProcessStartedAt(t *time.Time) time.Time {
 	return *t
 }
 
-func tierDurationSeconds(tier string) int64 {
-	for _, td := range tierDurations {
-		if td.Tier == tier {
-			return int64(td.Duration.Seconds())
-		}
-	}
-	return 0
-}
-
 func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error {
 	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, e.businessHours, e.holidayCalendar)
 
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	assigneeName := e.resolveAssigneeDisplayName(ctx, issue.Fields.Assignee)
 	issueURL := fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issue.Key)
+	setting := e.settingsFor(ctx, session.AssigneeEmail)
 
 	if elapsedSeconds > budgetSeconds {
-		return e.sendOverageIfDue(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
+		return e.sendOverageIfDue(ctx, issue, session, setting, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 	}
-	return e.sendTierIfDue(ctx, issue, session.StoryPoints, session.AssigneeEmail, elapsedSeconds, budgetSeconds, assigneeName, issueURL, codeProcessStartedAt(session.CurrentSessionStartedDate))
+	return e.sendTierIfDue(ctx, issue, session, setting, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 }
 
 // resolveAssigneeDisplayName implements spec AC3.3: an unregistered assignee
@@ -141,22 +158,163 @@ func (e *reminderEngineServiceImpl) resolveAssigneeDisplayName(ctx context.Conte
 	return assignee.DisplayName
 }
 
-func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
-	// The poller runs every 10s around the clock, so without this gate an
-	// overaged ticket would keep re-sending every 5 minutes all night/
-	// weekend/holiday too. Skipping here (instead of touching
-	// LastOverageReminderDate) leaves "due" exactly as-is, so the very next
-	// in-hours poll cycle sends immediately rather than waiting out another
-	// 5-minute window.
+// unhandled filters codes (as logged, i.e. already prefixed) down to the ones
+// tr_reminderlog has no row for yet — sent and skipped both count as handled.
+func (e *reminderEngineServiceImpl) unhandled(ctx context.Context, issueKey string, codes []string) ([]string, error) {
+	var out []string
+	for _, code := range codes {
+		handled, err := e.reminderLog.HasTierBeenSent(ctx, issueKey, code)
+		if err != nil {
+			return nil, err
+		}
+		if !handled {
+			out = append(out, code)
+		}
+	}
+	return out, nil
+}
+
+func (e *reminderEngineServiceImpl) logAll(ctx context.Context, issueKey string, codes []string, status string) error {
+	for _, code := range codes {
+		if err := e.reminderLog.LogReminder(ctx, issueKey, code, status); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sendTierIfDue handles the pre-budget tiers (AC1.1–AC1.3, AC4.1).
+func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, setting user_setting_dto.UserSetting, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+	// Elapsed itself freezes outside business hours (it's computed via
+	// business-hours-aware ElapsedBusinessSeconds), but which POLL CYCLE
+	// first notices a tier has been crossed is not — if that happens to
+	// land after hours (crossing right before close, or the poller only
+	// resuming later), the tier would otherwise fire immediately regardless
+	// of the clock. No state is touched before this point, so the next
+	// in-hours cycle re-evaluates normally.
 	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
 		return nil
 	}
 
-	due := session.LastOverageReminderDate == nil || time.Since(*session.LastOverageReminderDate) >= overageRepeatInterval
-	if !due {
+	remaining := budgetSeconds - elapsedSeconds
+
+	// Crossed = the remaining time has dropped to/below the tier. Ordered
+	// largest-first, so the LAST crossed tier is the one closest to the
+	// deadline — the only one still worth sending.
+	var crossed []string
+	for _, tier := range applicableTiers(setting.ReminderTiers, budgetSeconds) {
+		if remaining <= int64(user_setting_dto.TierDuration(tier).Seconds()) {
+			crossed = append(crossed, tier)
+		}
+	}
+	due, err := e.unhandled(ctx, issue.Key, crossed)
+	if err != nil || len(due) == 0 {
+		return err
+	}
+
+	if setting.IsSilenced(time.Now()) {
+		// Muted / quiet hours: these tiers are stale by the time the mute
+		// ends, so they are recorded as skipped and never sent (AC4.1).
+		return e.logAll(ctx, issue.Key, due, reminder_log_dto.DeliverySkipped)
+	}
+
+	target := due[len(due)-1]
+	stale := due[:len(due)-1]
+
+	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
+	msg := google_chat_notifier_dto.ReminderMessage{
+		IssueKey:             issue.Key,
+		IssueURL:             issueURL,
+		IssueSummary:         issue.Fields.Summary,
+		AssigneeName:         assigneeName,
+		AssigneeEmail:        session.AssigneeEmail,
+		StoryPoints:          session.StoryPoints,
+		BudgetSeconds:        budgetSeconds,
+		ElapsedSeconds:       elapsedSeconds,
+		Tier:                 target,
+		IsOverage:            false,
+		Deadline:             deadline,
+		CodeProcessStartedAt: codeProcessStartedAt(session.CurrentSessionStartedDate),
+	}
+
+	// Only record the send AFTER the notifier confirms success, so a failed
+	// POST is retried on the next poll cycle (spec Reliability).
+	if err := e.pickNotifier(session.AssigneeEmail).SendReminder(ctx, msg); err != nil {
+		return err
+	}
+	if err := e.reminderLog.LogReminder(ctx, issue.Key, target, reminder_log_dto.DeliverySent); err != nil {
+		return err
+	}
+	// Older crossed tiers were superseded by the one just sent (AC1.3).
+	return e.logAll(ctx, issue.Key, stale, reminder_log_dto.DeliverySkipped)
+}
+
+// sendOverageIfDue handles everything past the budget (AC2.1–AC2.4, AC4.1,
+// AC4.2): the one-off "budget habis" notice (T+0), the user's post-budget
+// tiers ("+15m"), then the repeat interval (or silence when it's off).
+func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, setting user_setting_dto.UserSetting, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+	// The poller runs every 10s around the clock, so without this gate an
+	// overaged ticket would keep re-sending all night/weekend/holiday too.
+	// Skipping here (instead of touching LastOverageReminderDate) leaves
+	// "due" exactly as-is, so the next in-hours cycle sends immediately.
+	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
 		return nil
 	}
 
+	over := time.Duration(elapsedSeconds-budgetSeconds) * time.Second
+
+	// Post-budget tiers already crossed, smallest-first so the LAST one is
+	// the most recent — the only one still worth sending.
+	var crossed []string
+	overageTiers := sortedLargestFirst(setting.OverageTiers)
+	allCrossed := true
+	for i := len(overageTiers) - 1; i >= 0; i-- {
+		tier := overageTiers[i]
+		if over >= user_setting_dto.TierDuration(tier) {
+			crossed = append(crossed, reminder_log_dto.OverageTierPrefix+tier)
+		} else {
+			allCrossed = false
+		}
+	}
+	due, err := e.unhandled(ctx, issue.Key, crossed)
+	if err != nil {
+		return err
+	}
+
+	if setting.IsSilenced(time.Now()) {
+		// Post-budget tiers crossed during a mute are stale → skipped. The
+		// T+0 notice and the repeat are left untouched (not sent, schedule
+		// not advanced), so they go out the moment the mute ends (AC4.2).
+		return e.logAll(ctx, issue.Key, due, reminder_log_dto.DeliverySkipped)
+	}
+
+	// 1. T+0: the first time a session goes over budget. LastOverageReminderDate
+	// is the marker — it's set by every overage send and predates this
+	// feature, so tickets already overaged before the upgrade aren't
+	// re-announced. Post-budget tiers already crossed by then (a ticket first
+	// noticed well past its budget) are superseded by this notice → skipped.
+	if session.LastOverageReminderDate == nil {
+		return e.sendOverage(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL, reminder_log_dto.TierOverage, due)
+	}
+
+	// 2. A post-budget tier is due.
+	if len(due) > 0 {
+		return e.sendOverage(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL, due[len(due)-1], due[:len(due)-1])
+	}
+
+	// 3. Repeat — only once every post-budget tier has been crossed, and
+	// only if the user hasn't switched repeating off.
+	if !allCrossed || setting.OverageRepeatMinutes == nil {
+		return nil
+	}
+	interval := time.Duration(*setting.OverageRepeatMinutes) * time.Minute
+	if time.Since(*session.LastOverageReminderDate) < interval {
+		return nil
+	}
+	return e.sendOverage(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL, reminder_log_dto.TierOverage, nil)
+}
+
+func (e *reminderEngineServiceImpl) sendOverage(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL, tier string, stale []string) error {
 	// session.AssigneeEmail (resolved/persisted by the poller at session-
 	// open time) is the source of truth here — issue.Fields.Assignee.
 	// EmailAddress is often blank (Jira hides it org-wide for any account
@@ -172,112 +330,34 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 		StoryPoints:          session.StoryPoints,
 		BudgetSeconds:        budgetSeconds,
 		ElapsedSeconds:       elapsedSeconds,
-		Tier:                 reminder_log_dto.TierOverage,
+		Tier:                 tier,
 		IsOverage:            true,
 		CodeProcessStartedAt: codeProcessStartedAt(session.CurrentSessionStartedDate),
 	}
 
 	// Order matters: only record the send (log + timestamp) AFTER the
 	// notifier confirms success, so a failed POST can be retried on the
-	// next poll cycle instead of being silently marked as sent (spec
-	// Reliability, Component Poller). This pre-existing mechanism is
-	// exactly what satisfies spec AC2.5 for the DM path too — pickNotifier
-	// only changes WHICH notifier gets called, not this retry contract, so
-	// no new test is needed here beyond the ones v1 already had for it.
+	// next poll cycle instead of being silently marked as sent.
 	if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
 		return err
 	}
-	if err := e.reminderLog.LogReminderSent(ctx, issue.Key, reminder_log_dto.TierOverage); err != nil {
+	if err := e.reminderLog.LogReminder(ctx, issue.Key, tier, reminder_log_dto.DeliverySent); err != nil {
 		return err
 	}
+	if err := e.logAll(ctx, issue.Key, stale, reminder_log_dto.DeliverySkipped); err != nil {
+		return err
+	}
+	// Every overage send (T+0, tier, repeat) restarts the repeat interval.
 	return e.issueSession.UpdateLastOverageReminder(ctx, issue.Key)
-}
-
-func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, storyPoints float64, assigneeEmail string, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string, startedAt time.Time) error {
-	// Elapsed itself freezes outside business hours (it's computed via
-	// business-hours-aware ElapsedBusinessSeconds), but which POLL CYCLE
-	// first notices a tier has been crossed is not — if that happens to
-	// land after hours (crossing right before close, or the poller only
-	// resuming later), the tier would otherwise fire immediately regardless
-	// of the clock. Safe to defer here exactly like sendOverageIfDue: no
-	// state (HasTierBeenSent) is touched before this point, so the next
-	// in-hours cycle re-evaluates and sends normally.
-	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
-		return nil
-	}
-
-	remaining := budgetSeconds - elapsedSeconds
-	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
-
-	tiers := e.preferredTiers(ctx, assigneeEmail, e.ApplicableTiers(budgetSeconds))
-	for _, tier := range tiers {
-		if remaining > tierDurationSeconds(tier) {
-			continue // threshold not reached yet for this tier
-		}
-
-		alreadySent, err := e.reminderLog.HasTierBeenSent(ctx, issue.Key, tier)
-		if err != nil {
-			return err
-		}
-		if alreadySent {
-			continue
-		}
-
-		msg := google_chat_notifier_dto.ReminderMessage{
-			IssueKey:             issue.Key,
-			IssueURL:             issueURL,
-			IssueSummary:         issue.Fields.Summary,
-			AssigneeName:         assigneeName,
-			AssigneeEmail:        assigneeEmail,
-			StoryPoints:          storyPoints,
-			BudgetSeconds:        budgetSeconds,
-			ElapsedSeconds:       elapsedSeconds,
-			Tier:                 tier,
-			IsOverage:            false,
-			Deadline:             deadline,
-			CodeProcessStartedAt: startedAt,
-		}
-
-		if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
-			return err
-		}
-		return e.reminderLog.LogReminderSent(ctx, issue.Key, tier)
-	}
-
-	return nil
-}
-
-// preferredTiers implements spec AC2.3 (Tech Spec "Dashboard Jira Manage"):
-// filters applicableTiers down to assigneeEmail's chosen subset, if they've
-// ever set one. ReminderTierPreference == nil (never set, the common case
-// for every user today) returns applicableTiers unchanged — this is the
-// ONLY place preference is consulted; sendOverageIfDue never calls this,
-// so the overage tier is always sent regardless of preference.
-func (e *reminderEngineServiceImpl) preferredTiers(ctx context.Context, assigneeEmail string, applicableTiers []string) []string {
-	user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail)
-	if err != nil || !found || user.ReminderTierPreference == nil {
-		return applicableTiers
-	}
-
-	allowed := map[string]bool{}
-	for _, t := range strings.Split(*user.ReminderTierPreference, ",") {
-		if t != "" {
-			allowed[t] = true
-		}
-	}
-
-	var filtered []string
-	for _, tier := range applicableTiers {
-		if allowed[tier] {
-			filtered = append(filtered, tier)
-		}
-	}
-	return filtered
 }
 
 func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {
 	if elapsedSeconds >= budgetSeconds {
 		return nil
+	}
+	setting := e.settingsFor(ctx, assigneeEmail)
+	if !setting.NotifyEarlyFinish || setting.IsSilenced(time.Now()) {
+		return nil // AC3.1, AC4.3
 	}
 
 	remaining := budgetSeconds - elapsedSeconds
@@ -307,6 +387,11 @@ func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context,
 }
 
 func (e *reminderEngineServiceImpl) NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error {
+	setting := e.settingsFor(ctx, assigneeEmail)
+	if !setting.NotifyReturnedToTodo || setting.IsSilenced(time.Now()) {
+		return nil // AC3.2, AC4.3
+	}
+
 	assigneeName := assigneeEmail
 	if user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail); err == nil && found {
 		assigneeName = user.UserName

@@ -41,6 +41,8 @@ import (
 	"nudge/modules/sprint_report/sprint_report_service"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
 	"nudge/modules/user_dashboard/user_dashboard_service"
+	"nudge/modules/user_setting/user_setting_repository"
+	"nudge/modules/user_setting/user_setting_service"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -116,6 +118,9 @@ func main() {
 
 	registrationRepo := registration_repository.NewRegistrationRepository(db)
 
+	userSettingRepo := user_setting_repository.NewUserSettingRepository(db)
+	userSettingSvc := user_setting_service.NewUserSettingService(userSettingRepo, registrationRepo)
+
 	jiraClientSvc := jira_client_service.NewJiraClientService(&cfg)
 
 	jiraCredentialRepo := jira_credential_repository.NewJiraCredentialRepository(db)
@@ -145,7 +150,7 @@ func main() {
 
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
 		cfg.JiraBaseURL, holidayCalendar, businessHoursSvc, reminderLogSvc,
-		issueSessionSvc, registrationRepo, notifierSvc, dmNotifierSvc, cfg.JiraEmail,
+		issueSessionSvc, registrationRepo, notifierSvc, dmNotifierSvc, cfg.JiraEmail, userSettingSvc,
 	)
 
 	pollerSvc := poller_service.NewPollerService(
@@ -176,7 +181,7 @@ func main() {
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
 		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar,
 	)
-	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc)
+	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
 	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc)

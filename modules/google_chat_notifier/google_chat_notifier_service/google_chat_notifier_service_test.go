@@ -388,3 +388,19 @@ func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
 		}
 	}
 }
+
+func TestTierLabel_HandlesCustomTierCodes(t *testing.T) {
+	cases := map[string]string{
+		"2h":  "T-2 jam",
+		"45m": "T-45 menit",
+		"90m": "T-90 menit",
+		"8h":  "T-8 jam",
+		"x":   "x",
+		"abm": "abm",
+	}
+	for code, want := range cases {
+		if got := tierLabel(code); got != want {
+			t.Errorf("tierLabel(%q) = %q, want %q", code, got, want)
+		}
+	}
+}

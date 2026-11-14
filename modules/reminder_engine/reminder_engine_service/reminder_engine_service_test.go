@@ -12,16 +12,38 @@ import (
 	"nudge/modules/issue_session/issue_session_dto"
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/registration/registration_dto"
+	"nudge/modules/user_setting/user_setting_dto"
 )
 
 // --- fakes ---
 
 type fakeReminderLogService struct {
 	sentTiers map[string]bool
+	// statuses records the deliveryStatus of every LogReminder call, keyed
+	// like sentTiers ("ISSUE|tier").
+	statuses map[string]string
 }
 
 func newFakeReminderLogService() *fakeReminderLogService {
-	return &fakeReminderLogService{sentTiers: map[string]bool{}}
+	return &fakeReminderLogService{sentTiers: map[string]bool{}, statuses: map[string]string{}}
+}
+
+func (f *fakeReminderLogService) LogReminder(ctx context.Context, issueKey, tier, status string) error {
+	f.sentTiers[issueKey+"|"+tier] = true
+	f.statuses[issueKey+"|"+tier] = status
+	return nil
+}
+
+// fakeUserSettings returns a fixed setting per email (defaults otherwise).
+type fakeUserSettings struct {
+	byEmail map[string]user_setting_dto.UserSetting
+}
+
+func (f *fakeUserSettings) GetForEmail(ctx context.Context, email string) user_setting_dto.UserSetting {
+	if s, ok := f.byEmail[email]; ok {
+		return s
+	}
+	return user_setting_dto.Default()
 }
 
 func (f *fakeReminderLogService) HasTierBeenSent(ctx context.Context, issueKey, tier string) (bool, error) {
@@ -145,6 +167,7 @@ func newTestEngine(reminderLog *fakeReminderLogService, issueSession *fakeIssueS
 		notifier,
 		nil,
 		"",
+		nil,
 	)
 }
 
@@ -237,6 +260,7 @@ func TestEvaluateAndSend_TierSkipsSendOutsideBusinessHours(t *testing.T) {
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		&fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: false},
 		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier, nil, "",
+		nil,
 	)
 
 	session := issue_session_dto.IssueSession{
@@ -304,103 +328,131 @@ func TestEvaluateAndSend_NoTierDueYetSendsNothing(t *testing.T) {
 	}
 }
 
-// --- EvaluateAndSend: reminder tier preference (Tech Spec "Dashboard Jira Manage", AC2.1-AC2.3) ---
+// --- EvaluateAndSend: per-user settings (Tech Spec "Dynamic User Notification Settings") ---
 
-func TestEvaluateAndSend_FiltersOutTierNotInPreference(t *testing.T) {
+func settingsEngine(reminderLog *fakeReminderLogService, issueSession *fakeIssueSessionService, notifier *fakeGoogleChatNotifierService, setting user_setting_dto.UserSetting) ReminderEngineService {
+	return NewReminderEngineService(
+		"https://esb-id.atlassian.net",
+		business_hours_dto.HolidayCalendar{},
+		newAlwaysOpenBusinessHours(),
+		reminderLog,
+		issueSession,
+		&fakeRegistrationRepository{users: map[string]registration_dto.User{}},
+		notifier,
+		nil,
+		"",
+		&fakeUserSettings{byEmail: map[string]user_setting_dto.UserSetting{"anwar@esb.co.id": setting}},
+	)
+}
+
+func withTiers(tiers ...string) user_setting_dto.UserSetting {
+	s := user_setting_dto.Default()
+	s.ReminderTiers = tiers
+	return s
+}
+
+func TestEvaluateAndSend_FiltersOutTierNotInUserTiers(t *testing.T) {
 	reminderLog := newFakeReminderLogService()
-	reminderLog.sentTiers["OMS-1|2h"] = true
-	reminderLog.sentTiers["OMS-1|1h"] = true
 	notifier := &fakeGoogleChatNotifierService{}
-	preference := "15m" // 30m is NOT in this user's preference
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
-		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: &preference},
-	}}
-
-	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withTiers("15m"))
 
 	session := issue_session_dto.IssueSession{
 		IssueKey:           "OMS-1",
 		StoryPoints:        3,
-		AccumulatedSeconds: 9100, // remaining = 1700s -> due for 30m, not yet due for 15m
+		AccumulatedSeconds: 9100, // remaining = 1700s -> 30m would be due, 15m not yet
 		AssigneeEmail:      "anwar@esb.co.id",
 	}
-
 	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
 		t.Fatalf("EvaluateAndSend returned error: %v", err)
 	}
-
 	if len(notifier.sentMessages) != 0 {
-		t.Errorf("len(sentMessages) = %d, want 0 — 30m is due but not in this user's preference, and 15m isn't due yet", len(notifier.sentMessages))
+		t.Errorf("len(sentMessages) = %d, want 0 — 30m isn't one of the user's tiers and 15m isn't due yet", len(notifier.sentMessages))
 	}
 }
 
-func TestEvaluateAndSend_SendsTierThatIsInPreference(t *testing.T) {
+func TestEvaluateAndSend_SendsCustomTier(t *testing.T) {
 	reminderLog := newFakeReminderLogService()
-	reminderLog.sentTiers["OMS-1|2h"] = true
-	reminderLog.sentTiers["OMS-1|1h"] = true
 	notifier := &fakeGoogleChatNotifierService{}
-	preference := "30m"
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
-		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: &preference},
-	}}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withTiers("45m"))
 
-	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        3,    // budget 10800s
+		AccumulatedSeconds: 8200, // remaining 2600s <= 45m (2700s)
+		AssigneeEmail:      "anwar@esb.co.id",
+	}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "45m" {
+		t.Fatalf("sentMessages = %+v, want the custom 45m tier", notifier.sentMessages)
+	}
+	if reminderLog.statuses["OMS-1|45m"] != "sent" {
+		t.Errorf("status = %q, want sent", reminderLog.statuses["OMS-1|45m"])
+	}
+}
+
+func TestEvaluateAndSend_SendsOnlyMostRelevantTierAndSkipsOlderOnes(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, user_setting_dto.Default())
+
+	session := issue_session_dto.IssueSession{
+		IssueKey:           "OMS-1",
+		StoryPoints:        3,     // budget 10800s
+		AccumulatedSeconds: 10000, // remaining 800s -> 2h, 1h, 30m, 15m all crossed at once
+		AssigneeEmail:      "anwar@esb.co.id",
+	}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "15m" {
+		t.Fatalf("sentMessages = %+v, want exactly one message for 15m (closest to the deadline)", notifier.sentMessages)
+	}
+	for _, tier := range []string{"2h", "1h", "30m"} {
+		if reminderLog.statuses["OMS-1|"+tier] != "skipped" {
+			t.Errorf("tier %s status = %q, want skipped (superseded)", tier, reminderLog.statuses["OMS-1|"+tier])
+		}
+	}
+
+	// Next cycle: nothing new is due, so nothing is sent.
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("second EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 {
+		t.Errorf("len(sentMessages) = %d after a second cycle, want still 1", len(notifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_MutedSkipsDueTierForGood(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	setting := user_setting_dto.Default()
+	until := time.Now().Add(time.Hour)
+	setting.MutedUntil = &until
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, setting)
 
 	session := issue_session_dto.IssueSession{
 		IssueKey:           "OMS-1",
 		StoryPoints:        3,
-		AccumulatedSeconds: 9100, // remaining = 1700s -> due for 30m
+		AccumulatedSeconds: 9100, // 30m due
 		AssigneeEmail:      "anwar@esb.co.id",
 	}
-
 	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
 		t.Fatalf("EvaluateAndSend returned error: %v", err)
 	}
-
-	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "30m" {
-		t.Errorf("sentMessages = %+v, want one message with Tier=30m (it IS in the preference)", notifier.sentMessages)
+	if len(notifier.sentMessages) != 0 {
+		t.Fatalf("len(sentMessages) = %d, want 0 while muted", len(notifier.sentMessages))
+	}
+	if reminderLog.statuses["OMS-1|30m"] != "skipped" {
+		t.Errorf("30m status = %q, want skipped so it never fires after the mute", reminderLog.statuses["OMS-1|30m"])
 	}
 }
 
-func TestEvaluateAndSend_NilPreferenceSendsAllTiersUnfiltered(t *testing.T) {
-	// Regression guard: a user who never set a preference (the default for
-	// every user today) must keep getting every applicable tier, unchanged
-	// from pre-preference behavior.
-	reminderLog := newFakeReminderLogService()
-	reminderLog.sentTiers["OMS-1|2h"] = true
-	reminderLog.sentTiers["OMS-1|1h"] = true
-	notifier := &fakeGoogleChatNotifierService{}
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
-		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: nil},
-	}}
-
-	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
-
-	session := issue_session_dto.IssueSession{
-		IssueKey:           "OMS-1",
-		StoryPoints:        3,
-		AccumulatedSeconds: 9100,
-		AssigneeEmail:      "anwar@esb.co.id",
-	}
-
-	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
-		t.Fatalf("EvaluateAndSend returned error: %v", err)
-	}
-
-	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "30m" {
-		t.Errorf("sentMessages = %+v, want the 30m tier sent same as before preference existed (spec AC2.2)", notifier.sentMessages)
-	}
-}
-
-func TestEvaluateAndSend_OverageIgnoresPreference(t *testing.T) {
+func TestEvaluateAndSend_OverageSendsEvenWithNoPreBudgetTiers(t *testing.T) {
 	reminderLog := newFakeReminderLogService()
 	notifier := &fakeGoogleChatNotifierService{}
-	emptyPreference := "" // deliberately unchecked ALL tiers
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{
-		"anwar@esb.co.id": {Email: "anwar@esb.co.id", ReminderTierPreference: &emptyPreference},
-	}}
-
-	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier)
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withTiers())
 
 	session := issue_session_dto.IssueSession{
 		IssueKey:           "OMS-1",
@@ -408,13 +460,208 @@ func TestEvaluateAndSend_OverageIgnoresPreference(t *testing.T) {
 		AccumulatedSeconds: 4000, // already over budget
 		AssigneeEmail:      "anwar@esb.co.id",
 	}
-
 	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
 		t.Fatalf("EvaluateAndSend returned error: %v", err)
 	}
-
 	if len(notifier.sentMessages) != 1 || !notifier.sentMessages[0].IsOverage {
-		t.Errorf("sentMessages = %+v, want the overage notice to still send even with every tier unchecked (spec AC2.3)", notifier.sentMessages)
+		t.Errorf("sentMessages = %+v, want the T+0 overage notice regardless of pre-budget tiers", notifier.sentMessages)
+	}
+}
+
+// --- EvaluateAndSend: post-budget tiers & repeat ---
+
+func overageSession(overSeconds int64, last *time.Time) issue_session_dto.IssueSession {
+	return issue_session_dto.IssueSession{
+		IssueKey:                "OMS-1",
+		StoryPoints:             1, // budget 3600s
+		AccumulatedSeconds:      3600 + overSeconds,
+		AssigneeEmail:           "anwar@esb.co.id",
+		LastOverageReminderDate: last,
+	}
+}
+
+func withOverage(repeat *int, tiers ...string) user_setting_dto.UserSetting {
+	s := user_setting_dto.Default()
+	s.OverageTiers = tiers
+	s.OverageRepeatMinutes = repeat
+	return s
+}
+
+func intPtr(v int) *int { return &v }
+
+func TestEvaluateAndSend_OverageTierSentOnceWhenCrossed(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, issueSession, notifier, withOverage(intPtr(5), "1h", "15m"))
+
+	last := time.Now().Add(-time.Minute) // T+0 already sent a minute ago
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(16*60, &last)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "+15m" || !notifier.sentMessages[0].IsOverage {
+		t.Fatalf("sentMessages = %+v, want one overage message for +15m", notifier.sentMessages)
+	}
+	if len(issueSession.updateOverageCalls) != 1 {
+		t.Errorf("UpdateLastOverageReminder calls = %d, want 1", len(issueSession.updateOverageCalls))
+	}
+}
+
+func TestEvaluateAndSend_NoRepeatUntilEveryOverageTierCrossed(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|+15m"] = true
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withOverage(intPtr(5), "1h", "15m"))
+
+	last := time.Now().Add(-30 * time.Minute) // well past the 5-minute repeat
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(40*60, &last)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Errorf("len(sentMessages) = %d, want 0 — the +1h tier is still pending, so the repeat hasn't started", len(notifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_RepeatsAfterLastOverageTierAtUserInterval(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|+15m"] = true
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withOverage(intPtr(30), "15m"))
+
+	recent := time.Now().Add(-10 * time.Minute)
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(60*60, &recent)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Fatalf("len(sentMessages) = %d, want 0 — only 10 of the 30 repeat minutes have passed", len(notifier.sentMessages))
+	}
+
+	old := time.Now().Add(-31 * time.Minute)
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(60*60, &old)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "overage" {
+		t.Errorf("sentMessages = %+v, want one repeat (Tier=overage)", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_RepeatOffStopsAfterLastOverageTier(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withOverage(nil))
+
+	old := time.Now().Add(-2 * time.Hour)
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(3*60*60, &old)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Errorf("len(sentMessages) = %d, want 0 — repeat is switched off", len(notifier.sentMessages))
+	}
+}
+
+func TestEvaluateAndSend_FirstOverageSupersedesAlreadyCrossedOverageTiers(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withOverage(intPtr(5), "15m", "30m"))
+
+	// First noticed already 40 minutes over budget: one T+0 notice only.
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(40*60, nil)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "overage" {
+		t.Fatalf("sentMessages = %+v, want a single T+0 notice", notifier.sentMessages)
+	}
+	if reminderLog.statuses["OMS-1|+15m"] != "skipped" || reminderLog.statuses["OMS-1|+30m"] != "skipped" {
+		t.Errorf("crossed post-budget tiers must be skipped, got %v", reminderLog.statuses)
+	}
+}
+
+func TestEvaluateAndSend_MutedOverageNeitherSendsNorAdvancesSchedule(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{}
+	setting := withOverage(intPtr(5), "15m")
+	until := time.Now().Add(time.Hour)
+	setting.MutedUntil = &until
+	engine := settingsEngine(reminderLog, issueSession, notifier, setting)
+
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(20*60, nil)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 || len(issueSession.updateOverageCalls) != 0 {
+		t.Fatalf("muted: sent %d, schedule updates %d — want 0/0", len(notifier.sentMessages), len(issueSession.updateOverageCalls))
+	}
+	if reminderLog.statuses["OMS-1|+15m"] != "skipped" {
+		t.Errorf("+15m crossed while muted must be skipped, got %q", reminderLog.statuses["OMS-1|+15m"])
+	}
+	if reminderLog.sentTiers["OMS-1|overage"] {
+		t.Error("the T+0 notice must stay pending while muted")
+	}
+
+	// Mute over: the T+0 notice goes out right away.
+	engine = settingsEngine(reminderLog, issueSession, notifier, withOverage(intPtr(5), "15m"))
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(25*60, nil)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "overage" {
+		t.Errorf("after the mute: sentMessages = %+v, want the pending T+0 notice", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_QuietHoursSilenceLikeMute(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	setting := user_setting_dto.Default()
+	// A 23h59m window starting one minute ago always covers "now".
+	now := time.Now().In(user_setting_dto.Jakarta)
+	start := now.Add(-time.Minute)
+	end := now.Add(-2 * time.Minute)
+	setting.QuietHours = &user_setting_dto.QuietHours{Start: start.Format("15:04"), End: end.Format("15:04")}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, setting)
+
+	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 9100, AssigneeEmail: "anwar@esb.co.id"}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 || reminderLog.statuses["OMS-1|30m"] != "skipped" {
+		t.Errorf("quiet hours: sent %d, 30m status %q — want 0 / skipped", len(notifier.sentMessages), reminderLog.statuses["OMS-1|30m"])
+	}
+}
+
+// --- event notifications toggles ---
+
+func TestNotifyIfEarlyCompletion_RespectsToggleAndMute(t *testing.T) {
+	off := user_setting_dto.Default()
+	off.NotifyEarlyFinish = false
+	muted := user_setting_dto.Default()
+	until := time.Now().Add(time.Hour)
+	muted.MutedUntil = &until
+
+	for name, setting := range map[string]user_setting_dto.UserSetting{"toggle off": off, "muted": muted} {
+		t.Run(name, func(t *testing.T) {
+			notifier := &fakeGoogleChatNotifierService{}
+			engine := settingsEngine(newFakeReminderLogService(), &fakeIssueSessionService{}, notifier, setting)
+			if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "anwar@esb.co.id", "x", 1000, 3600, time.Now(), time.Now()); err != nil {
+				t.Fatalf("NotifyIfEarlyCompletion returned error: %v", err)
+			}
+			if len(notifier.sentMessages) != 0 {
+				t.Errorf("len(sentMessages) = %d, want 0", len(notifier.sentMessages))
+			}
+		})
+	}
+}
+
+func TestNotifyReturnedToTodo_RespectsToggle(t *testing.T) {
+	off := user_setting_dto.Default()
+	off.NotifyReturnedToTodo = false
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(newFakeReminderLogService(), &fakeIssueSessionService{}, notifier, off)
+
+	if err := engine.NotifyReturnedToTodo(context.Background(), "OMS-1", "anwar@esb.co.id", "x", 1000, 3600, time.Now()); err != nil {
+		t.Fatalf("NotifyReturnedToTodo returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Errorf("len(sentMessages) = %d, want 0 with the toggle off", len(notifier.sentMessages))
 	}
 }
 
@@ -510,6 +757,7 @@ func TestEvaluateAndSend_OverageSkipsSendOutsideBusinessHours(t *testing.T) {
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		&fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: false},
 		reminderLog, issueSession, registrationRepo, notifier, nil, "",
+		nil,
 	)
 
 	old := time.Now().Add(-6 * time.Minute)
@@ -542,6 +790,7 @@ func TestEvaluateAndSend_OverageResumesAsSoonAsBusinessHoursReturn(t *testing.T)
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(),
 		reminderLog, issueSession, registrationRepo, notifier, nil, "",
+		nil,
 	)
 
 	// LastOverageReminderDate stays nil because the off-hours gate above
@@ -656,6 +905,7 @@ func TestEvaluateAndSend_SelfAssigneeAlwaysUsesWebhookNotifier(t *testing.T) {
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	session := issue_session_dto.IssueSession{
@@ -686,6 +936,7 @@ func TestEvaluateAndSend_TeammateAssigneeUsesDMNotifierWhenConfigured(t *testing
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	session := issue_session_dto.IssueSession{
@@ -715,6 +966,7 @@ func TestEvaluateAndSend_TeammateAssigneeFallsBackToWebhookWhenDMNotifierNil(t *
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	session := issue_session_dto.IssueSession{
@@ -742,6 +994,7 @@ func TestNotifyIfEarlyCompletion_SendsNoticeWhenElapsedBelowBudget(t *testing.T)
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	startedAt := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
@@ -779,6 +1032,7 @@ func TestNotifyIfEarlyCompletion_SkipsWhenElapsedAtOrAboveBudget(t *testing.T) {
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "teammate@esb.co.id", "Test summary", 10800, 10800, time.Time{}, time.Time{})
@@ -801,6 +1055,7 @@ func TestNotifyIfEarlyCompletion_RoutesSelfToWebhookAndTeammateToDM(t *testing.T
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "yusuf.wijaya@esb.co.id", "Self ticket", 1000, 10800, time.Time{}, time.Time{}); err != nil {
@@ -829,6 +1084,7 @@ func TestNotifyReturnedToTodo_AlwaysSendsRegardlessOfElapsedVsBudget(t *testing.
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	startedAt := time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC)
@@ -865,6 +1121,7 @@ func TestNotifyReturnedToTodo_RoutesSelfToWebhookAndTeammateToDM(t *testing.T) {
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	if err := engine.NotifyReturnedToTodo(context.Background(), "OMS-1", "yusuf.wijaya@esb.co.id", "Self ticket", 1000, 10800, time.Time{}); err != nil {
@@ -901,6 +1158,7 @@ func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T)
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
 		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
+		nil,
 	)
 
 	session := issue_session_dto.IssueSession{

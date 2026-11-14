@@ -81,3 +81,36 @@ func TestHasTierBeenSent_DifferentTiersAreIndependent(t *testing.T) {
 		t.Error("HasTierBeenSent(30m) = true, want false — logging 1h must not affect 30m")
 	}
 }
+
+func TestLogReminder_SkippedCountsAsHandledAndStoresStatus(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewReminderLogRepository(db)
+	ctx := context.Background()
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-SKIP") })
+
+	if err := repo.LogReminder(ctx, "TESTMYSQL-RL-SKIP", "+15m", "skipped"); err != nil {
+		t.Fatalf("LogReminder returned error: %v", err)
+	}
+	handled, err := repo.HasTierBeenSent(ctx, "TESTMYSQL-RL-SKIP", "+15m")
+	if err != nil || !handled {
+		t.Errorf("HasTierBeenSent = %v, %v; a skipped tier must count as handled", handled, err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT deliveryStatus FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-SKIP").Scan(&status); err != nil || status != "skipped" {
+		t.Errorf("deliveryStatus = %q, %v; want skipped", status, err)
+	}
+}
+
+func TestLogReminderSent_DefaultsToSentStatus(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewReminderLogRepository(db)
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-SENT") })
+
+	if err := repo.LogReminderSent(context.Background(), "TESTMYSQL-RL-SENT", "1h"); err != nil {
+		t.Fatalf("LogReminderSent returned error: %v", err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT deliveryStatus FROM tr_reminderlog WHERE issueKey = ?`, "TESTMYSQL-RL-SENT").Scan(&status); err != nil || status != "sent" {
+		t.Errorf("deliveryStatus = %q, %v; want sent", status, err)
+	}
+}

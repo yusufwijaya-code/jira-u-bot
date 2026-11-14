@@ -8,6 +8,7 @@ import (
 type fakeReminderLogRepository struct {
 	hasTierBeenSentResult bool
 	logReminderSentCalled bool
+	loggedStatus          string
 }
 
 func (f *fakeReminderLogRepository) HasTierBeenSent(ctx context.Context, issueKey, tier string) (bool, error) {
@@ -17,6 +18,21 @@ func (f *fakeReminderLogRepository) HasTierBeenSent(ctx context.Context, issueKe
 func (f *fakeReminderLogRepository) LogReminderSent(ctx context.Context, issueKey, tier string) error {
 	f.logReminderSentCalled = true
 	return nil
+}
+
+func (f *fakeReminderLogRepository) LogReminder(ctx context.Context, issueKey, tier, status string) error {
+	f.loggedStatus = status
+	return nil
+}
+
+func TestLogReminder_DelegatesStatusToRepository(t *testing.T) {
+	repo := &fakeReminderLogRepository{}
+	if err := NewReminderLogService(repo).LogReminder(context.Background(), "OMS-1", "1h", "skipped"); err != nil {
+		t.Fatalf("LogReminder returned error: %v", err)
+	}
+	if repo.loggedStatus != "skipped" {
+		t.Errorf("status = %q, want skipped", repo.loggedStatus)
+	}
 }
 
 func TestHasTierBeenSent_DelegatesToRepository(t *testing.T) {

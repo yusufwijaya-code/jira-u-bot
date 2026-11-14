@@ -12,11 +12,13 @@ import (
 // auth.Router not knowing about sessions.
 func Router(api *gin.RouterGroup, handler user_dashboard_handler.UserDashboardHandler) {
 	api.GET("/settings", handler.GetSettings)
+	api.PUT("/settings/notification", handler.UpdateNotificationSettings)
+	api.POST("/settings/mute", handler.Mute)
+	api.DELETE("/settings/mute", handler.Unmute)
 	api.GET("/board", handler.GetBoard)
 	api.GET("/team", handler.GetTeam)
 	api.GET("/overdue", handler.GetOverdue)
 	api.POST("/tickets/:issueKey/transition", handler.TransitionTicket)
-	api.POST("/preference", handler.UpdatePreference)
 	api.POST("/credential", handler.SaveCredential)
 	api.DELETE("/credential", handler.DeleteCredential)
 }

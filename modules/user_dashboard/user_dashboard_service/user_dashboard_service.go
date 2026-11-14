@@ -7,7 +7,8 @@ import (
 )
 
 // UserDashboardService implements Tech Spec "Dashboard Jira Manage",
-// Chapter 9a (reminder preference), 9b (My Board), 9c (Team/Overdue).
+// Chapter 9b (My Board) and 9c (Team/Overdue). Reminder preferences moved to
+// the user_setting module.
 //
 // Every read method takes the caller's email and returns ONLY that user's
 // own tickets - callers pass the session's email, never a request param, and
@@ -21,10 +22,4 @@ type UserDashboardService interface {
 	// GetOverdueView returns email's own active tickets whose elapsed
 	// time has passed their budget (spec AC3.4).
 	GetOverdueView(ctx context.Context, email string) ([]user_dashboard_dto.OverdueItem, error)
-	// SetReminderTierPreference persists email's chosen subset of the 6
-	// reminder tiers (spec AC2.1) - csv may be "" (deliberately none).
-	SetReminderTierPreference(ctx context.Context, email, csv string) error
-	// GetReminderTierPreference returns email's saved preference CSV, or
-	// nil if they've never set one (spec AC2.2 default).
-	GetReminderTierPreference(ctx context.Context, email string) (*string, error)
 }

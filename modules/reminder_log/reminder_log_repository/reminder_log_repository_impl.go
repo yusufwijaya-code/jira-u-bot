@@ -3,6 +3,8 @@ package reminder_log_repository
 import (
 	"context"
 	"database/sql"
+
+	"nudge/modules/reminder_log/reminder_log_dto"
 )
 
 type reminderLogRepositoryImpl struct {
@@ -33,10 +35,14 @@ func (r *reminderLogRepositoryImpl) HasTierBeenSent(ctx context.Context, issueKe
 }
 
 func (r *reminderLogRepositoryImpl) LogReminderSent(ctx context.Context, issueKey, tier string) error {
+	return r.LogReminder(ctx, issueKey, tier, reminder_log_dto.DeliverySent)
+}
+
+func (r *reminderLogRepositoryImpl) LogReminder(ctx context.Context, issueKey, tier, status string) error {
 	const query = `
-		INSERT INTO tr_reminderlog (issueKey, tier, sentDate)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
+		INSERT INTO tr_reminderlog (issueKey, tier, deliveryStatus, sentDate)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
 	`
-	_, err := r.db.ExecContext(ctx, query, issueKey, tier)
+	_, err := r.db.ExecContext(ctx, query, issueKey, tier, status)
 	return err
 }
