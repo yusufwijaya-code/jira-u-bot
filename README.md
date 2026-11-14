@@ -17,7 +17,7 @@
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
   - **Per board Jira**: pemilih board di navbar (ikon project dari Jira, via proxy `GET /api/dashboard/boards/:id/avatar`) berisi "Semua board" + board yang sprint aktifnya berisi tiket kamu. Board tiket = board dari sprint **aktif**-nya (field sprint Jira). Dashboard & Pengaturan mengikuti board terpilih (`?board=` di URL, diingat di browser)
   - Pengaturan per board: "Semua board" = pengaturan default; board tanpa pengaturan khusus mengikuti default (tombol **Atur khusus board ini** / **Kembalikan ke default**); mute dua level (semua board + per board). Disimpan di `ms_user_setting` dengan kunci `(userID, boardID)`, `boardID = 0` = default; cache board di `ms_board`
-  - Layout: sidebar kiri (menu **Dashboard** dan **Pengaturan**), topbar dengan judul halaman dan dropdown user (Admin khusus admin, Logout)
+  - Layout: sidebar kiri (menu **Dashboard** dan **Pengaturan**), topbar dengan judul halaman dan dropdown user (foto profil, Admin khusus admin, Logout)
   - **Dashboard** (halaman awal) — sapaan + status notif, 4 statistik (sedang dikerjakan, lewat budget, total tiket, achievement sprint), tiket Code Process dengan progress bar budget (hijau/oranye ≥80%/merah lewat budget) dan tombol geser ke Code Review / To Do, semua tiket per status (link ke Jira), dan ringkasan sprint terbaru (dipilih dari nomor + tahun sprint di namanya). Untuk board CORE ada card **Sedang di-review** (tiket CODE REVIEW beserta budget-nya) di bawah "Sedang dikerjakan"
   - **Pengaturan** — setting notifikasi per user (tabel `ms_user_setting`; tanpa baris = default yang sama dengan perilaku lama):
     - **Reminder sebelum budget habis** — pilih tier preset atau tambah tier custom (1 menit–8 jam, maks. 10)
@@ -26,8 +26,13 @@
     - **Mute & jam tenang** — mute 1 jam / 2 jam / sampai besok 08:30, dan jam tenang harian (WIB); reminder yang jatuh tempo saat itu dilewati (`tr_reminderlog.deliveryStatus = skipped`), notif lewat budget langsung lanjut setelahnya. Badge 🔕 muncul di topbar saat mute aktif
     - Kalau beberapa tier terlewati sekaligus, hanya tier paling relevan yang dikirim
   - **Jira API key pribadi** (opsional; begitu di-set, aksi transisi `/u-geser` tercatat atas nama akun sendiri; token disimpan terenkripsi AES-256-GCM)
-  - **Admin** (khusus `ADMIN_EMAIL`) — statistik user, cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user, dan broadcast pengumuman lewat DM
-  - Semua data **hanya milik user yang login** (di-scope di server lewat email sesi, termasuk admin)
+  - **Foto profil** user diambil dari Jira (proxy `GET /api/dashboard/me/avatar`, cache 24 jam; tanpa foto → huruf inisial)
+  - **Admin panel** (khusus `ADMIN_EMAIL`, route `/admin` dengan shell & sidebar sendiri, di-lazy-load; `/dashboard/admin` lama di-redirect). Tombol **Dashboard Utama** di topbar kembali ke `/dashboard`:
+    - **Dashboard** — statistik user + daftar pintas user tanpa credential & user nonaktif
+    - **User** — cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user; klik baris → **detail user**: semua pengaturan dinamis milik user itu (notifikasi default & per board, mute global & per board, isi/ganti/hapus Jira credential) memakai komponen Pengaturan yang sama. Endpoint: `/api/dashboard/admin/users/:userID/{settings,settings/notification,settings/mute,credential,boards,avatar}`, bentuk request/respons identik dengan endpoint user (`SettingsHandler` bersama)
+    - Setiap perubahan admin pada pengaturan/credential user lain dikirim ke user tsb lewat **DM Google Chat** (best-effort; tidak dikirim bila admin mengubah akunnya sendiri)
+    - **Broadcast Message** — pengumuman lewat DM ke semua user aktif
+  - Data dashboard & pengaturan user **hanya milik user yang login** (di-scope di server lewat email sesi); hanya endpoint `/api/dashboard/admin/**` (di balik `AdminMiddleware`) yang bisa menyentuh user lain
 
 ### Brand & UI
 
@@ -65,5 +70,6 @@
 - `modules/jira_credential` — penyimpanan & resolusi Jira API key pribadi user, terenkripsi AES-256-GCM
 - `modules/auth` — Google Sign-In, session, auto-registrasi, middleware auth/admin
 - `modules/user_dashboard` — board, overdue, team, preference & credential setup
-- `modules/admin_dashboard` — manajemen user untuk admin
+- `modules/admin_dashboard` — manajemen user untuk admin, termasuk pengaturan user lain (`AdminTarget`) dan DM pemberitahuan perubahan
+- `modules/user_avatar` — proxy foto profil Jira user (host avatar dibatasi: situs Jira, CDN Atlassian, Gravatar)
 - `modules/sprint_report` — generate report Estimated vs Actual Time per sprint

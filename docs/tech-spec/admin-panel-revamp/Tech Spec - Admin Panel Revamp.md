@@ -4,7 +4,7 @@
 > **PRD Link:** — (hasil brainstorming di sesi Claude Code, disetujui user per section)
 > **STP Link:** —
 > **Epic / Task:** Nudge — admin panel dengan shell & sidebar sendiri, menu User/Broadcast terpisah, admin dapat mengatur setting milik user
-> **Document Status:** `Not Started`
+> **Document Status:** `Implemented` (branch `feature/nudge/admin-panel-revamp`)
 > **Document Owner:** Yusuf Wijaya
 > **Need Review:** —
 > **Depends on:** [Tech Spec — Per-Board Settings & Active Sprint Dashboard](../per-board-settings/Tech%20Spec%20-%20Per-Board%20Settings%20%26%20Active%20Sprint%20Dashboard.md). Implementasi **baru dimulai setelah** fitur per-board selesai & di-commit (saat spec ini ditulis, fitur itu masih dikerjakan di working tree oleh agent lain).
@@ -316,6 +316,21 @@ DM template (backend, Bahasa Indonesia)
 | **Jira rate/latency** | `GET /admin/users/:id/boards` memanggil Jira untuk user target. Cache yang sama dengan `/boards`. Hanya dipanggil saat admin membuka detail. |
 | **DM spam** | Setiap simpan memicu satu DM. Diterima (perubahan admin jarang). Lihat Future. |
 | **Konflik kerja paralel** | Spec ditulis saat agent lain masih mengubah `user_setting`, `settings.component`, `dashboard-shell`, `app.routes.ts`. Mitigasi: gate #0. Signature service di spec ini perlu diverifikasi ulang setelah per-board final. |
+
+---
+
+## 📝 Implementation Notes (deviasi dari spec)
+
+| # | Spec | Implementasi | Alasan |
+|---|------|--------------|--------|
+| 1 | Path param `:userId` | `:userID` | gin mewajibkan nama wildcard sama dengan route admin yang sudah ada (`/users/:userID/active`, dst.) |
+| 2 | Helper parsing di `user_dashboard_dto` | `user_dashboard_handler.SettingsHandler` dengan `TargetResolver` + `ChangeListener` | Satu kode handler untuk dua mount (sesi vs `:userID`) — tidak ada duplikasi, bentuk respons pasti identik |
+| 3 | `core/tokens/settings.tokens.ts`, `SelfSettingsApi` | `core/services/settings-api.ts`: abstract class `SettingsApi` / `SettingsScope` dengan `useExisting` ke `BoardService` / `BoardContextService` + token `SETTINGS_MODE` | Default = service lama, sehingga spec lama tetap hijau tanpa diubah |
+| 4 | Copy teks "kamu" → nama user di mode admin | Tidak diubah; diganti banner "Kamu sedang mengatur pengaturan milik …" di halaman detail | YAGNI — konteks sudah jelas dari banner |
+| 5 | `NewAdminDashboardService(..., boards)` | Variadic option `WithBoardNamer(boardSvc)` | Tidak mengubah 13 call site constructor |
+| 6 | — | Route admin di-lazy-load (`loadComponent`) | Bundle awal melewati budget 500 kB; sekarang ±476 kB, kode admin hanya diunduh admin |
+| 7 | — (permintaan tambahan) | **Foto profil user dari Jira**: `GET /api/dashboard/me/avatar`, `GET /api/dashboard/admin/users/:userID/avatar` (modul `user_avatar`, cache 24 jam / miss 1 jam), komponen `app-user-avatar` di shell, tabel user, overview, detail | Avatar user Jira Cloud di-host di CDN Atlassian / Gravatar, bukan di situs Jira: diambil tanpa kredensial dari host allowlist (`*.atl-paas.net`, `secure.gravatar.com`), situs Jira dengan kredensial bot, host/redirect lain ditolak |
+| 8 | Unresolved #2 | `GetUser` = filter `ListUsers` (FindAll + MaskedPreview per user) | Tanpa query repository baru; biaya linear terhadap jumlah user — tambah `FindUserByID` bila user bertambah banyak |
 
 ---
 
