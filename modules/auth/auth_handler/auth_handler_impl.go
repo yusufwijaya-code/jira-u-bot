@@ -1,6 +1,7 @@
 package auth_handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -36,15 +37,34 @@ type authHandlerImpl struct {
 	// appURL is the frontend origin + BasePath — where every post-login /
 	// post-logout redirect lands (see config.AppConfig.FrontendURL).
 	appURL string
+	// onLogin runs after a successful sign-in (e.g. to store the Google
+	// profile picture); nil = nothing.
+	onLogin LoginHook
 }
 
-func NewAuthHandler(authService auth_service.AuthService, cfg *config.AppConfig) AuthHandler {
-	return &authHandlerImpl{
+// LoginHook is told about every successful sign-in. It must not block for
+// long and handles its own errors — login never fails because of it.
+type LoginHook func(ctx context.Context, userID int64, claims auth_dto.GoogleClaims)
+
+// Option configures optional AuthHandler behaviour.
+type Option func(*authHandlerImpl)
+
+// WithLoginHook runs hook after every successful sign-in.
+func WithLoginHook(hook LoginHook) Option {
+	return func(h *authHandlerImpl) { h.onLogin = hook }
+}
+
+func NewAuthHandler(authService auth_service.AuthService, cfg *config.AppConfig, opts ...Option) AuthHandler {
+	h := &authHandlerImpl{
 		authService: authService,
 		basePath:    cfg.BasePath,
 		adminEmail:  cfg.AdminEmail,
 		appURL:      cfg.FrontendURL + cfg.BasePath,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // cookiePath scopes every cookie this handler sets to cfg.BasePath instead
@@ -123,6 +143,10 @@ func (h *authHandlerImpl) Callback(c *gin.Context) {
 	if err != nil {
 		h.redirectToLoginWithError(c, "Gagal membuat sesi, coba lagi")
 		return
+	}
+
+	if h.onLogin != nil {
+		h.onLogin(ctx, user.UserID, *claims)
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)

@@ -16,6 +16,7 @@ import (
 	"nudge/migrations"
 	"nudge/modules/admin_dashboard/admin_dashboard_handler"
 	"nudge/modules/admin_dashboard/admin_dashboard_service"
+	"nudge/modules/auth/auth_dto"
 	"nudge/modules/auth/auth_handler"
 	"nudge/modules/auth/auth_service"
 	"nudge/modules/auth/auth_session_repository"
@@ -42,6 +43,7 @@ import (
 	"nudge/modules/sprint_report/sprint_report_handler"
 	"nudge/modules/sprint_report/sprint_report_service"
 	"nudge/modules/user_avatar/user_avatar_handler"
+	"nudge/modules/user_avatar/user_avatar_repository"
 	"nudge/modules/user_avatar/user_avatar_service"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
 	"nudge/modules/user_dashboard/user_dashboard_service"
@@ -183,7 +185,16 @@ func main() {
 
 	authSessionRepo := auth_session_repository.NewAuthSessionRepository(db)
 	authSvc := auth_service.NewAuthService(&cfg, registrationService, registrationRepo, authSessionRepo)
-	authHandler := auth_handler.NewAuthHandler(authSvc, &cfg)
+	// Google profile pictures: stored from the Sign-In ID token on every
+	// login, served through /me/avatar and the admin avatar endpoint.
+	userAvatarSvc := user_avatar_service.NewUserAvatarService(user_avatar_repository.NewUserAvatarRepository(db), nil)
+	authHandler := auth_handler.NewAuthHandler(authSvc, &cfg, auth_handler.WithLoginHook(
+		func(ctx context.Context, userID int64, claims auth_dto.GoogleClaims) {
+			if err := userAvatarSvc.SavePicture(ctx, userID, claims.Picture); err != nil {
+				log.Printf("main: saving profile picture of user %d failed: %v", userID, err)
+			}
+		},
+	))
 
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
 		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
@@ -206,9 +217,7 @@ func main() {
 		admin_dashboard_handler.AdminChangeListener(adminDashboardSvc),
 	)
 
-	userAvatarHandler := user_avatar_handler.NewUserAvatarHandler(
-		user_avatar_service.NewUserAvatarService(registrationRepo, jira_client_service.NewJiraUserClient(&cfg)),
-	)
+	userAvatarHandler := user_avatar_handler.NewUserAvatarHandler(userAvatarSvc)
 
 	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings, userAvatarHandler)
 

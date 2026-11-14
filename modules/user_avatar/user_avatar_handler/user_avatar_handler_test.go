@@ -20,6 +20,10 @@ type fakeAvatars struct {
 	gotUserID int64
 }
 
+func (f *fakeAvatars) SavePicture(ctx context.Context, userID int64, pictureURL string) error {
+	return nil
+}
+
 func (f *fakeAvatars) ByEmail(ctx context.Context, email string) ([]byte, string, error) {
 	f.gotEmail = email
 	return []byte("PNG"), "image/png", f.err

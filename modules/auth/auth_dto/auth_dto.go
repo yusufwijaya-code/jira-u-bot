@@ -23,6 +23,9 @@ type GoogleClaims struct {
 	Email         string
 	EmailVerified bool
 	Name          string
+	// Picture is the Google profile picture URL ("" when the account has
+	// none) — shown as the user's avatar in the dashboard.
+	Picture string
 }
 
 // allowedEmailDomain is the only domain permitted to sign in (spec AC1.3) —

@@ -298,3 +298,26 @@ func TestCallback_RedirectsToFrontendURLWhenConfigured(t *testing.T) {
 		t.Errorf("Location = %q, want http://localhost:4200/nudge/dashboard", loc)
 	}
 }
+
+func TestCallback_RunsLoginHookWithClaims(t *testing.T) {
+	svc := &fakeAuthServiceForHandler{
+		verifyClaims:    &auth_dto.GoogleClaims{Email: "dev@esb.co.id", EmailVerified: true, Name: "Dev", Picture: "https://lh3.googleusercontent.com/a/x=s96-c"},
+		getOrCreateUser: &registration_dto.User{UserID: 5, Email: "dev@esb.co.id", FlagActive: true},
+		issuedToken:     "session-token-xyz",
+	}
+	var gotUserID int64
+	var gotPicture string
+	handler := NewAuthHandler(svc, testCfg(), WithLoginHook(func(ctx context.Context, userID int64, claims auth_dto.GoogleClaims) {
+		gotUserID, gotPicture = userID, claims.Picture
+	}))
+
+	w, c := newTestContext()
+	req := httptest.NewRequest("GET", "/auth/google/callback?code=abc&state=s1", nil)
+	req.AddCookie(&http.Cookie{Name: stateCookieName, Value: "s1"})
+	c.Request = req
+	handler.Callback(c)
+
+	if w.Code != http.StatusFound || gotUserID != 5 || gotPicture != "https://lh3.googleusercontent.com/a/x=s96-c" {
+		t.Errorf("status=%d hook userID=%d picture=%q", w.Code, gotUserID, gotPicture)
+	}
+}

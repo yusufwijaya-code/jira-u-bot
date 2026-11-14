@@ -185,10 +185,12 @@ func (g *googleVerifierImpl) Verify(ctx context.Context, rawIDToken string) (*au
 	email, _ := payload.Claims["email"].(string)
 	emailVerified, _ := payload.Claims["email_verified"].(bool)
 	name, _ := payload.Claims["name"].(string)
+	picture, _ := payload.Claims["picture"].(string)
 
 	return &auth_dto.GoogleClaims{
 		Email:         email,
 		EmailVerified: emailVerified,
 		Name:          name,
+		Picture:       picture,
 	}, nil
 }

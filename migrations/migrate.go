@@ -58,6 +58,9 @@ var addUserSettingUseDefaultSQL string
 //go:embed 0012c_user_setting_board_pk.sql
 var userSettingBoardPKSQL string
 
+//go:embed 0013_add_user_picture.sql
+var addUserPictureSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -123,7 +126,12 @@ func apply(db *sql.DB) error {
 	if err := addColumnIfNotExists(db, addReminderLogDeliveryStatusSQL); err != nil {
 		return err
 	}
-	return applyPerBoardSettings(db)
+	if err := applyPerBoardSettings(db); err != nil {
+		return err
+	}
+	// CREATE TABLE IF NOT EXISTS — naturally idempotent.
+	_, err := db.Exec(addUserPictureSQL)
+	return err
 }
 
 // applyPerBoardSettings (Tech Spec "Per-Board Settings & Active Sprint
