@@ -101,8 +101,8 @@
         </div>
       } @else {
         <ul class="ticket-list">
-          @for (t of active(); track t.issueKey; let i = $index) {
-            <ng-container *ngTemplateOutlet="ticketRow; context: { $implicit: t, i: i, review: false }" />
+          @for (n of activeTree(); track n.key; let i = $index) {
+            <ng-container *ngTemplateOutlet="ticketNode; context: { $implicit: n, i: i, review: false }" />
           }
         </ul>
       }
@@ -133,8 +133,8 @@
         </div>
       } @else {
         <ul class="ticket-list">
-          @for (t of reviewing(); track t.issueKey; let i = $index) {
-            <ng-container *ngTemplateOutlet="ticketRow; context: { $implicit: t, i: i, review: true }" />
+          @for (n of reviewTree(); track n.key; let i = $index) {
+            <ng-container *ngTemplateOutlet="ticketNode; context: { $implicit: n, i: i, review: true }" />
           }
         </ul>
       }
@@ -174,6 +174,20 @@
                     <a [href]="c.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ c.issueKey }}</a>
                     <span class="ticket-summary">{{ c.summary }}</span>
                   </li>
+                  @if (branchesOf().get(c.issueKey); as branches) {
+                    <li class="mini-branches" [attr.data-branches-of]="c.issueKey">
+                      <ul>
+                        @for (b of branches; track b.issueKey) {
+                          <li class="mini-branch">
+                            <span class="relation-chip" data-relation>{{ b.relation }}</span>
+                            <a [href]="b.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ b.issueKey }}</a>
+                            <span class="ticket-summary">{{ b.summary }}</span>
+                            <span class="status-chip">{{ b.status }}</span>
+                          </li>
+                        }
+                      </ul>
+                    </li>
+                  }
                 }
               </ul>
               @if (g.cards.length > preview) {
@@ -253,12 +267,40 @@
   </div>
 </div>
 
-<ng-template #ticketRow let-t let-i="i" let-review="review">
-            <li class="ticket-row" [attr.data-level]="t.hasBudgetDetail ? t.level : 'untracked'" [style.--i]="i">
+<!-- A ticket (or its parent's header) with its subtask/linked branches -->
+<ng-template #ticketNode let-n let-i="i" let-review="review">
+            @if (n.head) {
+              <ng-container *ngTemplateOutlet="ticketRow; context: { $implicit: n.head, i: i, review: review, branch: false }" />
+            } @else {
+              <li class="ticket-parent" [style.--i]="i" [attr.data-parent]="n.key">
+                <app-icon name="layers" [size]="15" />
+                <a class="ticket-key" [href]="parentURL(n)" target="_blank" rel="noopener">{{ n.key }}</a>
+                <span class="ticket-summary">{{ n.parentSummary }}</span>
+                @if (n.parentStatus) {
+                  <span class="status-chip">{{ n.parentStatus }}</span>
+                }
+              </li>
+            }
+            @if (n.branches.length) {
+              <li class="ticket-branches">
+                <ul>
+                  @for (b of n.branches; track b.issueKey) {
+                    <ng-container *ngTemplateOutlet="ticketRow; context: { $implicit: b, i: i, review: review, branch: true }" />
+                  }
+                </ul>
+              </li>
+            }
+</ng-template>
+
+<ng-template #ticketRow let-t let-i="i" let-review="review" let-branch="branch">
+            <li class="ticket-row" [class.ticket-branch]="branch" [attr.data-level]="t.hasBudgetDetail ? t.level : 'untracked'" [style.--i]="i">
               <div class="ticket-main">
                 <div class="ticket-title">
                   @if (!boardContext.selected() && boardOf(t); as b) {
                     <app-board-avatar class="ticket-board" [boardId]="b.boardId" [projectKey]="b.projectKey" [size]="18" [attr.title]="b.name" />
+                  }
+                  @if (branch && t.relation) {
+                    <span class="relation-chip" data-relation>{{ t.relation }}</span>
                   }
                   <a class="ticket-key" [href]="t.issueURL" target="_blank" rel="noopener">{{ t.issueKey }}</a>
                   <span class="ticket-summary">{{ t.summary }}</span>

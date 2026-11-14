@@ -23,10 +23,18 @@ export interface TicketCard {
   startedAt?: string;
   /** RFC3339: when the budget runs out in business hours. */
   deadlineAt?: string;
+  /** Set on a branch: the active-sprint ticket this subtask/linked item hangs under. */
+  parentKey?: string;
+  parentSummary?: string;
+  parentStatus?: string;
+  /** "subtask" or the Jira link wording ("relates to", "blocks", ...). */
+  relation?: string;
 }
 
 export interface BoardResponse {
   columns: { status: string; cards: TicketCard[] }[];
+  /** Subtasks/linked items (tracked status) outside the sprint — only for the active/review cards. */
+  related?: TicketCard[];
 }
 
 export interface SprintReportRow {

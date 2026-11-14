@@ -42,4 +42,12 @@ type UserSettingService interface {
 	Unmute(ctx context.Context, userID, boardID int64) error
 	// BoardStates returns custom/mute state of every board row of the user.
 	BoardStates(ctx context.Context, userID int64) (map[int64]BoardState, error)
+	// NotificationSwitch / SetNotificationsEnabled: the master switch for
+	// automatic notifications (Tech Spec "Notification On-Off Consent").
+	// Setting it also records that the user made the choice.
+	NotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, error)
+	SetNotificationsEnabled(ctx context.Context, userID int64, enabled bool) (user_setting_dto.NotificationSwitch, error)
 }
+
+// ErrUserNotFound is returned for a switch read of a missing user.
+var ErrUserNotFound = errors.New("user not found")

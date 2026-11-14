@@ -38,6 +38,7 @@ type userDashboardServiceImpl struct {
 // capability this service needs.
 type activeSprintSearcher interface {
 	SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error)
+	SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error)
 }
 
 // boardDirectory is the board_service slice this service needs.
@@ -77,15 +78,23 @@ func (s *userDashboardServiceImpl) issueURL(issueKey string) string {
 	return s.jiraBaseURL + "/browse/" + issueKey
 }
 
+// sprintQuery is email's active-sprint tickets plus what a follow-up Jira
+// query on their behalf needs.
+type sprintQuery struct {
+	issues    []jira_client_dto.Issue
+	cred      *jira_client_dto.Credential
+	accountID string
+}
+
 // activeSprintIssues returns email's tickets in open sprints (empty for an
 // unregistered user).
-func (s *userDashboardServiceImpl) activeSprintIssues(ctx context.Context, email string) ([]jira_client_dto.Issue, error) {
+func (s *userDashboardServiceImpl) activeSprintIssues(ctx context.Context, email string) (sprintQuery, error) {
 	user, found, err := s.registrationRepo.FindUserByEmail(ctx, email)
 	if err != nil {
-		return nil, err
+		return sprintQuery{}, err
 	}
 	if !found {
-		return nil, nil
+		return sprintQuery{}, nil
 	}
 
 	// A credential resolution error (e.g. decrypt failure) falls back to
@@ -95,7 +104,83 @@ func (s *userDashboardServiceImpl) activeSprintIssues(ctx context.Context, email
 	if credErr != nil {
 		log.Printf("user_dashboard_service: ResolveCredential(%s) failed, falling back to central credential: %v", email, credErr)
 	}
-	return s.agile.SearchActiveSprintIssuesByAssignee(ctx, cred, user.JiraAccountID)
+	issues, err := s.agile.SearchActiveSprintIssuesByAssignee(ctx, cred, user.JiraAccountID)
+	if err != nil {
+		return sprintQuery{}, err
+	}
+	return sprintQuery{issues: issues, cred: cred, accountID: user.JiraAccountID}, nil
+}
+
+// branchParent is the active-sprint ticket a branch hangs under.
+type branchParent struct {
+	issue    jira_client_dto.Issue
+	relation string
+}
+
+func (p branchParent) applyTo(card *user_dashboard_dto.Card) {
+	card.ParentKey = p.issue.Key
+	card.ParentSummary = p.issue.Fields.Summary
+	card.ParentStatus = p.issue.Fields.Status.Name
+	card.Relation = p.relation
+}
+
+// relatedCards finds the caller's subtasks/linked items (any status) of
+// their active-sprint tickets that aren't in the sprint themselves (Tech
+// Spec "Subtask & Linked Item Branches") — the dashboard hangs them under
+// their parent in "Tiket saya per status" and, when tracked, in the
+// active/review cards. Each hangs under the
+// first sprint ticket that references it and takes that ticket's board. A
+// Jira failure only drops the branches (AC1.8).
+func (s *userDashboardServiceImpl) relatedCards(ctx context.Context, q sprintQuery, boardID int64) []user_dashboard_dto.Card {
+	inSprint := make(map[string]bool, len(q.issues))
+	for _, issue := range q.issues {
+		inSprint[issue.Key] = true
+	}
+	parents := map[string]branchParent{}
+	var keys []string
+	for _, issue := range q.issues {
+		for _, rel := range issue.Relations() {
+			if inSprint[rel.Key] {
+				continue
+			}
+			if _, seen := parents[rel.Key]; seen {
+				continue
+			}
+			parents[rel.Key] = branchParent{issue: issue, relation: rel.Label}
+			keys = append(keys, rel.Key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+
+	issues, err := s.agile.SearchIssuesByKeysForAssignee(ctx, q.cred, keys, q.accountID)
+	if err != nil {
+		log.Printf("user_dashboard_service: related items lookup failed, showing no branches: %v", err)
+		return nil
+	}
+
+	var cards []user_dashboard_dto.Card
+	for _, issue := range issues {
+		parent, ok := parents[issue.Key]
+		if !ok {
+			continue
+		}
+		if a := issue.Fields.Assignee; a != nil && a.AccountID != "" && a.AccountID != q.accountID {
+			continue
+		}
+		sprint, inBoard := activeBoardOf(parent.issue)
+		if boardID > 0 && (!inBoard || sprint.BoardID != boardID) {
+			continue
+		}
+		card := s.buildCard(ctx, issue)
+		if inBoard {
+			card.BoardID = sprint.BoardID
+		}
+		parent.applyTo(&card)
+		cards = append(cards, card)
+	}
+	return cards
 }
 
 func activeBoardOf(issue jira_client_dto.Issue) (jira_client_dto.SprintRef, bool) {
@@ -103,14 +188,19 @@ func activeBoardOf(issue jira_client_dto.Issue) (jira_client_dto.SprintRef, bool
 }
 
 func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string, boardID int64) (user_dashboard_dto.Board, error) {
-	issues, err := s.activeSprintIssues(ctx, email)
+	q, err := s.activeSprintIssues(ctx, email)
 	if err != nil {
 		return user_dashboard_dto.Board{}, err
 	}
 
+	byKey := make(map[string]jira_client_dto.Issue, len(q.issues))
+	for _, issue := range q.issues {
+		byKey[issue.Key] = issue
+	}
+
 	board := user_dashboard_dto.Board{}
 	columnIndex := map[string]int{}
-	for _, issue := range issues {
+	for _, issue := range q.issues {
 		sprint, inSprint := activeBoardOf(issue)
 		if boardID > 0 && (!inSprint || sprint.BoardID != boardID) {
 			continue
@@ -118,6 +208,13 @@ func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string,
 		card := s.buildCard(ctx, issue)
 		if inSprint {
 			card.BoardID = sprint.BoardID
+		}
+		// A sprint ticket that is a subtask of another sprint ticket hangs
+		// under it (AC2.4); links between sprint tickets don't nest.
+		if p := issue.Fields.Parent; p != nil {
+			if parent, ok := byKey[p.Key]; ok {
+				branchParent{issue: parent, relation: jira_client_dto.RelationSubtask}.applyTo(&card)
+			}
 		}
 
 		idx, ok := columnIndex[card.Status]
@@ -128,14 +225,16 @@ func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string,
 		}
 		board.Columns[idx].Cards = append(board.Columns[idx].Cards, card)
 	}
+	board.Related = s.relatedCards(ctx, q, boardID)
 	return board, nil
 }
 
 func (s *userDashboardServiceImpl) ListBoards(ctx context.Context, email string) ([]user_dashboard_dto.BoardSummary, error) {
-	issues, err := s.activeSprintIssues(ctx, email)
+	q, err := s.activeSprintIssues(ctx, email)
 	if err != nil {
 		return nil, err
 	}
+	issues := q.issues
 
 	byBoard := map[int64]*user_dashboard_dto.BoardSummary{}
 	var order []int64

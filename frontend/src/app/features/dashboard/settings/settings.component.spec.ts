@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
@@ -75,6 +77,8 @@ describe('SettingsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [SettingsComponent],
       providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: BoardService, useValue: boardService },
         { provide: BoardContextService, useValue: context },
         { provide: ToastService, useValue: toast },

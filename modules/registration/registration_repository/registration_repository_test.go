@@ -37,6 +37,23 @@ func TestUpsertUser_CreatesNewUser(t *testing.T) {
 	if user.JiraAccountID != "acc-anwar-123" {
 		t.Errorf("JiraAccountID = %q, want %q", user.JiraAccountID, "acc-anwar-123")
 	}
+	// Tech Spec "Notification On-Off Consent": a new registration starts
+	// with notifications off and no choice made yet.
+	if user.NotificationsEnabled || user.NotificationChoiceDate != nil {
+		t.Errorf("NotificationsEnabled=%v ChoiceDate=%v, want off and not chosen for a new registration", user.NotificationsEnabled, user.NotificationChoiceDate)
+	}
+
+	// Logging in again (re-upsert) never resets a choice already made.
+	if _, err := db.Exec(`UPDATE ms_user SET notificationsEnabled = 1, notificationChoiceDate = NOW() WHERE email = ?`, "testmysql-anwar@esb.co.id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertUser(ctx, "TestMySQL Anwar", "testmysql-anwar@esb.co.id", "acc-anwar-123"); err != nil {
+		t.Fatal(err)
+	}
+	user, _, _ = repo.FindUserByEmail(ctx, "testmysql-anwar@esb.co.id")
+	if !user.NotificationsEnabled || user.NotificationChoiceDate == nil {
+		t.Errorf("after re-login: NotificationsEnabled=%v ChoiceDate=%v, want the saved choice kept", user.NotificationsEnabled, user.NotificationChoiceDate)
+	}
 }
 
 func TestUpsertUser_SameEmailUpdatesInsteadOfDuplicating(t *testing.T) {

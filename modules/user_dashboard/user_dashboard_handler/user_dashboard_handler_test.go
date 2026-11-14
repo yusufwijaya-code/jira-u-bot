@@ -127,6 +127,9 @@ func TestGetBoard_ReturnsBoardAsJSONForSessionEmail(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"issueKey":"OMS-1"`) {
 		t.Errorf("body missing board ticket: %s", w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), `"related":[]`) {
+		t.Errorf("body must carry related as [] (not null): %s", w.Body.String())
+	}
 	if svc.boardEmail != "dev@esb.co.id" {
 		t.Errorf("GetMyBoard called with %q, want the session's dev@esb.co.id", svc.boardEmail)
 	}
@@ -303,6 +306,25 @@ type fakeUserSettingsForHandler struct {
 	// board each call was scoped to
 	gotBoard, savedBoard, mutedBoard, unmutedBoard, resetBoard int64
 	states                                                     map[int64]user_setting_service.BoardState
+
+	// master switch (Tech Spec "Notification On-Off Consent")
+	notifSwitch    user_setting_dto.NotificationSwitch
+	switchErr      error
+	switchSavedFor int64
+	switchSavedTo  *bool
+}
+
+func (f *fakeUserSettingsForHandler) NotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, error) {
+	return f.notifSwitch, f.switchErr
+}
+
+func (f *fakeUserSettingsForHandler) SetNotificationsEnabled(ctx context.Context, userID int64, enabled bool) (user_setting_dto.NotificationSwitch, error) {
+	if f.switchErr != nil {
+		return user_setting_dto.NotificationSwitch{}, f.switchErr
+	}
+	f.switchSavedFor, f.switchSavedTo = userID, &enabled
+	f.notifSwitch = user_setting_dto.NotificationSwitch{Enabled: enabled, Chosen: true}
+	return f.notifSwitch, nil
 }
 
 func (f *fakeUserSettingsForHandler) GetEffectiveForEmail(ctx context.Context, email string, boardID int64) user_setting_dto.UserSetting {
@@ -396,6 +418,55 @@ func TestGetSettings_DefaultsForUserWithoutSettings(t *testing.T) {
 	}
 	if !strings.Contains(body, `"global":{"active":false,"forever":false,"until":null}`) {
 		t.Errorf("body = %s, want mute inactive", body)
+	}
+}
+
+func TestGetSettings_ReturnsTheNotificationSwitch(t *testing.T) {
+	handler := settingsHandler(&fakeUserSettingsForHandler{notifSwitch: user_setting_dto.NotificationSwitch{Enabled: false, Chosen: false}})
+	w, c := newTestContextWithUser("GET", "/api/dashboard/settings", "")
+	handler.GetSettings(c)
+	if !strings.Contains(w.Body.String(), `"notifications":{"chosen":false,"enabled":false}`) {
+		t.Errorf("body = %s, want the not-yet-chosen switch", w.Body.String())
+	}
+
+	// A failed switch read must not trap the user in the consent pop up.
+	handler = settingsHandler(&fakeUserSettingsForHandler{switchErr: errors.New("db down")})
+	w, c = newTestContextWithUser("GET", "/api/dashboard/settings", "")
+	handler.GetSettings(c)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"notifications":{"chosen":true,"enabled":true}`) {
+		t.Errorf("status=%d body=%s, want 200 with chosen+enabled fallback", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateNotificationsSwitch_SavesForSessionUser(t *testing.T) {
+	settings := &fakeUserSettingsForHandler{}
+	handler := settingsHandler(settings)
+
+	w, c := newTestContextWithUser("PUT", "/api/dashboard/settings/notifications", `{"enabled":true}`)
+	handler.UpdateNotificationsSwitch(c)
+
+	if w.Code != http.StatusOK || w.Body.String() != `{"chosen":true,"enabled":true}` {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if settings.switchSavedFor != 1 || settings.switchSavedTo == nil || !*settings.switchSavedTo {
+		t.Errorf("saved for user %d to %v, want user 1 (session) on", settings.switchSavedFor, settings.switchSavedTo)
+	}
+}
+
+func TestUpdateNotificationsSwitch_RejectsMissingValueAndReportsFailure(t *testing.T) {
+	for _, body := range []string{`{}`, `{"enabled":"yes"}`, `not json`} {
+		settings := &fakeUserSettingsForHandler{}
+		w, c := newTestContextWithUser("PUT", "/api/dashboard/settings/notifications", body)
+		settingsHandler(settings).UpdateNotificationsSwitch(c)
+		if w.Code != http.StatusBadRequest || settings.switchSavedTo != nil {
+			t.Errorf("body %q: status=%d saved=%v, want 400 and nothing saved", body, w.Code, settings.switchSavedTo)
+		}
+	}
+
+	w, c := newTestContextWithUser("PUT", "/api/dashboard/settings/notifications", `{"enabled":false}`)
+	settingsHandler(&fakeUserSettingsForHandler{switchErr: errors.New("db down")}).UpdateNotificationsSwitch(c)
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
 	}
 }
 

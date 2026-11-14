@@ -47,9 +47,29 @@ func (s *userSettingServiceImpl) GetEffectiveForEmail(ctx context.Context, email
 	setting, err := s.GetEffective(ctx, user.UserID, boardID)
 	if err != nil {
 		log.Printf("user_setting: load settings for %s (board %d) failed, using defaults: %v", email, boardID, err)
-		return defaultsFor(user.UserID, boardID)
+		setting = defaultsFor(user.UserID, boardID)
 	}
+	// The master switch lives on ms_user, already loaded above.
+	setting.NotificationsOff = !user.NotificationsEnabled
 	return setting
+}
+
+func (s *userSettingServiceImpl) NotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, error) {
+	sw, found, err := s.repo.FindNotificationSwitch(ctx, userID)
+	if err != nil {
+		return user_setting_dto.NotificationSwitch{}, err
+	}
+	if !found {
+		return user_setting_dto.NotificationSwitch{}, ErrUserNotFound
+	}
+	return sw, nil
+}
+
+func (s *userSettingServiceImpl) SetNotificationsEnabled(ctx context.Context, userID int64, enabled bool) (user_setting_dto.NotificationSwitch, error) {
+	if err := s.repo.SaveNotificationSwitch(ctx, userID, enabled); err != nil {
+		return user_setting_dto.NotificationSwitch{}, err
+	}
+	return s.NotificationSwitch(ctx, userID)
 }
 
 func (s *userSettingServiceImpl) GetEffective(ctx context.Context, userID, boardID int64) (user_setting_dto.UserSetting, error) {

@@ -9,6 +9,9 @@ type UserDashboardHandler interface {
 	// UpdateNotificationSettings saves tiers, overage behavior, toggles and
 	// quiet hours (everything but mute).
 	UpdateNotificationSettings(c *gin.Context)
+	// UpdateNotificationsSwitch saves the master on/off switch (Tech Spec
+	// "Notification On-Off Consent").
+	UpdateNotificationsSwitch(c *gin.Context)
 	// ResetNotificationSettings makes a board follow the default again.
 	ResetNotificationSettings(c *gin.Context)
 	// Mute / Unmute start or clear a mute instantly (global or one board).

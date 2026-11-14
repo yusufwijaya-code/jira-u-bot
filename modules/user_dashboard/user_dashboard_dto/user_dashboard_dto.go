@@ -27,6 +27,14 @@ type Card struct {
 	// BoardID is the Jira Agile board of the ticket's active sprint (0 =
 	// not in an active sprint).
 	BoardID int64 `json:"boardId"`
+	// Parent* / Relation are set on a branch (Tech Spec "Subtask & Linked
+	// Item Branches"): a subtask or linked item hanging under one of the
+	// caller's active-sprint tickets. Relation is "subtask" or the Jira link
+	// wording ("relates to", "blocks", ...).
+	ParentKey     string `json:"parentKey,omitempty"`
+	ParentSummary string `json:"parentSummary,omitempty"`
+	ParentStatus  string `json:"parentStatus,omitempty"`
+	Relation      string `json:"relation,omitempty"`
 }
 
 // SprintSummary is a board's active sprint.
@@ -61,6 +69,11 @@ type BoardColumn struct {
 
 type Board struct {
 	Columns []BoardColumn `json:"columns"`
+	// Related are the caller's subtasks/linked items (tracked status) of
+	// their active-sprint tickets that aren't in the sprint themselves —
+	// only for the "Sedang dikerjakan"/"Sedang di-review" cards, never
+	// counted in Columns.
+	Related []Card `json:"related"`
 }
 
 // TeamGroup is one assignee's active (Code Process) tickets — Chapter 9c,

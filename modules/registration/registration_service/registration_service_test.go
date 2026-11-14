@@ -183,6 +183,11 @@ func TestRegister_SendsThankYouDMForNonSelfRegistration(t *testing.T) {
 	if len(dmNotifier.sentPlainTextCalls) != 1 || !strings.Contains(dmNotifier.sentPlainTextCalls[0], "/u-help") {
 		t.Errorf("thank-you DM text = %q, want it to mention /u-help", dmNotifier.sentPlainTextCalls)
 	}
+	// Tech Spec "Notification On-Off Consent": new users start with
+	// notifications off — the welcome DM must say so and where to enable.
+	if !strings.Contains(dmNotifier.sentPlainTextCalls[0], "masih *mati*") || !strings.Contains(dmNotifier.sentPlainTextCalls[0], "Pengaturan") {
+		t.Errorf("thank-you DM text = %q, want it to say notifications start off and where to switch them on", dmNotifier.sentPlainTextCalls[0])
+	}
 	if !strings.Contains(dmNotifier.sentPlainTextCalls[0], "T-5 menit") {
 		t.Errorf("thank-you DM text = %q, want it to list the T-5 menit tier alongside the others (reminder_log_dto.Tier5m exists but was missing from this summary)", dmNotifier.sentPlainTextCalls[0])
 	}

@@ -1267,6 +1267,17 @@ table.admin-users {
   &.danger { background: var(--error-soft); color: var(--error); box-shadow: 0 0 0 8px rgba(229, 72, 77, 0.07); }
 }
 
+/* Notification consent after login (Tech Spec "Notification On-Off Consent") */
+.consent-backdrop { z-index: 95; }
+.consent-modal {
+  width: min(460px, 100%);
+
+  p { line-height: 1.55; }
+  .consent-toggle { margin-top: 20px; text-align: left; }
+  .consent-error { margin: 12px 0 0; }
+  .btn-block { width: 100%; margin-top: 18px; justify-content: center; }
+}
+
 .modal-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1681,6 +1692,91 @@ table.admin-users {
 
 .ticket-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 
+/* Subtask / linked item branches (Tech Spec "Subtask & Linked Item Branches") */
+.ticket-parent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  animation: fade-up 360ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+
+  > .icon { flex-shrink: 0; color: var(--text-faint); }
+  .ticket-summary { flex: 1; }
+}
+
+.status-chip {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ticket-branches {
+  list-style: none;
+  margin-top: -4px;
+
+  > ul {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+.ticket-row.ticket-branch {
+  position: relative;
+  padding: 11px 14px;
+
+  /* ├─ / └─ connector */
+  &::before {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: -9px;
+    width: 16px;
+    height: calc(50% + 9px);
+    border-left: 2px solid var(--border-strong);
+    border-bottom: 2px solid var(--border-strong);
+    border-bottom-left-radius: 10px;
+  }
+  &:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: 0;
+    bottom: -9px;
+    border-left: 2px solid var(--border-strong);
+  }
+}
+
+.relation-chip {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: #a15c00;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .ticket-row {
   --level: var(--primary);
   display: flex;
@@ -1807,6 +1903,40 @@ table.admin-users {
     &:hover { background: var(--surface-2); }
   }
   .ticket-summary { font-size: 0.85rem; flex: 1; }
+
+  /* branches under a ticket: └─ connectors */
+  li.mini-branches {
+    display: block;
+    padding: 0 0 2px 22px;
+    &:hover { background: none; }
+
+    > ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  }
+  li.mini-branch {
+    position: relative;
+    padding: 5px 8px;
+    .ticket-summary { font-size: 0.8rem; color: var(--text-muted); }
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: -12px;
+      top: -6px;
+      width: 10px;
+      height: calc(50% + 6px);
+      border-left: 2px solid var(--border-strong);
+      border-bottom: 2px solid var(--border-strong);
+      border-bottom-left-radius: 8px;
+    }
+    &:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: -12px;
+      top: 0;
+      bottom: -4px;
+      border-left: 2px solid var(--border-strong);
+    }
+  }
 }
 
 .sprint-summary {

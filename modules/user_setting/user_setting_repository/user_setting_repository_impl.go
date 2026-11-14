@@ -150,3 +150,27 @@ func (r *userSettingRepositoryImpl) SetMutedUntil(ctx context.Context, userID, b
 	_, err := r.db.ExecContext(ctx, query, userID, boardID, useDefault, value)
 	return err
 }
+
+func (r *userSettingRepositoryImpl) FindNotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, bool, error) {
+	var sw user_setting_dto.NotificationSwitch
+	var chosen sql.NullTime
+	err := r.db.QueryRowContext(ctx,
+		`SELECT notificationsEnabled, notificationChoiceDate FROM ms_user WHERE userID = ?`, userID,
+	).Scan(&sw.Enabled, &chosen)
+	if err == sql.ErrNoRows {
+		return user_setting_dto.NotificationSwitch{}, false, nil
+	}
+	if err != nil {
+		return user_setting_dto.NotificationSwitch{}, false, err
+	}
+	sw.Chosen = chosen.Valid
+	return sw, true, nil
+}
+
+func (r *userSettingRepositoryImpl) SaveNotificationSwitch(ctx context.Context, userID int64, enabled bool) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE ms_user SET notificationsEnabled = ?, notificationChoiceDate = CURRENT_TIMESTAMP WHERE userID = ?`,
+		enabled, userID,
+	)
+	return err
+}

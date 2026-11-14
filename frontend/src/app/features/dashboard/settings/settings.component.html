@@ -24,7 +24,35 @@
   }
 
   @if (!loading && !error && draft(); as d) {
-    <!-- Jira API key (top of the page) -->
+    <!-- Master on/off switch (Tech Spec "Notification On-Off Consent") -->
+    @if (!isAdminMode && notifSwitch.state(); as ns) {
+      <section class="card" data-card="master-switch">
+        <header class="card-header">
+          <span class="card-icon"><app-icon [name]="ns.enabled ? 'bell' : 'bell-off'" [size]="20" /></span>
+          <div>
+            <h2>Notifikasi Nudge</h2>
+            <p>Saklar utama semua notif otomatis: reminder budget, selesai lebih awal, dan balik ke To Do.</p>
+          </div>
+        </header>
+        <label class="toggle-row">
+          <span class="toggle-text">
+            <strong>{{ ns.enabled ? 'Notifikasi aktif' : 'Notifikasi mati' }}</strong>
+            <small>{{ ns.enabled ? 'Pengaturan di bawah menentukan kapan reminder dikirim.' : 'Tidak ada notif otomatis yang dikirim, apa pun pengaturan di bawah.' }}</small>
+          </span>
+          <input
+            type="checkbox"
+            class="switch"
+            data-master-switch
+            [checked]="ns.enabled"
+            [disabled]="savingSwitch()"
+            (change)="toggleNotifications($any($event.target))"
+            aria-label="Notifikasi otomatis"
+          />
+        </label>
+      </section>
+    }
+
+    <!-- Jira API key -->
     <section class="card" data-card="credential">
       <header class="card-header">
         <span class="card-icon accent"><app-icon name="key" [size]="20" /></span>

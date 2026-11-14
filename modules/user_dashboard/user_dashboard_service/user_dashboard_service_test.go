@@ -26,6 +26,10 @@ type fakeJiraClientForDashboard struct {
 	searchErr     error
 	lastCredUsed  *jira_client_dto.Credential
 	lastAccountID string
+	// related backs SearchIssuesByKeysForAssignee.
+	related          []jira_client_dto.Issue
+	relatedErr       error
+	relatedKeysAsked []string
 }
 
 func (f *fakeJiraClientForDashboard) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -182,6 +186,27 @@ func newTestService(jiraClient *fakeJiraClientForDashboard, jiraCred *fakeJiraCr
 // search (the JQL itself is covered in jira_client tests).
 func (f *fakeJiraClientForDashboard) SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
 	return f.SearchAllIssuesByAssignee(ctx, cred, accountID)
+}
+
+// SearchIssuesByKeysForAssignee returns the fake's related issues whose key
+// was asked for (assignee filtering is the JQL's job, covered in
+// jira_client tests — related may include someone else's row on purpose).
+func (f *fakeJiraClientForDashboard) SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error) {
+	f.relatedKeysAsked = keys
+	if f.relatedErr != nil {
+		return nil, f.relatedErr
+	}
+	asked := map[string]bool{}
+	for _, k := range keys {
+		asked[k] = true
+	}
+	var out []jira_client_dto.Issue
+	for _, issue := range f.related {
+		if asked[issue.Key] {
+			out = append(out, issue)
+		}
+	}
+	return out, nil
 }
 
 type fakeBoardsForDashboard struct{ failFor map[int64]bool }
@@ -515,5 +540,151 @@ func TestGetMyBoard_CoreReviewTicketGetsBudgetDetailButOmsReviewDoesNot(t *testi
 				t.Errorf("OMS-1 in Code Review is not tracked, got budget detail %+v", c)
 			}
 		}
+	}
+}
+
+// --- branches (Tech Spec "Subtask & Linked Item Branches") ---
+
+func withRelations(issue jira_client_dto.Issue, subtasks []string, links map[string]string) jira_client_dto.Issue {
+	for _, key := range subtasks {
+		issue.Fields.Subtasks = append(issue.Fields.Subtasks, jira_client_dto.IssueRef{Key: key})
+	}
+	for key, label := range links {
+		link := jira_client_dto.IssueLink{OutwardIssue: &jira_client_dto.IssueRef{Key: key}}
+		link.Type.Outward = label
+		issue.Fields.IssueLinks = append(issue.Fields.IssueLinks, link)
+	}
+	return issue
+}
+
+func plainIssue(key, status, assignee string) jira_client_dto.Issue {
+	return jira_client_dto.Issue{Key: key, Fields: jira_client_dto.IssueFields{
+		Summary: key + " summary", Status: jira_client_dto.Status{Name: status},
+		Assignee: &jira_client_dto.Assignee{AccountID: assignee},
+	}}
+}
+
+func branchFixture() (*fakeJiraClientForDashboard, *fakeRegistrationRepoForDashboard, *fakeIssueSessionRepoForDashboard) {
+	parentOMS := sprintIssue("OMS-11727", "Code Review", 28, 8294, "OMS Sprint 23 - 2026")
+	parentOMS = withRelations(parentOMS, []string{"OMS-11938", "OMS-11912"}, map[string]string{"OMS-11905": "relates to", "CORE-5": "relates to"})
+	sprintSubtask := sprintIssue("OMS-11939", "Code Process", 28, 8294, "OMS Sprint 23 - 2026")
+	sprintSubtask.Fields.Parent = &jira_client_dto.IssueRef{Key: "OMS-11727"}
+	parentCORE := withRelations(sprintIssue("CORE-1", "To Do", 26, 7988, "Core Sprint 23 2026"), []string{"CORE-2", "OMS-11938"}, nil)
+
+	jiraClient := &fakeJiraClientForDashboard{
+		issues: []jira_client_dto.Issue{parentOMS, sprintSubtask, parentCORE},
+		related: []jira_client_dto.Issue{
+			plainIssue("OMS-11938", "Code Process", "acc-1"), // subtask, mine, tracked
+			plainIssue("OMS-11905", "Code Process", "acc-1"), // linked, mine, tracked
+			plainIssue("OMS-11912", "Code Process", "acc-9"), // someone else's
+			plainIssue("CORE-5", "To Do", "acc-1"),           // any status: kept for "Tiket saya per status"
+			plainIssue("CORE-2", "CODE REVIEW", "acc-1"),     // CORE review is tracked
+		},
+	}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
+	}}
+	sessionRepo := &fakeIssueSessionRepoForDashboard{byIssueKey: map[string]issue_session_dto.IssueSession{
+		"OMS-11905": {IssueKey: "OMS-11905", StoryPoints: 2, AccumulatedSeconds: 3600, FlagActive: true},
+	}}
+	return jiraClient, regRepo, sessionRepo
+}
+
+func relatedByKey(board user_dashboard_dto.Board) map[string]user_dashboard_dto.Card {
+	out := map[string]user_dashboard_dto.Card{}
+	for _, c := range board.Related {
+		out[c.IssueKey] = c
+	}
+	return out
+}
+
+func TestGetMyBoard_RelatedBranchesOfSprintTickets(t *testing.T) {
+	jiraClient, regRepo, sessionRepo := branchFixture()
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if err != nil {
+		t.Fatalf("GetMyBoard: %v", err)
+	}
+
+	wantAsked := []string{"OMS-11938", "OMS-11912", "OMS-11905", "CORE-5", "CORE-2"}
+	if !reflect.DeepEqual(jiraClient.relatedKeysAsked, wantAsked) {
+		t.Errorf("keys asked = %v, want %v (sprint tickets excluded, OMS-11938 once)", jiraClient.relatedKeysAsked, wantAsked)
+	}
+
+	related := relatedByKey(board)
+	if len(related) != 4 || related["OMS-11912"].IssueKey != "" {
+		t.Fatalf("related = %+v, want OMS-11938, OMS-11905, CORE-5, CORE-2 (not someone else's OMS-11912)", board.Related)
+	}
+	if to := related["CORE-5"]; to.HasBudgetDetail || to.ParentKey != "OMS-11727" {
+		t.Errorf("CORE-5 = %+v, want an untracked branch without budget", to)
+	}
+	sub := related["OMS-11938"]
+	if sub.ParentKey != "OMS-11727" || sub.Relation != "subtask" || sub.ParentStatus != "Code Review" || sub.ParentSummary != "OMS-11727" || sub.BoardID != 28 {
+		t.Errorf("OMS-11938 = %+v, want a subtask branch of OMS-11727 on board 28 (first parent wins)", sub)
+	}
+	link := related["OMS-11905"]
+	if link.Relation != "relates to" || link.ParentKey != "OMS-11727" || !link.HasBudgetDetail || link.BudgetSeconds != 7200 {
+		t.Errorf("OMS-11905 = %+v, want a 'relates to' branch with its own budget", link)
+	}
+	if core := related["CORE-2"]; core.ParentKey != "CORE-1" || core.BoardID != 26 {
+		t.Errorf("CORE-2 = %+v, want a branch of CORE-1 on board 26", core)
+	}
+
+	// Related items never land in the status columns.
+	total := 0
+	for _, col := range board.Columns {
+		total += len(col.Cards)
+		for _, c := range col.Cards {
+			if c.IssueKey == "OMS-11939" && (c.ParentKey != "OMS-11727" || c.Relation != "subtask") {
+				t.Errorf("sprint subtask OMS-11939 = %+v, want it hung under OMS-11727", c)
+			}
+			if c.IssueKey == "OMS-11727" && c.ParentKey != "" {
+				t.Errorf("OMS-11727 must stay a top-level card, got parent %q", c.ParentKey)
+			}
+		}
+	}
+	if total != 3 {
+		t.Errorf("columns hold %d cards, want the 3 sprint tickets", total)
+	}
+}
+
+func TestGetMyBoard_RelatedFollowsParentBoardFilter(t *testing.T) {
+	jiraClient, regRepo, sessionRepo := branchFixture()
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 26)
+	if err != nil {
+		t.Fatalf("GetMyBoard: %v", err)
+	}
+	related := relatedByKey(board)
+	if len(related) != 1 || related["CORE-2"].IssueKey == "" {
+		t.Errorf("board 26 related = %+v, want only CORE-2", board.Related)
+	}
+}
+
+func TestGetMyBoard_RelatedLookupFailureKeepsTheBoard(t *testing.T) {
+	jiraClient, regRepo, sessionRepo := branchFixture()
+	jiraClient.relatedErr = errors.New("jql error")
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if err != nil {
+		t.Fatalf("a related lookup failure must not fail the board: %v", err)
+	}
+	if len(board.Related) != 0 || len(board.Columns) == 0 {
+		t.Errorf("board = %+v, want the columns without branches", board)
+	}
+}
+
+func TestGetMyBoard_NoRelationsSkipsTheLookup(t *testing.T) {
+	jiraClient, regRepo := boardFixture()
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, &fakeIssueSessionRepoForDashboard{})
+
+	if _, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0); err != nil {
+		t.Fatalf("GetMyBoard: %v", err)
+	}
+	if jiraClient.relatedKeysAsked != nil {
+		t.Errorf("keys asked = %v, want no lookup when no ticket has relations", jiraClient.relatedKeysAsked)
 	}
 }

@@ -127,6 +127,9 @@ func (h *userDashboardHandlerImpl) UpdateNotificationSettings(c *gin.Context) {
 func (h *userDashboardHandlerImpl) ResetNotificationSettings(c *gin.Context) {
 	h.settings.ResetNotification(c)
 }
+func (h *userDashboardHandlerImpl) UpdateNotificationsSwitch(c *gin.Context) {
+	h.settings.UpdateNotificationsSwitch(c)
+}
 func (h *userDashboardHandlerImpl) Mute(c *gin.Context)             { h.settings.Mute(c) }
 func (h *userDashboardHandlerImpl) Unmute(c *gin.Context)           { h.settings.Unmute(c) }
 func (h *userDashboardHandlerImpl) ListBoards(c *gin.Context)       { h.settings.ListBoards(c) }
@@ -176,7 +179,11 @@ func (h *userDashboardHandlerImpl) GetBoard(c *gin.Context) {
 			columns[i].Cards = []user_dashboard_dto.Card{}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"columns": columns})
+	related := board.Related
+	if related == nil {
+		related = []user_dashboard_dto.Card{}
+	}
+	c.JSON(http.StatusOK, gin.H{"columns": columns, "related": related})
 }
 
 func (h *userDashboardHandlerImpl) GetTeam(c *gin.Context) {

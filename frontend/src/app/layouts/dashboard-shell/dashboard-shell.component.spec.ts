@@ -1,3 +1,5 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
@@ -44,6 +46,8 @@ describe('DashboardShellComponent', () => {
     await TestBed.configureTestingModule({
       imports: [DashboardShellComponent],
       providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AuthService, useValue: { currentUser$: user$ } },
         { provide: BoardService, useValue: { getSettings: () => of({ mute: { global: { active: false, until: null }, board: null } }) } },

@@ -6,7 +6,9 @@ import { AuthService } from '../../core/services/auth.service';
 import { BoardService } from '../../core/services/board.service';
 import { MuteStateService } from '../../core/services/mute-state.service';
 import { BoardContextService } from '../../core/services/board-context.service';
+import { NotificationSwitchService } from '../../core/services/notification-switch.service';
 import { BoardAvatarComponent } from '../../shared/ui/board-avatar.component';
+import { NotificationConsentComponent } from '../../shared/ui/notification-consent.component';
 import { IconComponent } from '../../shared/ui/icon.component';
 import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { environment } from '../../../environments/environment';
@@ -19,7 +21,7 @@ interface PageHeading {
 @Component({
   selector: 'app-dashboard-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, UserAvatarComponent, BoardAvatarComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, UserAvatarComponent, BoardAvatarComponent, NotificationConsentComponent],
   templateUrl: './dashboard-shell.component.html',
 })
 export class DashboardShellComponent implements OnInit {
@@ -27,6 +29,7 @@ export class DashboardShellComponent implements OnInit {
   protected muteState = inject(MuteStateService);
   protected boardContext = inject(BoardContextService);
   private boardService = inject(BoardService);
+  private notifSwitch = inject(NotificationSwitchService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
@@ -58,7 +61,11 @@ export class DashboardShellComponent implements OnInit {
     // Seeds the top bar mute badge on every dashboard page (e.g. Admin);
     // the Pengaturan page refreshes it again on its own load.
     this.boardService.getSettings().subscribe({
-      next: (res) => this.muteState.set(res.mute.global),
+      next: (res) => {
+        this.muteState.set(res.mute.global);
+        // Not chosen yet → the consent pop up opens.
+        this.notifSwitch.set(res.notifications);
+      },
       error: () => undefined,
     });
     this.boardContext.load();

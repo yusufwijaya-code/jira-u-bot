@@ -18,6 +18,7 @@ type fakeRepo struct {
 	findErr  error
 	upserted *user_setting_dto.UserSetting
 	reset    *rowKey
+	switches map[int64]user_setting_dto.NotificationSwitch
 }
 
 func newFakeRepo() *fakeRepo { return &fakeRepo{rows: map[rowKey]user_setting_dto.UserSetting{}} }
@@ -71,6 +72,22 @@ func (f *fakeRepo) SetMutedUntil(ctx context.Context, userID, boardID int64, unt
 	}
 	row.MutedUntil = until
 	f.rows[k] = row
+	return nil
+}
+
+func (f *fakeRepo) FindNotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, bool, error) {
+	if f.findErr != nil {
+		return user_setting_dto.NotificationSwitch{}, false, f.findErr
+	}
+	sw, ok := f.switches[userID]
+	return sw, ok, nil
+}
+
+func (f *fakeRepo) SaveNotificationSwitch(ctx context.Context, userID int64, enabled bool) error {
+	if f.switches == nil {
+		f.switches = map[int64]user_setting_dto.NotificationSwitch{}
+	}
+	f.switches[userID] = user_setting_dto.NotificationSwitch{Enabled: enabled, Chosen: true}
 	return nil
 }
 
@@ -170,6 +187,55 @@ func TestGetEffectiveForEmail_DefaultsWhenUnregisteredOrOnError(t *testing.T) {
 	svc = NewUserSettingService(repo, &fakeUsers{users: map[string]registration_dto.User{"a@esb.co.id": {UserID: 1}}})
 	if got := svc.GetEffectiveForEmail(context.Background(), "a@esb.co.id", 28); len(got.ReminderTiers) != 6 {
 		t.Errorf("load error: got %+v", got)
+	}
+}
+
+// --- master switch (Tech Spec "Notification On-Off Consent") ---
+
+func TestGetEffectiveForEmail_MasterSwitchSilencesEverything(t *testing.T) {
+	users := &fakeUsers{users: map[string]registration_dto.User{
+		"off@esb.co.id": {UserID: 1, NotificationsEnabled: false},
+		"on@esb.co.id":  {UserID: 2, NotificationsEnabled: true},
+	}}
+	repo := newFakeRepo()
+	svc := NewUserSettingService(repo, users)
+	now := time.Now()
+
+	off := svc.GetEffectiveForEmail(context.Background(), "off@esb.co.id", 28)
+	if !off.NotificationsOff || !off.IsSilenced(now) {
+		t.Errorf("switched-off user: got %+v, want NotificationsOff + silenced", off)
+	}
+	on := svc.GetEffectiveForEmail(context.Background(), "on@esb.co.id", 28)
+	if on.NotificationsOff || on.IsSilenced(now) {
+		t.Errorf("switched-on user: got %+v, want not silenced", on)
+	}
+	// Unregistered → legacy defaults (not silenced).
+	if got := svc.GetEffectiveForEmail(context.Background(), "nobody@esb.co.id", 28); got.NotificationsOff {
+		t.Errorf("unregistered: got %+v, want notifications on (legacy)", got)
+	}
+	// A settings load error still honours the switch.
+	repo.findErr = errors.New("db down")
+	if got := svc.GetEffectiveForEmail(context.Background(), "off@esb.co.id", 28); !got.NotificationsOff {
+		t.Errorf("load error: got %+v, want the switch kept off", got)
+	}
+}
+
+func TestNotificationSwitch_ReadAndSave(t *testing.T) {
+	repo := newFakeRepo()
+	repo.switches = map[int64]user_setting_dto.NotificationSwitch{1: {Enabled: true, Chosen: false}}
+	svc := NewUserSettingService(repo, &fakeUsers{})
+
+	sw, err := svc.NotificationSwitch(context.Background(), 1)
+	if err != nil || !sw.Enabled || sw.Chosen {
+		t.Fatalf("NotificationSwitch = %+v, %v; want existing user on, not chosen", sw, err)
+	}
+	if _, err := svc.NotificationSwitch(context.Background(), 99); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("missing user err = %v, want ErrUserNotFound", err)
+	}
+
+	sw, err = svc.SetNotificationsEnabled(context.Background(), 1, false)
+	if err != nil || sw.Enabled || !sw.Chosen {
+		t.Errorf("SetNotificationsEnabled(false) = %+v, %v; want off + chosen", sw, err)
 	}
 }
 

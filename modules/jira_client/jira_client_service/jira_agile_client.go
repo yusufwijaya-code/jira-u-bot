@@ -23,6 +23,11 @@ type JiraAgileClient interface {
 	// assigned to accountID that is in an open sprint, including the Sprint
 	// field (for the board mapping) and budget fields.
 	SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error)
+	// SearchIssuesByKeysForAssignee returns those of keys that are assigned
+	// to accountID, in any status — the subtasks/linked items shown as
+	// dashboard branches. Keys that are malformed or outside CORE/OMS are
+	// dropped; at most MaxRelatedKeys are queried.
+	SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error)
 	// GetBoard returns a board's name, project and project avatar URL.
 	GetBoard(ctx context.Context, boardID int64) (jira_client_dto.BoardInfo, error)
 	// GetActiveSprints returns a board's active sprint(s) with dates.
@@ -42,7 +47,7 @@ func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.C
 	jql := fmt.Sprintf(`project in (CORE, OMS) AND assignee = "%s" AND sprint in openSprints() ORDER BY updated DESC`, accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", "summary,status,assignee,issuetype,"+jira_client_dto.StoryPointFieldID+","+jira_client_dto.StoryPointFieldIDCore+","+jira_client_dto.StoryPointFieldIDCoreEstimate+","+jira_client_dto.SprintFieldID)
+	params.Set("fields", dashboardIssueFields+",parent,subtasks,issuelinks")
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
@@ -51,6 +56,39 @@ func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.C
 	)
 	if err != nil {
 		return nil, fmt.Errorf("jira_client: SearchActiveSprintIssuesByAssignee(%s) failed: %w", accountID, err)
+	}
+	return result.Issues, nil
+}
+
+// MaxRelatedKeys caps the key list of one SearchIssuesByKeysForAssignee call.
+const MaxRelatedKeys = 100
+
+var dashboardIssueFields = "summary,status,assignee,issuetype," + jira_client_dto.StoryPointFieldID + "," +
+	jira_client_dto.StoryPointFieldIDCore + "," + jira_client_dto.StoryPointFieldIDCoreEstimate + "," + jira_client_dto.SprintFieldID
+
+func (s *jiraClientServiceImpl) SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error) {
+	valid := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if jira_client_dto.IsTrackedProjectKey(key) && len(valid) < MaxRelatedKeys {
+			valid = append(valid, key)
+		}
+	}
+	if len(valid) == 0 {
+		return nil, nil
+	}
+
+	jql := fmt.Sprintf(`key in (%s) AND assignee = "%s" ORDER BY updated DESC`, strings.Join(valid, ", "), accountID)
+	params := url.Values{}
+	params.Set("jql", jql)
+	params.Set("fields", dashboardIssueFields)
+	params.Set("maxResults", "100")
+
+	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
+	result, err := curl_helper.CurlRequest[jira_client_dto.SearchResponse](
+		ctx, reqURL, s.authHeadersFor(cred), nil, http.MethodGet, 10000, true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("jira_client: SearchIssuesByKeysForAssignee(%s) failed: %w", accountID, err)
 	}
 	return result.Issues, nil
 }

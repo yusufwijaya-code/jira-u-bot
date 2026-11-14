@@ -8,6 +8,7 @@ import {
   SettingsValidationError,
 } from '../../../core/services/board.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
+import { NotificationSwitchService } from '../../../core/services/notification-switch.service';
 import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
@@ -102,6 +103,29 @@ export class SettingsComponent {
   protected readonly isAdminMode = inject(SETTINGS_MODE) === 'admin';
   private confirm = inject(ConfirmService);
   private toast = inject(ToastService);
+  /** The caller's master on/off switch (not shown in admin mode). */
+  protected notifSwitch = inject(NotificationSwitchService);
+  protected savingSwitch = signal(false);
+
+  /** Master switch (Tech Spec "Notification On-Off Consent"): saved right away. */
+  protected toggleNotifications(input: HTMLInputElement): void {
+    const enabled = input.checked;
+    this.savingSwitch.set(true);
+    this.notifSwitch.save(enabled).subscribe({
+      next: () => {
+        this.savingSwitch.set(false);
+        this.toast.success(
+          enabled ? 'Notifikasi aktif' : 'Notifikasi dimatikan',
+          enabled ? 'Nudge akan mengingatkan kamu lewat DM.' : 'Tidak ada notif otomatis yang dikirim.',
+        );
+      },
+      error: () => {
+        this.savingSwitch.set(false);
+        input.checked = !enabled;
+        this.toast.error('Gagal menyimpan', 'Pilihan notifikasi belum tersimpan, coba lagi.');
+      },
+    });
+  }
 
   /** The board being configured (null = default for every board). */
   protected scopeBoard = computed(() => {
@@ -139,7 +163,10 @@ export class SettingsComponent {
         this.globalMute.set(res.mute.global);
         this.boardMute.set(res.mute.board);
         // The top bar badge shows the caller's own mute only.
-        if (!this.isAdminMode) this.muteState.set(res.mute.global);
+        if (!this.isAdminMode) {
+          this.muteState.set(res.mute.global);
+          this.notifSwitch.set(res.notifications);
+        }
         this.hasCredential = res.credential.hasCredential;
         this.credentialMasked = res.credential.maskedPreview;
         this.loading = false;

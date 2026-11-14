@@ -42,6 +42,8 @@ export interface SettingsResponse {
   notification: NotificationSettings;
   mute: { global: MuteStatus; board: MuteStatus | null };
   credential: { hasCredential: boolean; maskedPreview: string };
+  /** Master on/off switch (Tech Spec "Notification On-Off Consent"). */
+  notifications?: { enabled: boolean; chosen: boolean };
 }
 
 /** 400 body of PUT /settings/notification. */

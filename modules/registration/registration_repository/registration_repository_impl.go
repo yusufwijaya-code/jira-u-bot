@@ -17,8 +17,8 @@ func NewRegistrationRepository(db *sql.DB) RegistrationRepository {
 
 func (r *registrationRepositoryImpl) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {
 	const query = `
-		INSERT INTO ms_user (userName, email, jiraAccountId, flagActive, createdBy, createdDate)
-		VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+		INSERT INTO ms_user (userName, email, jiraAccountId, flagActive, notificationsEnabled, createdBy, createdDate)
+		VALUES (?, ?, ?, 1, 0, ?, CURRENT_TIMESTAMP)
 		ON DUPLICATE KEY UPDATE
 			userName = VALUES(userName),
 			jiraAccountId = VALUES(jiraAccountId),
@@ -31,7 +31,7 @@ func (r *registrationRepositoryImpl) UpsertUser(ctx context.Context, name, email
 	return err
 }
 
-const userColumns = `userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId, reminderTierPreference`
+const userColumns = `userID, userName, email, flagActive, createdBy, createdDate, googleChatDMSpaceID, jiraAccountId, reminderTierPreference, notificationsEnabled, notificationChoiceDate`
 
 func (r *registrationRepositoryImpl) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
 	query := `SELECT ` + userColumns + ` FROM ms_user WHERE email = ?`
@@ -48,8 +48,10 @@ func (r *registrationRepositoryImpl) FindUserByJiraAccountID(ctx context.Context
 func scanUser(row *sql.Row) (*registration_dto.User, bool, error) {
 	var u registration_dto.User
 	var dmSpaceID, jiraAccountID, reminderTierPreference sql.NullString
+	var choiceDate sql.NullTime
 	err := row.Scan(
 		&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference,
+		&u.NotificationsEnabled, &choiceDate,
 	)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
@@ -61,6 +63,9 @@ func scanUser(row *sql.Row) (*registration_dto.User, bool, error) {
 	u.JiraAccountID = jiraAccountID.String
 	if reminderTierPreference.Valid {
 		u.ReminderTierPreference = &reminderTierPreference.String
+	}
+	if choiceDate.Valid {
+		u.NotificationChoiceDate = &choiceDate.Time
 	}
 	return &u, true, nil
 }
@@ -77,7 +82,8 @@ func (r *registrationRepositoryImpl) FindAllWithGoogleChatDMSpaceID(ctx context.
 	for rows.Next() {
 		var u registration_dto.User
 		var dmSpaceID, jiraAccountID, reminderTierPreference sql.NullString
-		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference); err != nil {
+		var choiceDate sql.NullTime
+		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference, &u.NotificationsEnabled, &choiceDate); err != nil {
 			return nil, err
 		}
 		u.GoogleChatDMSpaceID = dmSpaceID.String
@@ -126,7 +132,8 @@ func (r *registrationRepositoryImpl) FindAll(ctx context.Context) ([]registratio
 	for rows.Next() {
 		var u registration_dto.User
 		var dmSpaceID, jiraAccountID, reminderTierPreference sql.NullString
-		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference); err != nil {
+		var choiceDate sql.NullTime
+		if err := rows.Scan(&u.UserID, &u.UserName, &u.Email, &u.FlagActive, &u.CreatedBy, &u.CreatedDate, &dmSpaceID, &jiraAccountID, &reminderTierPreference, &u.NotificationsEnabled, &choiceDate); err != nil {
 			return nil, err
 		}
 		u.GoogleChatDMSpaceID = dmSpaceID.String

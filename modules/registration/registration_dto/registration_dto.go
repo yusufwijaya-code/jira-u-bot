@@ -25,4 +25,10 @@ type User struct {
 	// them". Does not affect the overage tier, which always sends
 	// (Tech Spec "Dashboard Jira Manage", AC2.2/AC2.3).
 	ReminderTierPreference *string
+	// NotificationsEnabled is the master switch for automatic notifications
+	// (Tech Spec "Notification On-Off Consent"): existing users default to
+	// on, new registrations start off. NotificationChoiceDate is nil until
+	// the user picks on/off (the dashboard asks after login).
+	NotificationsEnabled   bool
+	NotificationChoiceDate *time.Time
 }

@@ -16,6 +16,11 @@ type IssueFields struct {
 	Assignee    *Assignee `json:"assignee"`
 	IssueType   IssueType `json:"issuetype"`
 	StoryPoints *float64  `json:"customfield_10016"`
+	// Parent, Subtasks and IssueLinks are only requested by the dashboard's
+	// active-sprint search (Tech Spec "Subtask & Linked Item Branches").
+	Parent     *IssueRef   `json:"parent,omitempty"`
+	Subtasks   []IssueRef  `json:"subtasks,omitempty"`
+	IssueLinks []IssueLink `json:"issuelinks,omitempty"`
 	// StoryPointsCoreEstimate is CORE's "Story Point Estimate" field
 	// (customfield_10125) — see StoryPointFieldIDCoreEstimate. Takes
 	// priority over StoryPointsCore when both happen to be set. Use

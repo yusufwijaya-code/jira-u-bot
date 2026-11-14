@@ -1266,3 +1266,51 @@ func TestEvaluateAndSend_MarksCoreReviewTickets(t *testing.T) {
 		t.Errorf("sentMessages = %+v, want one reminder flagged InReview", notifier.sentMessages)
 	}
 }
+
+// --- master switch (Tech Spec "Notification On-Off Consent") ---
+
+func switchedOff(s user_setting_dto.UserSetting) user_setting_dto.UserSetting {
+	s.NotificationsOff = true
+	return s
+}
+
+func TestNotificationsOff_SilencesEveryAutomaticNotification(t *testing.T) {
+	t.Run("pre-budget tier: skipped, never sent", func(t *testing.T) {
+		reminderLog := newFakeReminderLogService()
+		notifier := &fakeGoogleChatNotifierService{}
+		engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, switchedOff(user_setting_dto.Default()))
+		session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 9100, AssigneeEmail: "anwar@esb.co.id"}
+		if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+			t.Fatal(err)
+		}
+		if len(notifier.sentMessages) != 0 || reminderLog.statuses["OMS-1|30m"] != "skipped" {
+			t.Errorf("sent %d, 30m status %q — want 0 / skipped", len(notifier.sentMessages), reminderLog.statuses["OMS-1|30m"])
+		}
+	})
+
+	t.Run("overage: not sent, schedule not advanced", func(t *testing.T) {
+		issueSession := &fakeIssueSessionService{}
+		notifier := &fakeGoogleChatNotifierService{}
+		engine := settingsEngine(newFakeReminderLogService(), issueSession, notifier, switchedOff(withOverage(intPtr(5), "15m")))
+		if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(20*60, nil)); err != nil {
+			t.Fatal(err)
+		}
+		if len(notifier.sentMessages) != 0 || len(issueSession.updateOverageCalls) != 0 {
+			t.Errorf("sent %d, schedule updates %d — want 0/0", len(notifier.sentMessages), len(issueSession.updateOverageCalls))
+		}
+	})
+
+	t.Run("early completion and returned to To Do", func(t *testing.T) {
+		notifier := &fakeGoogleChatNotifierService{}
+		engine := settingsEngine(newFakeReminderLogService(), &fakeIssueSessionService{}, notifier, switchedOff(user_setting_dto.Default()))
+		if err := engine.NotifyIfEarlyCompletion(context.Background(), "OMS-1", "anwar@esb.co.id", "x", 1000, 3600, time.Now(), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if err := engine.NotifyReturnedToTodo(context.Background(), "OMS-1", "anwar@esb.co.id", "x", 1000, 3600, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if len(notifier.sentMessages) != 0 {
+			t.Errorf("sent %d, want 0", len(notifier.sentMessages))
+		}
+	})
+}

@@ -168,3 +168,29 @@ func TestSetMutedUntil_ForeverSentinelRoundTrips(t *testing.T) {
 		t.Errorf("MutedUntil = %v, err %v; want the forever sentinel back", got.MutedUntil, err)
 	}
 }
+
+// --- master switch (Tech Spec "Notification On-Off Consent") ---
+
+func TestNotificationSwitch_ExistingRowDefaultsOnAndSavingMarksTheChoice(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewUserSettingRepository(db)
+	ctx := context.Background()
+	id := insertTestUser(t, db, "testmysql-switch@esb.co.id")
+
+	sw, found, err := repo.FindNotificationSwitch(ctx, id)
+	if err != nil || !found || !sw.Enabled || sw.Chosen {
+		t.Fatalf("existing user = %+v found=%v err=%v; want on (column default), not chosen", sw, found, err)
+	}
+
+	if err := repo.SaveNotificationSwitch(ctx, id, false); err != nil {
+		t.Fatalf("SaveNotificationSwitch: %v", err)
+	}
+	sw, _, _ = repo.FindNotificationSwitch(ctx, id)
+	if sw.Enabled || !sw.Chosen {
+		t.Errorf("after saving off = %+v, want off + chosen", sw)
+	}
+
+	if _, found, err := repo.FindNotificationSwitch(ctx, -1); found || err != nil {
+		t.Errorf("missing user: found=%v err=%v, want not found, no error", found, err)
+	}
+}

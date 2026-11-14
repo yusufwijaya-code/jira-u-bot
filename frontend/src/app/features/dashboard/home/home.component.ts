@@ -12,6 +12,7 @@ import { BoardContextService, BoardSummary } from '../../../core/services/board-
 import { BoardAvatarComponent } from '../../../shared/ui/board-avatar.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
+import { NotificationSwitchService } from '../../../core/services/notification-switch.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
@@ -102,6 +103,49 @@ export function withBudget(cards: TicketCard[]): ActiveTicket[] {
     .sort((a, b) => Number(b.hasBudgetDetail) - Number(a.hasBudgetDetail) || b.percent - a.percent);
 }
 
+/**
+ * One entry of the active/review card: a ticket (`head`) with the branches
+ * hanging under it, or — when the parent isn't in this card — just the
+ * parent's key/summary/status as a compact header.
+ */
+export interface TicketNode {
+  key: string;
+  head: ActiveTicket | null;
+  parentSummary: string;
+  parentStatus: string;
+  branches: ActiveTicket[];
+}
+
+/**
+ * Groups already-sorted rows into parent → branch nodes (Tech Spec "Subtask
+ * & Linked Item Branches"), one level deep: a row is a branch when it has a
+ * parent and isn't itself a parent of another row here. Node order follows
+ * each node's first (worst) row.
+ */
+export function toTree(rows: ActiveTicket[]): TicketNode[] {
+  const parents = new Set(rows.map((r) => r.parentKey).filter((k): k is string => !!k));
+  const nodes = new Map<string, TicketNode>();
+  const nodeFor = (key: string) => {
+    let node = nodes.get(key);
+    if (!node) {
+      node = { key, head: null, parentSummary: '', parentStatus: '', branches: [] };
+      nodes.set(key, node);
+    }
+    return node;
+  };
+  for (const row of rows) {
+    if (row.parentKey && !parents.has(row.issueKey)) {
+      const node = nodeFor(row.parentKey);
+      node.branches.push(row);
+      node.parentSummary ||= row.parentSummary ?? '';
+      node.parentStatus ||= row.parentStatus ?? '';
+    } else {
+      nodeFor(row.issueKey).head = row;
+    }
+  }
+  return [...nodes.values()];
+}
+
 /** "yusuf.wijaya@esb.co.id" → "Yusuf". */
 export function firstName(email: string | undefined | null): string {
   const local = (email ?? '').split('@')[0].split(/[._-]/)[0];
@@ -135,6 +179,7 @@ export class HomeComponent {
   private confirm = inject(ConfirmService);
   private toast = inject(ToastService);
   protected muteState = inject(MuteStateService);
+  private notifSwitch = inject(NotificationSwitchService);
   protected boardContext = inject(BoardContextService);
 
   private user = toSignal(this.auth.currentUser$, { initialValue: null });
@@ -143,6 +188,8 @@ export class HomeComponent {
   protected boardLoading = signal(true);
   protected boardError = signal<string | null>(null);
   protected cards = signal<TicketCard[]>([]);
+  /** Subtasks/linked items outside the sprint: only feed the active/review cards. */
+  protected related = signal<TicketCard[]>([]);
   protected movingKey = signal<string | null>(null);
   protected expanded = signal<Record<string, boolean>>({});
 
@@ -161,6 +208,8 @@ export class HomeComponent {
 
   /** Mute state shown in the banner: the global mute, or the selected board's. */
   protected notifState = computed<'on' | 'muted' | 'off'>(() => {
+    // Master switch off (Tech Spec "Notification On-Off Consent") wins.
+    if (this.notifSwitch.state()?.enabled === false) return 'off';
     if (this.muteState.forever()) return 'off';
     if (this.muteState.active()) return 'muted';
     const board = this.boardContext.selected();
@@ -172,7 +221,7 @@ export class HomeComponent {
 
   /** Code Process tickets: over budget first, then by budget used. */
   protected active = computed<ActiveTicket[]>(() =>
-    withBudget(this.cards().filter((c) => c.status.toLowerCase() === CODE_PROCESS)),
+    withBudget([...this.cards(), ...this.related()].filter((c) => c.status.toLowerCase() === CODE_PROCESS)),
   );
 
   /**
@@ -180,8 +229,16 @@ export class HomeComponent {
    * (CORE) — Tech Spec "CORE: Waktu Code Review Ikut Dihitung".
    */
   protected reviewing = computed<ActiveTicket[]>(() =>
-    withBudget(this.cards().filter((c) => c.status.toLowerCase() === CODE_REVIEW && !!this.boardOf(c)?.reviewTracked)),
+    withBudget(
+      [...this.cards(), ...this.related()].filter(
+        (c) => c.status.toLowerCase() === CODE_REVIEW && !!this.boardOf(c)?.reviewTracked,
+      ),
+    ),
   );
+
+  /** The same rows as parent → branch trees. */
+  protected activeTree = computed(() => toTree(this.active()));
+  protected reviewTree = computed(() => toTree(this.reviewing()));
 
   /** The review card shows for a CORE board, or in "Semua board" when there's something in review. */
   protected showReview = computed(() => {
@@ -210,6 +267,20 @@ export class HomeComponent {
       .sort((a, b) => rank(a.status) - rank(b.status) || a.status.localeCompare(b.status));
   });
 
+  /**
+   * "Tiket saya per status": each sprint ticket's out-of-sprint subtasks/
+   * linked items (any status), keyed by parent. They hang under the parent
+   * and are not counted in the groups.
+   */
+  protected branchesOf = computed(() => {
+    const byParent = new Map<string, TicketCard[]>();
+    for (const card of this.related()) {
+      if (!card.parentKey) continue;
+      byParent.set(card.parentKey, [...(byParent.get(card.parentKey) ?? []), card]);
+    }
+    return byParent;
+  });
+
   /** The 5 tickets that deviated most from their estimate. */
   protected topDeviations = computed(() =>
     [...(this.report()?.rows ?? [])]
@@ -235,6 +306,12 @@ export class HomeComponent {
     return this.boardContext.boards().find((b) => b.boardId === card.boardId) ?? null;
   }
 
+  /** Jira link of a header-only parent: its branch's link with the parent key. */
+  protected parentURL(node: TicketNode): string {
+    const url = node.branches[0]?.issueURL ?? '';
+    return url ? url.replace(/[^/]+$/, node.key) : '';
+  }
+
   protected sprintRange(start: string, end: string): string {
     return sprintRange(start, end);
   }
@@ -245,6 +322,7 @@ export class HomeComponent {
     this.dashboard.getBoard(boardId).subscribe({
       next: (res) => {
         this.cards.set((res.columns ?? []).flatMap((col) => col.cards ?? []));
+        this.related.set(res.related ?? []);
         this.boardLoading.set(false);
       },
       error: () => {

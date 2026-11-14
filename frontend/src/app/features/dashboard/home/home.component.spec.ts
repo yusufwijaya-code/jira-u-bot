@@ -1,8 +1,10 @@
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { BehaviorSubject, of, throwError } from 'rxjs';
-import { HomeComponent, budgetLevel, budgetPercent, firstName, shortDuration, sprintRange, whenLabel } from './home.component';
+import { HomeComponent, budgetLevel, budgetPercent, firstName, shortDuration, sprintRange, toTree, whenLabel, withBudget } from './home.component';
 import { DashboardService, TicketCard } from '../../../core/services/dashboard.service';
 import { BoardContextService, BoardSummary } from '../../../core/services/board-context.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -85,6 +87,24 @@ class FakeBoardContext {
 }
 
 describe('dashboard helpers', () => {
+  it('groups rows into parent → branch nodes, one level deep, keeping the worst-first order', () => {
+    const rows = withBudget([
+      card({ issueKey: 'A', status: 'Code Process', hasBudgetDetail: true, budgetSeconds: 100, elapsedSeconds: 10 }),
+      card({ issueKey: 'B', status: 'Code Process', hasBudgetDetail: true, budgetSeconds: 100, elapsedSeconds: 150, parentKey: 'P', parentSummary: 'Parent P', parentStatus: 'To Do', relation: 'subtask' }),
+      card({ issueKey: 'C', status: 'Code Process', parentKey: 'A', relation: 'relates to' }),
+      card({ issueKey: 'D', status: 'Code Process', parentKey: 'X', relation: 'subtask' }),
+      card({ issueKey: 'X2', status: 'Code Process', parentKey: 'D', relation: 'subtask' }),
+    ]);
+    const tree = toTree(rows);
+    expect(tree.map((n) => [n.key, n.head?.issueKey ?? null, n.branches.map((b) => b.issueKey)])).toEqual([
+      ['P', null, ['B']],
+      ['A', 'A', ['C']],
+      ['D', 'D', ['X2']],
+    ]);
+    expect(tree[0].parentSummary).toBe('Parent P');
+    expect(tree[0].parentStatus).toBe('To Do');
+  });
+
   it('formats short durations', () => {
     expect(shortDuration(9300)).toBe('2 jam 35 menit');
     expect(shortDuration(-900)).toBe('15 menit');
@@ -141,6 +161,8 @@ describe('HomeComponent', () => {
     await TestBed.configureTestingModule({
       imports: [HomeComponent],
       providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: DashboardService, useValue: dashboard },
         { provide: BoardContextService, useValue: context },
@@ -300,6 +322,92 @@ describe('HomeComponent', () => {
       fixture = TestBed.createComponent(HomeComponent);
       fixture.detectChanges();
       expect(reviewCard()).toBeNull();
+    });
+  });
+
+  describe('subtask & linked item branches', () => {
+    const RELATED_BOARD = {
+      columns: [
+        { status: 'Code Review', cards: [card({ issueKey: 'OMS-11727', summary: 'Upload Queue', status: 'Code Review' })] },
+        {
+          status: 'Code Process',
+          cards: [
+            card({ issueKey: 'OMS-50', status: 'Code Process', hasBudgetDetail: true, budgetSeconds: 3600, elapsedSeconds: 600, storyPoints: 1 }),
+            card({ issueKey: 'OMS-51', status: 'Code Process', parentKey: 'OMS-50', parentSummary: 'Parent', parentStatus: 'Code Process', relation: 'subtask' }),
+          ],
+        },
+        { status: 'To Do', cards: [card({ issueKey: 'OMS-60' })] },
+      ],
+      related: [
+        card({
+          issueKey: 'OMS-11905',
+          issueURL: 'https://jira/browse/OMS-11905',
+          status: 'Code Process',
+          hasBudgetDetail: true,
+          budgetSeconds: 3600,
+          elapsedSeconds: 4000,
+          storyPoints: 1,
+          parentKey: 'OMS-11727',
+          parentSummary: 'Upload Queue',
+          parentStatus: 'Code Review',
+          relation: 'relates to',
+        }),
+        card({ issueKey: 'OMS-11938', status: 'Code Process', parentKey: 'OMS-11727', parentSummary: 'Upload Queue', parentStatus: 'Code Review', relation: 'subtask' }),
+        card({ issueKey: 'OMS-52', status: 'Code Process', parentKey: 'OMS-50', parentSummary: 'Parent', parentStatus: 'Code Process', relation: 'relates to' }),
+        card({ issueKey: 'OMS-61', status: 'Done', parentKey: 'OMS-60', relation: 'subtask' }),
+      ],
+    };
+    const activeCard = () => el().querySelector('[data-card="active"]') as HTMLElement;
+
+    beforeEach(() => {
+      dashboard.getBoard.and.returnValue(of(RELATED_BOARD));
+      fixture = TestBed.createComponent(HomeComponent);
+      fixture.detectChanges();
+    });
+
+    it('hangs related items under a compact header when the parent is not in the card', () => {
+      const header = activeCard().querySelector('[data-parent="OMS-11727"]') as HTMLElement;
+      expect(header).not.toBeNull();
+      expect(header.textContent).toContain('Upload Queue');
+      expect(header.textContent).toContain('Code Review');
+      expect((header.querySelector('.ticket-key') as HTMLAnchorElement).href).toBe('https://jira/browse/OMS-11727');
+
+      const branches = (header.nextElementSibling as HTMLElement).querySelectorAll('.ticket-branch');
+      expect(Array.from(branches).map((b) => b.querySelector('.ticket-key')?.textContent?.trim())).toEqual(['OMS-11905', 'OMS-11938']);
+      expect(branches[0].querySelector('[data-relation]')?.textContent?.trim()).toBe('relates to');
+    });
+
+    it('hangs branches under the full row when the parent is in the card', () => {
+      const keys = Array.from(activeCard().querySelectorAll(':scope > ul > .ticket-row:not(.ticket-branch) .ticket-key')).map((k) => k.textContent?.trim());
+      expect(keys).toEqual(['OMS-50']);
+      const parentRow = activeCard().querySelector(':scope > ul > .ticket-row') as HTMLElement;
+      const branches = (parentRow.nextElementSibling as HTMLElement).querySelectorAll('.ticket-branch .ticket-key');
+      expect(Array.from(branches).map((b) => b.textContent?.trim())).toEqual(['OMS-51', 'OMS-52']);
+    });
+
+    it('hangs every related item (any status) under its parent in "Tiket saya per status"', () => {
+      const status = el().querySelector('[data-card="status"]') as HTMLElement;
+      const branchKeys = (parent: string) =>
+        Array.from(status.querySelectorAll(`[data-branches-of="${parent}"] .mini-branch`)).map((b) => [
+          b.querySelector('[data-relation]')?.textContent?.trim(),
+          b.querySelector('.ticket-key')?.textContent?.trim(),
+          b.querySelector('.status-chip')?.textContent?.trim(),
+        ]);
+      expect(branchKeys('OMS-11727')).toEqual([
+        ['relates to', 'OMS-11905', 'Code Process'],
+        ['subtask', 'OMS-11938', 'Code Process'],
+      ]);
+      expect(branchKeys('OMS-60')).toEqual([['subtask', 'OMS-61', 'Done']]);
+      expect(status.querySelector('[data-branches-of="OMS-51"]')).toBeNull();
+      // Branches don't add to the per-status counts.
+      expect(Array.from(status.querySelectorAll('.status-head .count-pill')).map((p) => p.textContent?.trim())).toEqual(['1', '2', '1']);
+    });
+
+    it('counts branches in the active stats but not in the total or per-status list', () => {
+      expect(stat('active')).toBe('5');
+      expect(stat('overdue')).toBe('1');
+      expect(stat('total')).toBe('4');
+      expect(el().textContent).not.toContain('OMS-11905 ');
     });
   });
 });

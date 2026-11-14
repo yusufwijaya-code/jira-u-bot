@@ -83,6 +83,17 @@ type UserSetting struct {
 	MutedUntil           *time.Time
 	BoardMutedUntil      *time.Time
 	QuietHours           *QuietHours
+	// NotificationsOff: the user switched automatic notifications off (or
+	// hasn't switched them on yet) — Tech Spec "Notification On-Off
+	// Consent". Only GetEffectiveForEmail (the reminder engine) sets it.
+	NotificationsOff bool
+}
+
+// NotificationSwitch is the user's master switch for automatic
+// notifications; Chosen is false until they picked on/off themselves.
+type NotificationSwitch struct {
+	Enabled bool
+	Chosen  bool
 }
 
 // Default returns the settings every user has until they save their own.
@@ -142,9 +153,10 @@ func (s UserSetting) InQuietHours(now time.Time) bool {
 	return minute >= start || minute < end
 }
 
-// IsSilenced is the single check the reminder engine uses (AC4.1–AC4.3).
+// IsSilenced is the single check the reminder engine uses (AC4.1–AC4.3):
+// notifications switched off behave like an endless mute.
 func (s UserSetting) IsSilenced(now time.Time) bool {
-	return s.IsMuted(now) || s.InQuietHours(now)
+	return s.NotificationsOff || s.IsMuted(now) || s.InQuietHours(now)
 }
 
 // TomorrowMorning is the "mute until tomorrow" target: 08:30 WIB on the next

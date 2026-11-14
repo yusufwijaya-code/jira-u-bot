@@ -54,9 +54,9 @@ func (s *registrationServiceImpl) sendThankYouDM(ctx context.Context, email stri
 	}
 	const text = `🎉 Halo! Registrasi kamu di Nudge berhasil.
 
-🤖 Mulai sekarang, setiap tiket Code Process yang kamu pegang bakal dipantau otomatis, dan reminder-nya masuk langsung ke DM ini.
+🤖 Setiap tiket Code Process yang kamu pegang dipantau otomatis. Notifikasi ke DM ini masih *mati* — aktifkan lewat pop up setelah login di dashboard Nudge, atau kapan saja di menu *Pengaturan*.
 
-Manfaatnya buat kamu:
+Kalau notifikasi aktif, manfaatnya buat kamu:
 ⏰ Diingetin sebelum budget waktu habis (T-2 jam, T-1 jam, T-30 menit, T-15 menit, T-5 menit, T-1 menit)
 🔴 Dapet notif kalau sudah lewat budget, biar bisa segera eskalasi
 🎉 Dapet apresiasi kalau selesai lebih awal dari budget

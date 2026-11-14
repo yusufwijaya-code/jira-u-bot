@@ -15,8 +15,10 @@ func TestSearchActiveSprintIssuesByAssignee_UsesOpenSprintsJQLAndSprintField(t *
 		if !strings.Contains(q.Get("jql"), `assignee = "acc-1" AND sprint in openSprints()`) {
 			t.Errorf("jql = %q, want open sprints for acc-1", q.Get("jql"))
 		}
-		if !strings.Contains(q.Get("fields"), "customfield_10020") {
-			t.Errorf("fields = %q, want the sprint field", q.Get("fields"))
+		for _, field := range []string{"customfield_10020", "parent", "subtasks", "issuelinks"} {
+			if !strings.Contains(q.Get("fields"), field) {
+				t.Errorf("fields = %q, want %s", q.Get("fields"), field)
+			}
 		}
 		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{{"key": "OMS-1", "fields": map[string]any{}}}})
 	}))
@@ -25,6 +27,30 @@ func TestSearchActiveSprintIssuesByAssignee_UsesOpenSprintsJQLAndSprintField(t *
 	issues, err := NewJiraAgileClient(newTestConfig(server.URL)).SearchActiveSprintIssuesByAssignee(context.Background(), nil, "acc-1")
 	if err != nil || len(issues) != 1 {
 		t.Fatalf("issues = %v, err = %v", issues, err)
+	}
+}
+
+func TestSearchIssuesByKeysForAssignee_FiltersKeysAndAssignee(t *testing.T) {
+	var jql string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jql = r.URL.Query().Get("jql")
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{{"key": "OMS-11905", "fields": map[string]any{}}}})
+	}))
+	defer server.Close()
+	client := NewJiraAgileClient(newTestConfig(server.URL))
+
+	issues, err := client.SearchIssuesByKeysForAssignee(context.Background(), nil, []string{"OMS-11905", "HR-1", `OMS-1") OR ("x`, "CORE-77"}, "acc-1")
+	if err != nil || len(issues) != 1 {
+		t.Fatalf("issues = %v, err = %v", issues, err)
+	}
+	want := `key in (OMS-11905, CORE-77) AND assignee = "acc-1" ORDER BY updated DESC`
+	if jql != want {
+		t.Errorf("jql = %q\nwant  %q", jql, want)
+	}
+
+	jql = ""
+	if issues, err := client.SearchIssuesByKeysForAssignee(context.Background(), nil, []string{"HR-1"}, "acc-1"); err != nil || issues != nil || jql != "" {
+		t.Errorf("no valid key must skip the request: issues=%v err=%v jql=%q", issues, err, jql)
 	}
 }
 

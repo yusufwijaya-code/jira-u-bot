@@ -2,6 +2,7 @@ package user_dashboard_handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -29,6 +30,9 @@ const (
 	ChangeUnmute            SettingsChangeKind = "unmute"
 	ChangeCredentialUpdated SettingsChangeKind = "credential_updated"
 	ChangeCredentialDeleted SettingsChangeKind = "credential_deleted"
+	// ChangeNotificationsSwitch: the master on/off switch (Tech Spec
+	// "Notification On-Off Consent").
+	ChangeNotificationsSwitch SettingsChangeKind = "notifications_switch"
 )
 
 // SettingsChange describes one successful write. BoardID 0 = the default
@@ -111,6 +115,14 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 
 	credentialMasked, hasCredential, _ := h.jiraCredential.MaskedPreview(ctx, target.UserID)
 
+	// A failed switch read must not trap the user in the consent pop up:
+	// report "already chosen, on" (the legacy behavior) instead.
+	notifSwitch, err := h.userSettings.NotificationSwitch(ctx, target.UserID)
+	if err != nil {
+		log.Printf("user_dashboard: notification switch of user %d: %v", target.UserID, err)
+		notifSwitch = user_setting_dto.NotificationSwitch{Enabled: true, Chosen: true}
+	}
+
 	now := time.Now()
 	scope := "board"
 	var boardMute any
@@ -121,10 +133,11 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"scope":        scope,
-		"boardId":      boardID,
-		"useDefault":   setting.UseDefault,
-		"notification": notificationJSON(setting),
+		"scope":         scope,
+		"boardId":       boardID,
+		"useDefault":    setting.UseDefault,
+		"notification":  notificationJSON(setting),
+		"notifications": notificationSwitchJSON(notifSwitch),
 		"mute": gin.H{
 			"global": muteStateJSON(setting.MutedUntil, now),
 			"board":  boardMute,
@@ -165,6 +178,36 @@ func (h *SettingsHandler) UpdateNotification(c *gin.Context) {
 	}
 	h.emit(c, target, SettingsChange{Kind: ChangeNotification, BoardID: boardID})
 	c.JSON(http.StatusOK, notificationJSON(saved))
+}
+
+type notificationsSwitchRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
+func notificationSwitchJSON(sw user_setting_dto.NotificationSwitch) gin.H {
+	return gin.H{"enabled": sw.Enabled, "chosen": sw.Chosen}
+}
+
+// UpdateNotificationsSwitch stores the master on/off choice — from the
+// consent pop up after login or from Pengaturan (Tech Spec "Notification
+// On-Off Consent").
+func (h *SettingsHandler) UpdateNotificationsSwitch(c *gin.Context) {
+	target, ok := h.resolve(c)
+	if !ok {
+		return
+	}
+	var in notificationsSwitchRequest
+	if err := c.ShouldBindJSON(&in); err != nil || in.Enabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled wajib diisi (true/false)"})
+		return
+	}
+	sw, err := h.userSettings.SetNotificationsEnabled(c.Request.Context(), target.UserID, *in.Enabled)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan pilihan notifikasi"})
+		return
+	}
+	h.emit(c, target, SettingsChange{Kind: ChangeNotificationsSwitch})
+	c.JSON(http.StatusOK, notificationSwitchJSON(sw))
 }
 
 // ResetNotification makes a board follow the default again (AC3.4).

@@ -25,4 +25,9 @@ type UserSettingRepository interface {
 	// boardID), creating the row if needed — a new board row follows the
 	// default (useDefault = 1).
 	SetMutedUntil(ctx context.Context, userID, boardID int64, until *time.Time) error
+	// FindNotificationSwitch reads the master switch from ms_user;
+	// found=false if the user doesn't exist.
+	FindNotificationSwitch(ctx context.Context, userID int64) (sw user_setting_dto.NotificationSwitch, found bool, err error)
+	// SaveNotificationSwitch stores the user's choice and marks it as made.
+	SaveNotificationSwitch(ctx context.Context, userID int64, enabled bool) error
 }
