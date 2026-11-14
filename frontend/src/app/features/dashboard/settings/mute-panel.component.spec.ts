@@ -6,6 +6,7 @@ import { MuteStateService } from '../../../core/services/mute-state.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
+import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 
 describe('MutePanelComponent', () => {
   let fixture: ComponentFixture<MutePanelComponent>;
@@ -144,5 +145,51 @@ describe('MutePanelComponent', () => {
       expect(boardService.unmute).toHaveBeenCalledWith(28);
       expect(el().querySelector('.mute-actions')).not.toBeNull();
     });
+  });
+});
+
+describe('MutePanelComponent (admin mode)', () => {
+  let fixture: ComponentFixture<MutePanelComponent>;
+  let api: jasmine.SpyObj<SettingsApi>;
+  let muteState: MuteStateService;
+  let setSpy: jasmine.Spy;
+  const el = () => fixture.nativeElement as HTMLElement;
+  const inOneHour = () => new Date(Date.now() + 3600_000).toISOString();
+
+  beforeEach(async () => {
+    api = jasmine.createSpyObj('SettingsApi', ['mute', 'unmute']);
+    await TestBed.configureTestingModule({
+      imports: [MutePanelComponent],
+      providers: [
+        { provide: SettingsApi, useValue: api },
+        { provide: SettingsScope, useValue: jasmine.createSpyObj('SettingsScope', ['load']) },
+        { provide: SETTINGS_MODE, useValue: 'admin' },
+        { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['success', 'error', 'info']) },
+      ],
+    }).compileComponents();
+
+    muteState = TestBed.inject(MuteStateService);
+    muteState.set({ active: false, until: null });
+    setSpy = spyOn(muteState, 'set').and.callThrough();
+    fixture = TestBed.createComponent(MutePanelComponent);
+  });
+
+  it('shows the target user global mute from globalStatus, not the admin own state', () => {
+    fixture.componentRef.setInput('globalStatus', { active: true, until: inOneHour() });
+    fixture.detectChanges();
+
+    expect(el().querySelector('.mute-banner')).not.toBeNull();
+  });
+
+  it('mutes the target without touching the admin top bar mute state', () => {
+    fixture.detectChanges();
+    api.mute.and.returnValue(of({ active: true, until: inOneHour() }));
+
+    (el().querySelectorAll('.mute-actions button')[0] as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(api.mute).toHaveBeenCalledWith({ minutes: 60 }, null);
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(el().querySelector('.mute-banner')).not.toBeNull();
   });
 });

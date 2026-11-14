@@ -1,7 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { BoardService, MuteRequest, MuteStatus } from '../../../core/services/board.service';
+import { MuteRequest, MuteStatus } from '../../../core/services/board.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
-import { BoardContextService } from '../../../core/services/board-context.service';
+import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 import { ToastService } from '../../../core/ui/toast.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
@@ -81,29 +81,36 @@ export class MutePanelComponent {
   boardId = input<number | null>(null);
   /** Board scope: the board's mute as loaded by the page. */
   boardStatus = input<MuteStatus | null>(null);
+  /**
+   * Admin mode, global level: the target user's global mute as loaded by
+   * the page (self mode reads the shared MuteStateService instead).
+   */
+  globalStatus = input<MuteStatus | null>(null);
   statusChange = output<MuteStatus>();
 
   private muteState = inject(MuteStateService);
-  private boardContext = inject(BoardContextService);
-  private boardService = inject(BoardService);
+  private scope = inject(SettingsScope);
+  private api = inject(SettingsApi);
+  private mode = inject(SETTINGS_MODE);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);
 
   protected busy = signal(false);
-  /** Board scope: the status after the last action here (overrides the input). */
+  /** The status after the last action here (overrides the input). */
   private changed = signal<{ boardId: number | null; status: MuteStatus } | null>(null);
 
   protected isBoard = computed(() => this.boardId() !== null);
-  protected until = computed<Date | null>(() => {
-    if (!this.isBoard()) return this.muteState.until();
+  /** The caller's own global mute, shared with the top bar badge. */
+  private selfGlobal = computed(() => !this.isBoard() && this.mode === 'self');
+  private status = computed<MuteStatus | null>(() => {
     const last = this.changed();
-    return activeUntil(last && last.boardId === this.boardId() ? last.status : this.boardStatus());
+    if (last && last.boardId === this.boardId()) return last.status;
+    return this.isBoard() ? this.boardStatus() : this.globalStatus();
   });
+  protected until = computed<Date | null>(() => (this.selfGlobal() ? this.muteState.until() : activeUntil(this.status())));
   protected forever = computed(() => {
-    if (!this.isBoard()) return this.muteState.forever();
-    const last = this.changed();
-    const status = last && last.boardId === this.boardId() ? last.status : this.boardStatus();
-    return this.until() !== null && !!status?.forever;
+    if (this.selfGlobal()) return this.muteState.forever();
+    return this.until() !== null && !!this.status()?.forever;
   });
 
   protected readonly options: MuteOption[] = [
@@ -131,7 +138,7 @@ export class MutePanelComponent {
       if (!confirmed) return;
     }
     this.busy.set(true);
-    this.boardService.mute(option.request, this.boardId()).subscribe({
+    this.api.mute(option.request, this.boardId()).subscribe({
       next: (status) => {
         this.busy.set(false);
         this.apply(status);
@@ -150,7 +157,7 @@ export class MutePanelComponent {
 
   protected unmute(): void {
     this.busy.set(true);
-    this.boardService.unmute(this.boardId()).subscribe({
+    this.api.unmute(this.boardId()).subscribe({
       next: (status) => {
         this.busy.set(false);
         this.apply(status);
@@ -164,11 +171,11 @@ export class MutePanelComponent {
   }
 
   private apply(status: MuteStatus): void {
-    if (this.isBoard()) {
-      this.changed.set({ boardId: this.boardId(), status });
-      this.boardContext.load(); // refresh the picker's muted dot
-    } else {
+    if (this.selfGlobal()) {
       this.muteState.set(status);
+    } else {
+      this.changed.set({ boardId: this.boardId(), status });
+      if (this.isBoard()) this.scope.load(); // refresh the picker's muted dot
     }
     this.statusChange.emit(status);
   }

@@ -182,7 +182,7 @@
       @if (scopeBoardId() === null) {
         <div class="subsection">
           <h3>Mute semua board</h3>
-          <app-mute-panel />
+          <app-mute-panel [globalStatus]="globalMute()" (statusChange)="globalMute.set($event)" />
         </div>
       } @else {
         <div class="subsection">

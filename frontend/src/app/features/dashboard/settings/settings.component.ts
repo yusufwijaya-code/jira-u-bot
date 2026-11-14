@@ -3,13 +3,12 @@ import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  BoardService,
   MuteStatus,
   NotificationSettings,
   SettingsValidationError,
 } from '../../../core/services/board.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
-import { BoardContextService } from '../../../core/services/board-context.service';
+import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { BoardAvatarComponent } from '../../../shared/ui/board-avatar.component';
@@ -95,9 +94,12 @@ export class SettingsComponent {
     return steps.join(' → ');
   });
 
-  private boardService = inject(BoardService);
+  private boardService = inject(SettingsApi);
   private muteState = inject(MuteStateService);
-  protected boardContext = inject(BoardContextService);
+  /** Navbar board picker, or the page-local scope on Admin › User detail. */
+  protected boardContext = inject(SettingsScope);
+  /** An admin editing another user (Admin › User detail). */
+  protected readonly isAdminMode = inject(SETTINGS_MODE) === 'admin';
   private confirm = inject(ConfirmService);
   private toast = inject(ToastService);
 
@@ -136,7 +138,8 @@ export class SettingsComponent {
         }
         this.globalMute.set(res.mute.global);
         this.boardMute.set(res.mute.board);
-        this.muteState.set(res.mute.global);
+        // The top bar badge shows the caller's own mute only.
+        if (!this.isAdminMode) this.muteState.set(res.mute.global);
         this.hasCredential = res.credential.hasCredential;
         this.credentialMasked = res.credential.maskedPreview;
         this.loading = false;

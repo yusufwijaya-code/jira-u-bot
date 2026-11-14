@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, input, output } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { NgIf } from '@angular/common';
-import { BoardService } from '../../../core/services/board.service';
+import { SettingsApi } from '../../../core/services/settings-api';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
@@ -25,7 +25,7 @@ export class JiraCredentialComponent implements OnInit {
   protected error: string | null = null;
 
   private fb = inject(FormBuilder);
-  private boardService = inject(BoardService);
+  private boardService = inject(SettingsApi);
   private confirm = inject(ConfirmService);
   private toast = inject(ToastService);
 
