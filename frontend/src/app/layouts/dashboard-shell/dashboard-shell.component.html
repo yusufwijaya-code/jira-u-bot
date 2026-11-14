@@ -148,7 +148,7 @@
             </div>
           </li>
           <li role="none" *ngIf="(authService.currentUser$ | async)?.isAdmin">
-            <a role="menuitem" routerLink="/dashboard/admin" routerLinkActive="active" (click)="closeMenu()">
+            <a role="menuitem" routerLink="/admin" (click)="closeMenu()">
               <app-icon name="shield" [size]="16" /> Admin
             </a>
           </li>

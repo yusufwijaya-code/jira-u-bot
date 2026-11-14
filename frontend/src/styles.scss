@@ -528,6 +528,39 @@ input:checked + .check-box {
   p { margin: 1px 0 0; font-size: 0.82rem; color: var(--text-muted); }
 }
 
+// ---- Admin shell (Tech Spec "Admin Panel Revamp") ----
+.sidebar-brand .brand-text { display: flex; flex-direction: column; gap: 3px; line-height: 1.1; }
+.admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 159, 28, 0.16);
+  border: 1px solid rgba(255, 159, 28, 0.4);
+  color: #ffc46b;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.btn-home { white-space: nowrap; }
+@media (max-width: 640px) {
+  .btn-home span { display: none; }
+}
+
 .sidebar-toggle { display: none; }
 
 .page {

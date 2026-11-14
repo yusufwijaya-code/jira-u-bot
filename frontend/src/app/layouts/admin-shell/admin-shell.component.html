@@ -1,0 +1,118 @@
+<div class="app-shell admin-shell" [class.sidebar-open]="sidebarOpen">
+  <aside class="sidebar" aria-label="Navigasi admin">
+    <a class="sidebar-brand" routerLink="/admin" (click)="closeSidebar()">
+      <img src="favicon.svg" alt="" width="34" height="34" />
+      <span class="brand-text">
+        <span class="brand-name">Nudge</span>
+        <span class="admin-badge"><app-icon name="shield" [size]="11" /> Admin</span>
+      </span>
+    </a>
+
+    <nav class="sidebar-nav">
+      <span class="nav-section">Admin</span>
+      <a
+        class="nav-item"
+        routerLink="/admin"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        (click)="closeSidebar()"
+      >
+        <app-icon name="home" />
+        <span>Dashboard</span>
+      </a>
+      <a class="nav-item" routerLink="/admin/users" routerLinkActive="active" (click)="closeSidebar()">
+        <app-icon name="users" />
+        <span>User</span>
+      </a>
+      <a class="nav-item" routerLink="/admin/broadcast" routerLinkActive="active" (click)="closeSidebar()">
+        <app-icon name="megaphone" />
+        <span>Broadcast Message</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-tip">
+        <app-icon name="shield-check" [size]="16" />
+        <span>Perubahan pengaturan user oleh admin selalu diberitahukan ke user lewat DM.</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="sidebar-scrim" (click)="closeSidebar()"></div>
+
+  <div class="shell-main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button type="button" class="icon-btn sidebar-toggle" aria-label="Buka menu" (click)="toggleSidebar()">
+          <app-icon name="menu" />
+        </button>
+        @if (page$ | async; as page) {
+          <div class="page-heading">
+            @if (page.crumbs.length) {
+              <nav class="breadcrumb" aria-label="Breadcrumb">
+                @for (crumb of page.crumbs; track $index; let last = $last) {
+                  <span>{{ crumb }}</span>
+                  @if (!last) {
+                    <app-icon name="chevron-right" [size]="12" />
+                  }
+                }
+              </nav>
+            }
+            <h1>{{ page.heading }}</h1>
+            @if (page.subheading) {
+              <p>{{ page.subheading }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="topbar-right">
+        <a class="btn btn-ghost btn-sm btn-home" routerLink="/dashboard">
+          <app-icon name="arrow-left" [size]="14" />
+          <span>Dashboard Utama</span>
+        </a>
+
+        <div class="user-menu" #userMenu>
+          <button
+            type="button"
+            class="user-menu-trigger"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="menuOpen"
+            (click)="toggleMenu()"
+          >
+            <span class="user-avatar">{{ initial$ | async }}</span>
+            <span class="user-email">{{ (authService.currentUser$ | async)?.email }}</span>
+            <app-icon class="chevron" [class.open]="menuOpen" name="chevron-down" [size]="16" />
+          </button>
+
+          @if (menuOpen) {
+            <ul class="user-menu-list" role="menu">
+              <li class="user-menu-header" role="none">
+                <span class="user-avatar lg">{{ initial$ | async }}</span>
+                <div>
+                  <strong>{{ (authService.currentUser$ | async)?.email }}</strong>
+                  <span class="role-badge admin">Administrator</span>
+                </div>
+              </li>
+              <li role="none">
+                <a role="menuitem" routerLink="/dashboard" (click)="closeMenu()">
+                  <app-icon name="home" [size]="16" /> Dashboard Utama
+                </a>
+              </li>
+              <li role="separator" class="divider"></li>
+              <li role="none">
+                <a role="menuitem" class="logout" [href]="logoutHref" (click)="closeMenu()">
+                  <app-icon name="logout" [size]="16" /> Logout
+                </a>
+              </li>
+            </ul>
+          }
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>
