@@ -19,6 +19,10 @@ export interface TicketCard {
   elapsedLabel: string;
   remainingLabel: string;
   deadlineLabel: string;
+  /** RFC3339: when the tracked session started (entered Code Process). */
+  startedAt?: string;
+  /** RFC3339: when the budget runs out in business hours. */
+  deadlineAt?: string;
 }
 
 export interface BoardResponse {

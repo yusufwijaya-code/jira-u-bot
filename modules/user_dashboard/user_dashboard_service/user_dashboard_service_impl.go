@@ -225,6 +225,10 @@ func (s *userDashboardServiceImpl) attachBudgetDetail(card *user_dashboard_dto.C
 	card.DeadlineLabel = google_chat_notifier_service.FormatDeadline(deadline)
 	card.ElapsedSeconds = elapsedSeconds
 	card.BudgetSeconds = budgetSeconds
+	card.DeadlineAt = deadline.Format(time.RFC3339)
+	if session.CurrentSessionStartedDate != nil && !session.CurrentSessionStartedDate.IsZero() {
+		card.StartedAt = session.CurrentSessionStartedDate.Format(time.RFC3339)
+	}
 	if card.IssueURL == "" {
 		card.IssueURL = s.issueURL(session.IssueKey)
 	}

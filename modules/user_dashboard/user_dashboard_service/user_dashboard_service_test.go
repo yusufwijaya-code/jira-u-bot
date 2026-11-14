@@ -227,6 +227,44 @@ func TestGetMyBoard_GroupsCardsByStatus(t *testing.T) {
 	}
 }
 
+func TestGetMyBoard_ExposesSessionStartAndDeadline(t *testing.T) {
+	started := time.Date(2026, 11, 14, 9, 10, 0, 0, time.FixedZone("WIB", 7*3600))
+	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
+		{Key: "OMS-1", Fields: jira_client_dto.IssueFields{Summary: "Tracked", Status: jira_client_dto.Status{Name: "Code Process"}}},
+		{Key: "OMS-2", Fields: jira_client_dto.IssueFields{Summary: "Banked only", Status: jira_client_dto.Status{Name: "Code Process"}}},
+	}}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
+	}}
+	sessionRepo := &fakeIssueSessionRepoForDashboard{byIssueKey: map[string]issue_session_dto.IssueSession{
+		"OMS-1": {IssueKey: "OMS-1", StoryPoints: 2, FlagActive: true, CurrentSessionStartedDate: &started},
+		"OMS-2": {IssueKey: "OMS-2", StoryPoints: 1, AccumulatedSeconds: 600, FlagActive: true},
+	}}
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if err != nil {
+		t.Fatalf("GetMyBoard returned error: %v", err)
+	}
+	for _, col := range board.Columns {
+		for _, c := range col.Cards {
+			if _, err := time.Parse(time.RFC3339, c.DeadlineAt); err != nil {
+				t.Errorf("%s DeadlineAt = %q, want RFC3339: %v", c.IssueKey, c.DeadlineAt, err)
+			}
+			switch c.IssueKey {
+			case "OMS-1":
+				if c.StartedAt != started.Format(time.RFC3339) {
+					t.Errorf("OMS-1 StartedAt = %q, want %q", c.StartedAt, started.Format(time.RFC3339))
+				}
+			case "OMS-2":
+				if c.StartedAt != "" {
+					t.Errorf("OMS-2 StartedAt = %q, want empty when the session has no start", c.StartedAt)
+				}
+			}
+		}
+	}
+}
+
 func TestGetMyBoard_AttachesBudgetDetailOnlyForCodeProcessWithSession(t *testing.T) {
 	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
 		{Key: "OMS-1", Fields: jira_client_dto.IssueFields{Summary: "Tracked", Status: jira_client_dto.Status{Name: "Code Process"}}},

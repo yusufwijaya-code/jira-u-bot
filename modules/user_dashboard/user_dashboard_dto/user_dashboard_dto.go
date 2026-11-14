@@ -17,6 +17,11 @@ type Card struct {
 	// bar; only set when HasBudgetDetail.
 	ElapsedSeconds int64 `json:"elapsedSeconds"`
 	BudgetSeconds  int64 `json:"budgetSeconds"`
+	// StartedAt is when the current tracked session started (entered Code
+	// Process); DeadlineAt is when the budget runs out in business hours.
+	// RFC3339, only set when HasBudgetDetail — the dashboard formats them.
+	StartedAt  string `json:"startedAt,omitempty"`
+	DeadlineAt string `json:"deadlineAt,omitempty"`
 	// IssueURL links the card to the ticket in Jira.
 	IssueURL string `json:"issueURL"`
 	// BoardID is the Jira Agile board of the ticket's active sprint (0 =

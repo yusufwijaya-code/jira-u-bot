@@ -269,12 +269,17 @@
                   </div>
                   <div class="ticket-meta">
                     <span class="budget-pct">{{ t.percent }}%</span>
-                    <span>{{ t.storyPoints | number: '1.0-1' }} SP</span>
+                    <span data-meta="elapsed">Berjalan <b>{{ t.elapsedText }}</b> dari {{ t.budgetText }} ({{ t.storyPoints | number: '1.0-1' }} SP)</span>
                     @if (t.level === 'over') {
-                      <span class="meta-strong">Lewat {{ t.remainingLabel }}</span>
+                      <span class="meta-strong" data-meta="remaining">Lewat {{ t.remainingText }}</span>
                     } @else {
-                      <span>Sisa {{ t.remainingLabel }}</span>
-                      <span>Deadline {{ t.deadlineLabel }}</span>
+                      <span data-meta="remaining">Sisa <b>{{ t.remainingText }}</b></span>
+                      @if (t.deadlineText) {
+                        <span data-meta="deadline">Selesai sebelum {{ t.deadlineText }}</span>
+                      }
+                    }
+                    @if (t.startedText) {
+                      <span data-meta="started">Mulai {{ t.startedText }}</span>
                     }
                   </div>
                 } @else {

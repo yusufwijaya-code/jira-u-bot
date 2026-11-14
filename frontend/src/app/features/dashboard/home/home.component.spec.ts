@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { BehaviorSubject, of, throwError } from 'rxjs';
-import { HomeComponent, budgetLevel, budgetPercent, firstName, sprintRange } from './home.component';
+import { HomeComponent, budgetLevel, budgetPercent, firstName, shortDuration, sprintRange, whenLabel } from './home.component';
 import { DashboardService, TicketCard } from '../../../core/services/dashboard.service';
 import { BoardContextService, BoardSummary } from '../../../core/services/board-context.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -85,6 +85,23 @@ class FakeBoardContext {
 }
 
 describe('dashboard helpers', () => {
+  it('formats short durations', () => {
+    expect(shortDuration(9300)).toBe('2 jam 35 menit');
+    expect(shortDuration(-900)).toBe('15 menit');
+    expect(shortDuration(3600)).toBe('1 jam');
+    expect(shortDuration(90_000)).toBe('1 hari 1 jam');
+    expect(shortDuration(30)).toBe('0 menit');
+  });
+
+  it('formats an instant relative to today in WIB', () => {
+    const now = new Date('2026-11-14T03:00:00Z'); // Sab, 14 Nov 10:00 WIB
+    expect(whenLabel('2026-11-14T09:05:00Z', now)).toBe('Hari ini 16:05');
+    expect(whenLabel('2026-11-15T01:30:00Z', now)).toBe('Besok 08:30');
+    expect(whenLabel('2026-11-13T02:10:00Z', now)).toBe('Kemarin 09:10');
+    expect(whenLabel('2026-11-17T04:00:00Z', now)).toMatch(/^Sel, 17 Nov 11:00$/);
+    expect(whenLabel(undefined, now)).toBe('');
+  });
+
   it('computes budget percent and level', () => {
     expect(budgetPercent(card({ hasBudgetDetail: true, budgetSeconds: 3600, elapsedSeconds: 900 }))).toBe(25);
     expect(budgetPercent(card({ hasBudgetDetail: false }))).toBe(0);
@@ -182,6 +199,16 @@ describe('HomeComponent', () => {
     context.selectedId.set(28);
     fixture.detectChanges();
     expect(el().querySelector('.notif-status')?.textContent).toContain('Board ini dimute');
+  });
+
+  it('shows elapsed vs budget, remaining and deadline like the DM reminder', () => {
+    const [over, ok] = Array.from(el().querySelectorAll('[data-card="active"] .ticket-row'));
+    const meta = (row: Element, key: string) => row.querySelector(`[data-meta="${key}"]`)?.textContent?.replace(/\s+/g, ' ').trim();
+    expect(meta(ok, 'elapsed')).toBe('Berjalan 30 menit dari 1 jam (1 SP)');
+    expect(meta(ok, 'remaining')).toBe('Sisa 30 menit');
+    expect(meta(over, 'elapsed')).toBe('Berjalan 1 jam 15 menit dari 1 jam (1 SP)');
+    expect(meta(over, 'remaining')).toBe('Lewat 15 menit');
+    expect(meta(over, 'deadline')).toBeUndefined();
   });
 
   it('lists Code Process tickets over budget first, untracked last, with budget levels', () => {

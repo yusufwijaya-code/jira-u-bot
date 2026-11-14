@@ -27,6 +27,44 @@ export type BudgetLevel = 'ok' | 'warn' | 'over';
 export interface ActiveTicket extends TicketCard {
   percent: number;
   level: BudgetLevel;
+  /** Short "2 jam 35 menit" texts for the meta line (like the DM reminder). */
+  elapsedText: string;
+  budgetText: string;
+  remainingText: string;
+  /** "Hari ini 16:05" / "Sen, 17 Nov 11:00"; "" when unknown. */
+  startedText: string;
+  deadlineText: string;
+}
+
+/** 9300 → "2 jam 35 menit", 900 → "15 menit", 0 → "0 menit"; sign is ignored. */
+export function shortDuration(seconds: number): string {
+  const total = Math.floor(Math.abs(seconds) / 60);
+  const days = Math.floor(total / 1440);
+  const hours = Math.floor((total % 1440) / 60);
+  const minutes = total % 60;
+  const parts = [days && `${days} hari`, hours && `${hours} jam`, minutes && `${minutes} menit`].filter(Boolean);
+  return parts.length ? parts.join(' ') : '0 menit';
+}
+
+const WIB = 'Asia/Jakarta';
+const dayKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: WIB });
+
+/** ISO instant → "Hari ini 16:05", "Besok 08:30", "Kemarin 09:10" or "Sen, 17 Nov 11:00" (WIB). */
+export function whenLabel(iso: string | undefined, now: Date = new Date()): string {
+  if (!iso) return '';
+  const at = new Date(iso);
+  if (isNaN(at.getTime())) return '';
+  const time = at.toLocaleTimeString('id-ID', { timeZone: WIB, hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
+  const day = 86_400_000;
+  const relative: Record<string, string> = {
+    [dayKey(now)]: 'Hari ini',
+    [dayKey(new Date(now.getTime() + day))]: 'Besok',
+    [dayKey(new Date(now.getTime() - day))]: 'Kemarin',
+  };
+  const prefix =
+    relative[dayKey(at)] ??
+    at.toLocaleDateString('id-ID', { timeZone: WIB, weekday: 'short', day: 'numeric', month: 'short' }).replace('.', '');
+  return `${prefix} ${time}`;
 }
 
 export interface StatusGroup {
@@ -50,7 +88,16 @@ export function withBudget(cards: TicketCard[]): ActiveTicket[] {
   return cards
     .map((c) => {
       const percent = budgetPercent(c);
-      return { ...c, percent, level: budgetLevel(percent) };
+      return {
+        ...c,
+        percent,
+        level: budgetLevel(percent),
+        elapsedText: shortDuration(c.elapsedSeconds),
+        budgetText: shortDuration(c.budgetSeconds),
+        remainingText: shortDuration(c.budgetSeconds - c.elapsedSeconds),
+        startedText: whenLabel(c.startedAt),
+        deadlineText: whenLabel(c.deadlineAt) || c.deadlineLabel,
+      };
     })
     .sort((a, b) => Number(b.hasBudgetDetail) - Number(a.hasBudgetDetail) || b.percent - a.percent);
 }
