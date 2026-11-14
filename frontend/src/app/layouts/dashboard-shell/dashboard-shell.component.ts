@@ -1,8 +1,10 @@
-import { Component, ElementRef, HostListener, ViewChild, inject } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, ViewChild, inject } from '@angular/core';
 import { AsyncPipe, NgIf } from '@angular/common';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { BoardService } from '../../core/services/board.service';
+import { MuteStateService } from '../../core/services/mute-state.service';
 import { IconComponent } from '../../shared/ui/icon.component';
 import { environment } from '../../../environments/environment';
 
@@ -17,8 +19,10 @@ interface PageHeading {
   imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent],
   templateUrl: './dashboard-shell.component.html',
 })
-export class DashboardShellComponent {
+export class DashboardShellComponent implements OnInit {
   protected authService = inject(AuthService);
+  protected muteState = inject(MuteStateService);
+  private boardService = inject(BoardService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
@@ -44,6 +48,23 @@ export class DashboardShellComponent {
       return { heading: snapshot.data['heading'] ?? '', subheading: snapshot.data['subheading'] ?? '' };
     }),
   );
+
+  ngOnInit(): void {
+    // Seeds the top bar mute badge on every dashboard page (e.g. Admin);
+    // the Pengaturan page refreshes it again on its own load.
+    this.boardService.getSettings().subscribe({
+      next: (res) => this.muteState.set(res.mute),
+      error: () => undefined,
+    });
+  }
+
+  /** "16.30" today, or "Sen 08.30" for another day — always WIB. */
+  protected muteLabel(until: Date): string {
+    const wib = { timeZone: 'Asia/Jakarta' } as const;
+    const sameDay = until.toLocaleDateString('id-ID', wib) === new Date().toLocaleDateString('id-ID', wib);
+    const time = until.toLocaleTimeString('id-ID', { ...wib, hour: '2-digit', minute: '2-digit' });
+    return sameDay ? time : `${until.toLocaleDateString('id-ID', { ...wib, weekday: 'short' })} ${time}`;
+  }
 
   protected toggleMenu(): void {
     this.menuOpen = !this.menuOpen;

@@ -23,19 +23,9 @@
     </section>
   }
 
-  @if (!loading && !error) {
-    <section class="card">
-      <header class="card-header">
-        <span class="card-icon"><app-icon name="bell" [size]="20" /></span>
-        <div>
-          <h2>Reminder Preference</h2>
-          <p>Pilih kapan Nudge mencolek kamu sebelum budget waktu tiket habis.</p>
-        </div>
-      </header>
-      <app-reminder-preference [tiers]="tiers"></app-reminder-preference>
-    </section>
-
-    <section class="card">
+  @if (!loading && !error && draft(); as d) {
+    <!-- Jira API key (top of the page) -->
+    <section class="card" data-card="credential">
       <header class="card-header">
         <span class="card-icon accent"><app-icon name="key" [size]="20" /></span>
         <div>
@@ -49,5 +39,167 @@
         (credentialChanged)="onCredentialChanged()"
       ></app-jira-credential>
     </section>
+
+    <!-- 1. Pre-budget tiers -->
+    <section class="card" data-card="reminder">
+      <header class="card-header">
+        <span class="card-icon"><app-icon name="bell" [size]="20" /></span>
+        <div>
+          <h2>Reminder sebelum budget habis</h2>
+          <p>Pilih kapan Nudge mencolek kamu sebelum budget waktu tiket habis. Tier yang lebih panjang dari budget tiket otomatis dilewati.</p>
+        </div>
+      </header>
+      <app-tier-picker
+        [presets]="reminderPresets"
+        prefix="T-"
+        order="desc"
+        hint="sebelum budget habis"
+        [selected]="d.reminderTiers"
+        (selectedChange)="patch({ reminderTiers: $event })"
+      />
+      <ng-container *ngTemplateOutlet="footer; context: { card: 'reminder' }" />
+    </section>
+
+    <!-- 2. Post-budget tiers + repeat -->
+    <section class="card" data-card="overage">
+      <header class="card-header">
+        <span class="card-icon danger"><app-icon name="clock" [size]="20" /></span>
+        <div>
+          <h2>Reminder setelah lewat budget</h2>
+          <p>Notif "budget habis" selalu dikirim sekali. Setelah itu, pilih kapan saja kamu mau diingatkan lagi.</p>
+        </div>
+      </header>
+      <app-tier-picker
+        [presets]="overagePresets"
+        prefix="T+"
+        order="asc"
+        hint="setelah budget habis"
+        [selected]="d.overageTiers"
+        (selectedChange)="patch({ overageTiers: $event })"
+      />
+      <div class="repeat-row">
+        <label class="field">
+          <span class="field-label"><app-icon name="repeat" [size]="14" /> Setelah tier terakhir</span>
+          <select
+            aria-label="Pengulangan setelah tier terakhir"
+            [ngModel]="d.overageRepeatMinutes"
+            (ngModelChange)="patch({ overageRepeatMinutes: $event })"
+          >
+            @for (opt of repeatOptions; track opt.label) {
+              <option [ngValue]="opt.value">{{ opt.label }}</option>
+            }
+          </select>
+        </label>
+        <div class="timeline-preview">
+          <span class="timeline-label">Alur notif</span>
+          <span class="timeline-text">{{ overagePreview() }}</span>
+        </div>
+      </div>
+      <ng-container *ngTemplateOutlet="footer; context: { card: 'overage' }" />
+    </section>
+
+    <!-- 3. Event toggles -->
+    <section class="card" data-card="events">
+      <header class="card-header">
+        <span class="card-icon"><app-icon name="zap" [size]="20" /></span>
+        <div>
+          <h2>Jenis notifikasi</h2>
+          <p>Pilih notif status tiket yang mau kamu terima.</p>
+        </div>
+      </header>
+      <div class="toggle-list">
+        <label class="toggle-row">
+          <span class="toggle-text">
+            <strong>Selesai lebih awal</strong>
+            <small>Saat tiket pindah ke Code Review sebelum budget habis.</small>
+          </span>
+          <input
+            type="checkbox"
+            class="switch"
+            [checked]="d.notifyEarlyFinish"
+            (change)="patch({ notifyEarlyFinish: $any($event.target).checked })"
+          />
+        </label>
+        <label class="toggle-row">
+          <span class="toggle-text">
+            <strong>Tiket balik ke To Do</strong>
+            <small>Saat tiket dikembalikan dari Code Process ke To Do.</small>
+          </span>
+          <input
+            type="checkbox"
+            class="switch"
+            [checked]="d.notifyReturnedToTodo"
+            (change)="patch({ notifyReturnedToTodo: $any($event.target).checked })"
+          />
+        </label>
+      </div>
+      <ng-container *ngTemplateOutlet="footer; context: { card: 'events' }" />
+    </section>
+
+    <!-- 4. Mute & quiet hours -->
+    <section class="card" data-card="quiet">
+      <header class="card-header">
+        <span class="card-icon accent"><app-icon name="moon" [size]="20" /></span>
+        <div>
+          <h2>Mute &amp; jam tenang</h2>
+          <p>Selama mute atau jam tenang, reminder yang jatuh tempo dilewati. Notif lewat budget langsung lanjut begitu selesai.</p>
+        </div>
+      </header>
+
+      <div class="subsection">
+        <h3>Mute sementara</h3>
+        <app-mute-panel />
+      </div>
+
+      <div class="subsection">
+        <label class="toggle-row">
+          <span class="toggle-text">
+            <strong>Jam tenang harian</strong>
+            <small>Tanpa notifikasi setiap hari di rentang jam ini (WIB). Boleh melewati tengah malam.</small>
+          </span>
+          <input
+            type="checkbox"
+            class="switch"
+            [checked]="!!d.quietHours"
+            (change)="setQuietEnabled($any($event.target).checked)"
+          />
+        </label>
+        @if (d.quietHours) {
+          <div class="time-range">
+            <label class="field">
+              <span class="field-label">Mulai</span>
+              <input type="time" [value]="quietStart" (change)="setQuietTime('start', $any($event.target).value)" />
+            </label>
+            <span class="time-range-sep">sampai</span>
+            <label class="field">
+              <span class="field-label">Selesai</span>
+              <input type="time" [value]="quietEnd" (change)="setQuietTime('end', $any($event.target).value)" />
+            </label>
+          </div>
+        }
+      </div>
+      <ng-container *ngTemplateOutlet="footer; context: { card: 'quiet' }" />
+    </section>
   }
 </div>
+
+<ng-template #footer let-card="card">
+  <div class="card-footer">
+    <p class="msg error" aria-live="polite">
+      @if (errorFor(card); as message) {
+        <app-icon name="alert-circle" [size]="16" /> {{ message }}
+      }
+    </p>
+    <span class="spacer"></span>
+    <button
+      type="button"
+      class="btn btn-primary"
+      [class.loading]="saving() === card"
+      [disabled]="saving() !== null"
+      (click)="save(card)"
+    >
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="btn-label">Simpan</span>
+    </button>
+  </div>
+</ng-template>

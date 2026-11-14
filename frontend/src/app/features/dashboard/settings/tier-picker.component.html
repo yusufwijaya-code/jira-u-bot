@@ -1,0 +1,46 @@
+<div class="tier-grid">
+  @for (tile of tiles(); track tile.code; let i = $index) {
+    <label class="tier-tile" [class.custom]="tile.custom" [style.--i]="i">
+      <input type="checkbox" class="visually-hidden" [checked]="tile.checked" (change)="toggle(tile)" />
+      <span class="check-box" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="14" height="14"><path d="M20 6 9 17l-5-5" /></svg>
+      </span>
+      <span class="tier-text">
+        <strong>{{ label(tile.code) }}</strong>
+        <small>{{ tile.custom ? 'Tier custom' : hint() }}</small>
+      </span>
+      @if (tile.custom) {
+        <button type="button" class="tile-remove" [attr.aria-label]="'Hapus ' + label(tile.code)" (click)="remove(tile, $event)">
+          <app-icon name="x" [size]="14" />
+        </button>
+      }
+    </label>
+  }
+</div>
+
+<div class="tier-add">
+  <span class="tier-add-label">Tambah tier</span>
+  <div class="tier-add-row">
+    <input
+      type="number"
+      min="1"
+      max="480"
+      inputmode="numeric"
+      placeholder="Angka"
+      aria-label="Durasi tier"
+      [(ngModel)]="addValue"
+      (keydown.enter)="$event.preventDefault(); add()"
+    />
+    <select [(ngModel)]="addUnit" aria-label="Satuan tier">
+      <option value="m">menit</option>
+      <option value="h">jam</option>
+    </select>
+    <button type="button" class="btn btn-soft btn-sm" (click)="add()">
+      <app-icon name="plus" [size]="14" /> Tambah
+    </button>
+    <span class="count-pill"><strong>{{ selected().length }}</strong> / {{ max }} aktif</span>
+  </div>
+  @if (addError()) {
+    <p class="field-error">{{ addError() }}</p>
+  }
+</div>

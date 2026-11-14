@@ -3,6 +3,9 @@ import { provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { DashboardShellComponent } from './dashboard-shell.component';
 import { AuthService } from '../../core/services/auth.service';
+import { BoardService } from '../../core/services/board.service';
+import { MuteStateService } from '../../core/services/mute-state.service';
+import { of } from 'rxjs';
 
 describe('DashboardShellComponent', () => {
   let fixture: ComponentFixture<DashboardShellComponent>;
@@ -16,7 +19,11 @@ describe('DashboardShellComponent', () => {
     user$ = new BehaviorSubject<any>({ email: 'dev@esb.co.id', isAdmin: false });
     await TestBed.configureTestingModule({
       imports: [DashboardShellComponent],
-      providers: [provideRouter([]), { provide: AuthService, useValue: { currentUser$: user$ } }],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: { currentUser$: user$ } },
+        { provide: BoardService, useValue: { getSettings: () => of({ mute: { active: false, until: null } }) } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DashboardShellComponent);
@@ -103,5 +110,25 @@ describe('DashboardShellComponent', () => {
     fixture.detectChanges();
 
     expect(menu()).toBeNull();
+  });
+
+  it('shows a mute badge in the top bar only while a mute is active', () => {
+    expect(el().querySelector('.mute-badge')).toBeNull();
+
+    const muteState = TestBed.inject(MuteStateService);
+    muteState.set({ active: true, until: new Date(Date.now() + 60 * 60 * 1000).toISOString() });
+    fixture.detectChanges();
+    expect(el().querySelector('.mute-badge')?.textContent).toContain('Dimute');
+
+    muteState.set({ active: false, until: null });
+    fixture.detectChanges();
+    expect(el().querySelector('.mute-badge')).toBeNull();
+  });
+
+  it('shows "Notif dimatikan" in the badge for a forever mute', () => {
+    TestBed.inject(MuteStateService).set({ active: true, until: '9999-12-31T23:59:59+07:00', forever: true });
+    fixture.detectChanges();
+    const badge = el().querySelector('.mute-badge.forever');
+    expect(badge?.textContent).toContain('Notif dimatikan');
   });
 });

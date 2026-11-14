@@ -35,6 +35,18 @@
         </div>
       </div>
 
+      <div class="topbar-right">
+        @if (muteState.until(); as until) {
+          <a
+            class="mute-badge"
+            [class.forever]="muteState.forever()"
+            routerLink="/dashboard/settings"
+            [attr.title]="muteState.forever() ? 'Semua notifikasi dimatikan' : 'Notifikasi dimute sampai ' + muteLabel(until) + ' WIB'"
+          >
+            <app-icon name="bell-off" [size]="14" />
+            <span>{{ muteState.forever() ? 'Notif dimatikan' : 'Dimute s/d ' + muteLabel(until) }}</span>
+          </a>
+        }
       <div class="user-menu" #userMenu>
         <button
           type="button"
@@ -70,6 +82,7 @@
             </a>
           </li>
         </ul>
+      </div>
       </div>
     </header>
 
