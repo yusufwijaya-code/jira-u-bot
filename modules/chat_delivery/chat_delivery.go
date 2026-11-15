@@ -96,7 +96,9 @@ func (r *Router) SendReminder(ctx context.Context, msg google_chat_notifier_dto.
 	text := google_chat_notifier_service.BuildMessageText(msg)
 	appMsg := chat_app_dto.OutgoingMessage{Text: text}
 	if r.d.Cards != nil {
-		appMsg.Text, appMsg.CardsV2 = r.d.Cards(msg)
+		// The short line is the notification preview; the card shows the rest.
+		appMsg.Text = ""
+		appMsg.FallbackText, appMsg.CardsV2 = r.d.Cards(msg)
 	}
 	return r.logged(ctx, chat_log_dto.KindReminder, msg.AssigneeEmail, text, appMsg)
 }

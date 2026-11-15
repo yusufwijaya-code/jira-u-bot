@@ -137,3 +137,33 @@ func TestTextCard_HelpHintBecomesAMenuButton(t *testing.T) {
 		t.Error("text without the hint must stay plain")
 	}
 }
+
+func TestToCardHTML_ItalicLinksAndStrike(t *testing.T) {
+	got := ToCardHTML("Atur di *Pengaturan*: https://nudge.labcup.tech/dashboard/settings.\n_Pesan dicatat._ ~lama~ file_name_x")
+	want := `Atur di <b>Pengaturan</b>: <a href="https://nudge.labcup.tech/dashboard/settings">https://nudge.labcup.tech/dashboard/settings</a>.<br><i>Pesan dicatat.</i> <s>lama</s> file_name_x`
+	if got != want {
+		t.Errorf("ToCardHTML =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestWithoutHelpHint_LeavesNoDoubleGap(t *testing.T) {
+	got := WithoutHelpHint("A\n\n💡 Ketik */n-help* buat lihat command\n\n_B_")
+	if got != "A\n\n_B_" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuild_CardBodyHasOnlyTheDetails(t *testing.T) {
+	_, cards := Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueURL: "https://jira/browse/CORE-1", IssueSummary: "Fix login", AssigneeName: "Yusuf", Tier: "1h"})
+	body := cardText(cards[0].Card)
+	if strings.Contains(body, "Reminder") || strings.Contains(body, "Fix login") || strings.Contains(body, "https://jira") || !strings.HasPrefix(body, "<b>Assignee:</b>") {
+		t.Errorf("reminder body repeats the header/link:\n%s", body)
+	}
+	_, cards = Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-7", IssueURL: "https://jira/browse/OMS-7", IssueSummary: "S", Text: "🔀 *OMS-7* — S\n*To Do* → *Code Process* · 10:15 WIB\nhttps://jira/browse/OMS-7"})
+	if h := cards[0].Card.Header.Title; h != "OMS-7 — Status berubah" {
+		t.Errorf("status title = %q", h)
+	}
+	if body := cardText(cards[0].Card); body != "<b>To Do</b> → <b>Code Process</b> · 10:15 WIB" {
+		t.Errorf("status body = %q", body)
+	}
+}

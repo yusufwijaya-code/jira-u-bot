@@ -30,8 +30,7 @@ const (
 	inactiveText      = "Akun Nudge kamu sedang dinonaktifkan admin."
 	welcomeText       = "✅ App Nudge aktif! Notifikasi Nudge sekarang bisa datang langsung dari sini.\n\n" +
 		"Atur pengirim pesan di *Pengaturan*: https://nudge.labcup.tech/dashboard/settings\n\n" +
-		"💡 Ketik */n-help* buat lihat command\n\n" +
-		"_Pesan & command di DM ini dicatat untuk keperluan admin Nudge._"
+		"💡 Ketik */n-help* buat lihat command"
 )
 
 type UserFinder interface {

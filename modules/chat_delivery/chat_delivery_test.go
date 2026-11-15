@@ -210,7 +210,8 @@ func TestSendReminder_UsesCardsOnAppAndTextOnOperator(t *testing.T) {
 	if err := r.SendReminder(context.Background(), msg); err != nil {
 		t.Fatal(err)
 	}
-	if app.sent[0].Text != "short" || len(app.sent[0].CardsV2) != 1 {
+	// The short line is only the notification preview, not text above the card.
+	if app.sent[0].Text != "" || app.sent[0].FallbackText != "short" || len(app.sent[0].CardsV2) != 1 {
 		t.Errorf("app message = %+v", app.sent[0])
 	}
 

@@ -47,7 +47,8 @@ func actionButton(label, function string, kv ...string) chat_app_dto.Button {
 
 // WithoutHelpHint drops the "Ketik /n-help" line (and trailing blank lines).
 func WithoutHelpHint(text string) string {
-	return strings.TrimRight(helpHintPattern.ReplaceAllString(text, ""), "\n ")
+	s := helpHintPattern.ReplaceAllString(text, "")
+	return strings.TrimRight(blankLines.ReplaceAllString(s, "\n\n"), "\n ")
 }
 
 // TextCard turns a plain notice into a card when it advertises /n-help: the
@@ -65,13 +66,24 @@ func TextCard(text string) (string, []chat_app_dto.CardWithID, bool) {
 	return short, []chat_app_dto.CardWithID{{CardID: "nudge-notice", Card: card}}, true
 }
 
-var boldPattern = regexp.MustCompile(`\*([^*\n]+)\*`)
+var (
+	boldPattern   = regexp.MustCompile(`\*([^*\n]+)\*`)
+	italicPattern = regexp.MustCompile(`(^|[\s(])_([^_\n]+)_`)
+	strikePattern = regexp.MustCompile(`(^|[\s(])~([^~\n]+)~`)
+	urlPattern    = regexp.MustCompile(`https?://[^\s<]+[^\s<.,!?)]`)
+	blankLines    = regexp.MustCompile(`\n{3,}`)
+)
 
-// ToCardHTML turns Chat markup (*bold*, \n) into the HTML subset card
-// text paragraphs render, escaping everything else.
+// ToCardHTML turns Chat markup (*bold*, _italic_, ~strike~, links, \n)
+// into the HTML subset card text renders, escaping everything else.
 func ToCardHTML(chatText string) string {
 	s := html.EscapeString(chatText)
 	s = boldPattern.ReplaceAllString(s, "<b>$1</b>")
+	s = italicPattern.ReplaceAllString(s, "$1<i>$2</i>")
+	s = strikePattern.ReplaceAllString(s, "$1<s>$2</s>")
+	s = urlPattern.ReplaceAllStringFunc(s, func(u string) string {
+		return `<a href="` + u + `">` + u + `</a>`
+	})
 	return strings.ReplaceAll(s, "\n", "<br>")
 }
 
@@ -88,6 +100,9 @@ func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto
 		if body == "" {
 			body = short
 		}
+		if strings.HasPrefix(short, "🔀") {
+			header.Title = msg.IssueKey + " — Status berubah"
+		}
 	} else {
 		short = google_chat_notifier_service.MessageHeader(msg)
 		body = google_chat_notifier_service.BuildMessageText(msg)
@@ -97,7 +112,9 @@ func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto
 			header.Title = msg.IssueKey + " — " + strings.ReplaceAll(title, "*", "")
 		}
 	}
-	body = WithoutHelpHint(body)
+	// The header already names the ticket and "Buka di Jira" links it: the
+	// card body keeps only the details.
+	body = cardBody(WithoutHelpHint(body), short, msg.IssueSummary, msg.IssueURL)
 
 	var bs []chat_app_dto.Button
 	if msg.IssueKey != "" {
@@ -117,6 +134,29 @@ func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto
 		Sections: []chat_app_dto.Section{{Widgets: widgets}},
 	}
 	return short, []chat_app_dto.CardWithID{{CardID: "nudge-" + msg.IssueKey, Card: card}}
+}
+
+// cardBody drops the lines a ticket card shows elsewhere (title line,
+// summary, Jira URL) and the blank lines they leave at the top.
+func cardBody(body string, drop ...string) string {
+	skip := map[string]bool{}
+	for _, d := range drop {
+		if d = strings.TrimSpace(d); d != "" {
+			skip[d] = true
+		}
+	}
+	var kept []string
+	for _, line := range strings.Split(body, "\n") {
+		if skip[strings.TrimSpace(line)] {
+			continue
+		}
+		if len(kept) == 0 && strings.TrimSpace(line) == "" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	out := strings.Join(kept, "\n")
+	return strings.TrimRight(blankLines.ReplaceAllString(out, "\n\n"), "\n ")
 }
 
 // StripActions returns a copy of card without action buttons (links stay)
