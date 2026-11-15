@@ -1,0 +1,170 @@
+// Package chat_app_service answers the events Google Chat posts to the
+// Nudge Chat App (Tech Spec "Nudge sebagai Google Chat App", US-2).
+package chat_app_service
+
+import (
+	"context"
+	"log"
+	"strings"
+	"time"
+
+	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/registration/registration_dto"
+)
+
+const (
+	defaultCommandTimeout = 25 * time.Second
+	asyncCommandTimeout   = 2 * time.Minute
+
+	processingText    = "⏳ Sedang diproses…"
+	errorText         = "Terjadi kesalahan, coba lagi."
+	notRegisteredText = "Kamu belum terdaftar di Nudge. Login dulu ke https://nudge.labcup.tech lalu kirim pesan apa saja di sini."
+	inactiveText      = "Akun Nudge kamu sedang dinonaktifkan admin."
+	welcomeText       = "✅ App Nudge aktif! Notifikasi Nudge sekarang bisa datang langsung dari sini.\n\n" +
+		"Atur pengirim pesan di *Pengaturan*: https://nudge.labcup.tech/dashboard/settings\n\n" +
+		"💡 Ketik */n-help* buat lihat command"
+)
+
+type UserFinder interface {
+	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
+}
+
+type StateStore interface {
+	FindByEmail(ctx context.Context, email string) (chat_app_dto.State, bool, error)
+	SetSpace(ctx context.Context, email, spaceID, chatUserID string) error
+	ClearBySpace(ctx context.Context, spaceID string) error
+}
+
+type CommandRouter interface {
+	RouteCommand(ctx context.Context, senderEmail, messageText string) string
+}
+
+type AppSender interface {
+	CreateMessage(ctx context.Context, space string, msg chat_app_dto.OutgoingMessage) error
+}
+
+type Deps struct {
+	Users    UserFinder
+	States   StateStore
+	Commands CommandRouter
+	App      AppSender
+	// CommandTimeout bounds the synchronous reply (Google waits ~30s); 0 = 25s.
+	CommandTimeout time.Duration
+}
+
+type Service interface {
+	Handle(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response
+}
+
+type service struct {
+	d Deps
+}
+
+func New(d Deps) Service {
+	if d.CommandTimeout <= 0 {
+		d.CommandTimeout = defaultCommandTimeout
+	}
+	return &service{d: d}
+}
+
+func (s *service) Handle(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
+	if !ev.Space.IsDM() {
+		return chat_app_dto.Response{}
+	}
+	switch ev.Type {
+	case chat_app_dto.EventAddedToSpace:
+		return s.added(ctx, ev)
+	case chat_app_dto.EventRemovedFromSpace:
+		if err := s.d.States.ClearBySpace(ctx, ev.Space.Name); err != nil {
+			log.Printf("chat_app_service: clearing %s failed: %v", ev.Space.Name, err)
+		}
+		return chat_app_dto.Response{}
+	case chat_app_dto.EventMessage:
+		return s.message(ctx, ev)
+	}
+	return chat_app_dto.Response{}
+}
+
+// checkUser returns the reply for a sender that may not use Nudge.
+func (s *service) checkUser(ctx context.Context, email string) (string, bool) {
+	u, found, err := s.d.Users.FindUserByEmail(ctx, email)
+	switch {
+	case err != nil:
+		log.Printf("chat_app_service: FindUserByEmail(%s) failed: %v", email, err)
+		return errorText, false
+	case !found:
+		return notRegisteredText, false
+	case !u.FlagActive:
+		return inactiveText, false
+	}
+	return "", true
+}
+
+func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
+	if reply, ok := s.checkUser(ctx, ev.User.Email); !ok {
+		return chat_app_dto.Response{Text: reply}
+	}
+	if err := s.d.States.SetSpace(ctx, ev.User.Email, ev.Space.Name, ev.User.Name); err != nil {
+		log.Printf("chat_app_service: storing the DM of %s failed: %v", ev.User.Email, err)
+		return chat_app_dto.Response{Text: errorText}
+	}
+	return chat_app_dto.Response{Text: welcomeText}
+}
+
+func (s *service) message(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
+	email := ev.User.Email
+	if reply, ok := s.checkUser(ctx, email); !ok {
+		return chat_app_dto.Response{Text: reply}
+	}
+	// The install event may have been missed: remember the DM on any message.
+	if state, _, err := s.d.States.FindByEmail(ctx, email); err == nil && state.SpaceID != ev.Space.Name {
+		if err := s.d.States.SetSpace(ctx, email, ev.Space.Name, ev.User.Name); err != nil {
+			log.Printf("chat_app_service: storing the DM of %s failed: %v", email, err)
+		}
+	}
+	text, usage := commandText(ev.Message)
+	if usage != "" {
+		return chat_app_dto.Response{Text: usage}
+	}
+	return chat_app_dto.Response{Text: s.runCommand(email, ev.Space.Name, text)}
+}
+
+// commandText is the /n-* text a message stands for; a non-empty second
+// value is a usage hint to reply with instead (slash commands, Task 13).
+func commandText(msg *chat_app_dto.Message) (string, string) {
+	if msg == nil {
+		return "", ""
+	}
+	if arg := strings.TrimSpace(msg.ArgumentText); arg != "" {
+		return arg, ""
+	}
+	return strings.TrimSpace(msg.Text), ""
+}
+
+// runCommand answers within CommandTimeout; slower commands reply
+// "processing" now and post the result through the app later.
+func (s *service) runCommand(email, space, text string) string {
+	done := make(chan string, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), asyncCommandTimeout)
+		defer cancel()
+		done <- s.d.Commands.RouteCommand(ctx, email, text)
+	}()
+	select {
+	case out := <-done:
+		return out
+	case <-time.After(s.d.CommandTimeout):
+		go func() {
+			out := <-done
+			if s.d.App == nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := s.d.App.CreateMessage(ctx, space, chat_app_dto.OutgoingMessage{Text: out}); err != nil {
+				log.Printf("chat_app_service: late reply to %s failed: %v", email, err)
+			}
+		}()
+		return processingText
+	}
+}
