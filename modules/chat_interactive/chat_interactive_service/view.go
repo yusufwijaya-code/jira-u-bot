@@ -1,10 +1,9 @@
 package chat_interactive_service
 
 import (
-	"html"
-	"regexp"
 	"strings"
 
+	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_dto"
 )
 
@@ -72,18 +71,9 @@ func action(label, fn string, params ...string) button {
 }
 func link(label, url string) button { return button{label: label, url: url} }
 
-var (
-	boldMarkup   = regexp.MustCompile(`\*([^*\n]+)\*`)
-	italicMarkup = regexp.MustCompile(`(^|[\s(])_([^_\n]+)_`)
-)
-
-// cardHTML turns Chat markup into the HTML subset card text renders.
-func cardHTML(s string) string {
-	s = html.EscapeString(s)
-	s = boldMarkup.ReplaceAllString(s, "<b>$1</b>")
-	s = italicMarkup.ReplaceAllString(s, "$1<i>$2</i>")
-	return strings.ReplaceAll(s, "\n", "<br>")
-}
+// cardHTML turns Chat markup into the HTML subset card text renders — the
+// same rules as the automatic notices (bold, italic, strike, links).
+func cardHTML(s string) string { return chat_app_card.ToCardHTML(s) }
 
 func (b button) widget() chat_app_dto.Button {
 	if b.url != "" {
