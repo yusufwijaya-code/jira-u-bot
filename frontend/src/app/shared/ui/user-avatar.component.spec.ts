@@ -11,15 +11,15 @@ describe('UserAvatarComponent', () => {
   });
 
   it('shows the picture when a src is given', () => {
-    fixture.componentRef.setInput('src', '/nudge/api/dashboard/me/avatar');
+    fixture.componentRef.setInput('src', '/api/dashboard/me/avatar');
     fixture.detectChanges();
 
-    expect(el().querySelector('img')!.getAttribute('src')).toBe('/nudge/api/dashboard/me/avatar');
+    expect(el().querySelector('img')!.getAttribute('src')).toBe('/api/dashboard/me/avatar');
     expect(el().classList).toContain('has-photo');
   });
 
   it('falls back to the initial when the picture fails to load', () => {
-    fixture.componentRef.setInput('src', '/nudge/api/dashboard/me/avatar');
+    fixture.componentRef.setInput('src', '/api/dashboard/me/avatar');
     fixture.detectChanges();
 
     el().querySelector('img')!.dispatchEvent(new Event('error'));
@@ -40,7 +40,7 @@ describe('UserAvatarComponent', () => {
   });
 
   it('builds the avatar URLs', () => {
-    expect(myAvatarUrl()).toBe('/nudge/api/dashboard/me/avatar');
-    expect(adminUserAvatarUrl(12)).toBe('/nudge/api/dashboard/admin/users/12/avatar');
+    expect(myAvatarUrl()).toBe('/api/dashboard/me/avatar');
+    expect(adminUserAvatarUrl(12)).toBe('/api/dashboard/admin/users/12/avatar');
   });
 });

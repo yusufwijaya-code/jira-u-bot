@@ -45,13 +45,12 @@ type AppConfig struct {
 	// personal Jira API tokens at rest (tr_usercredential) — see
 	// modules/jira_credential/jira_credential_crypto.
 	CredentialEncryptionKey string
-	// BasePath is the path prefix this entire app is served under —
-	// labcup.tech hosts several repos behind the same nginx vhost, each
-	// claiming its own prefix (nginx does NOT strip it before proxying,
-	// matching the existing /nudge convention from the old
-	// registration page) — every route, redirect, cookie Path, and
-	// template link must be built relative to this, never hardcoded as a
-	// root-absolute path.
+	// BasePath is the path prefix this entire app is served under. Empty
+	// (the default) in production: Nudge owns the root of its own
+	// subdomain, nudge.labcup.tech. Set it (e.g. /nudge) only to serve the
+	// app under a prefix of a shared vhost — nginx does NOT strip it, so
+	// every route, redirect and cookie Path is built relative to this.
+	// Normalized without a trailing slash ("/" means root).
 	BasePath string
 	// FrontendURL is the origin (scheme://host[:port], no trailing slash)
 	// the Angular frontend is served from, used to build the redirects the
@@ -79,7 +78,6 @@ func LoadConfig(cfg *AppConfig) error {
 	v.SetDefault("MYSQL_USER", "root")
 	v.SetDefault("MYSQL_DATABASE", "jira_db")
 	v.SetDefault("GOOGLE_OAUTH_TOKEN_PATH", "./data/chat_oauth_token.json")
-	v.SetDefault("BASE_PATH", "/nudge")
 
 	cfg.JiraBaseURL = v.GetString("JIRA_BASE_URL")
 	cfg.JiraEmail = v.GetString("JIRA_EMAIL")
@@ -101,7 +99,7 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.GoogleSignInRedirectURL = v.GetString("GOOGLE_SIGNIN_REDIRECT_URL")
 	cfg.AdminEmail = v.GetString("ADMIN_EMAIL")
 	cfg.CredentialEncryptionKey = v.GetString("CREDENTIAL_ENCRYPTION_KEY")
-	cfg.BasePath = v.GetString("BASE_PATH")
+	cfg.BasePath = strings.TrimRight(v.GetString("BASE_PATH"), "/")
 	cfg.FrontendURL = strings.TrimRight(v.GetString("FRONTEND_URL"), "/")
 
 	return nil

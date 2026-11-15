@@ -52,6 +52,25 @@ func TestLoadConfig_DefaultsPortWhenMissing(t *testing.T) {
 	}
 }
 
+// The app is served from the root of its own subdomain by default; a
+// prefix (or "/") from the environment is normalized without the trailing slash.
+func TestLoadConfig_BasePath(t *testing.T) {
+	cases := map[string]string{"": "", "/": "", "/nudge": "/nudge", "/nudge/": "/nudge"}
+	for env, want := range cases {
+		t.Setenv("BASE_PATH", env)
+		if env == "" {
+			os.Unsetenv("BASE_PATH")
+		}
+		var cfg AppConfig
+		if err := LoadConfig(&cfg); err != nil {
+			t.Fatalf("LoadConfig returned error: %v", err)
+		}
+		if cfg.BasePath != want {
+			t.Errorf("BASE_PATH=%q → BasePath %q, want %q", env, cfg.BasePath, want)
+		}
+	}
+}
+
 func TestLoadConfig_ReadsFromDotEnvFile(t *testing.T) {
 	dir := t.TempDir()
 	envContents := "JIRA_BASE_URL=https://esb-id.atlassian.net\n" +

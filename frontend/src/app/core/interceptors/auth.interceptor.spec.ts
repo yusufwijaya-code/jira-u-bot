@@ -31,18 +31,18 @@ describe('authInterceptor', () => {
   afterEach(() => httpMock.verify());
 
   it('clears the session and redirects to Login on a 401 response from any request', () => {
-    http.get('/nudge/api/dashboard/settings').subscribe({ error: () => {} });
+    http.get('/api/dashboard/settings').subscribe({ error: () => {} });
 
-    httpMock.expectOne('/nudge/api/dashboard/settings').flush({ error: 'unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/api/dashboard/settings').flush({ error: 'unauthorized' }, { status: 401, statusText: 'Unauthorized' });
 
     expect(authService.clearSession).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/']);
   });
 
   it('does not touch the session or redirect on a non-401 error', () => {
-    http.get('/nudge/api/dashboard/settings').subscribe({ error: () => {} });
+    http.get('/api/dashboard/settings').subscribe({ error: () => {} });
 
-    httpMock.expectOne('/nudge/api/dashboard/settings').flush({ error: 'failed to load settings' }, { status: 500, statusText: 'Server Error' });
+    httpMock.expectOne('/api/dashboard/settings').flush({ error: 'failed to load settings' }, { status: 500, statusText: 'Server Error' });
 
     expect(authService.clearSession).not.toHaveBeenCalled();
     expect(router.navigate).not.toHaveBeenCalled();

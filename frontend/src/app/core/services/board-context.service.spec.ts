@@ -48,7 +48,7 @@ describe('BoardContextService', () => {
     expect(svc.selectedId()).toBeNull();
 
     svc.load();
-    http.expectOne('/nudge/api/dashboard/boards').flush({ boards: [OMS] });
+    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
 
     expect(svc.boards().length).toBe(1);
     expect(svc.loaded()).toBeTrue();
@@ -60,7 +60,7 @@ describe('BoardContextService', () => {
     expect(svc.selectedId()).toBe(28);
 
     svc.load();
-    http.expectOne('/nudge/api/dashboard/boards').flush({ boards: [OMS] });
+    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
     expect(svc.selected()?.name).toBe('ESB OMS Board');
   });
 
@@ -92,13 +92,13 @@ describe('BoardContextService', () => {
     const svc = setup();
 
     svc.load();
-    http.expectOne('/nudge/api/dashboard/boards').flush({ boards: [OMS] });
+    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
 
     expect(svc.selectedId()).toBeNull();
     expect(toast.info).toHaveBeenCalled();
   });
 
   it('builds the avatar proxy URL', () => {
-    expect(setup().avatarUrl(28)).toBe('/nudge/api/dashboard/boards/28/avatar');
+    expect(setup().avatarUrl(28)).toBe('/api/dashboard/boards/28/avatar');
   });
 });

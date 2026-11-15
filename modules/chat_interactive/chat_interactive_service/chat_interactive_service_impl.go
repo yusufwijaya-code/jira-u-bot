@@ -21,7 +21,9 @@ import (
 	"nudge/modules/registration/registration_repository"
 )
 
-const registerURL = "https://labcup.tech/nudge/register"
+// registerURL is the dashboard's sign-in page: signing in with Google
+// registers the user.
+const registerURL = "https://nudge.labcup.tech/"
 
 // Command prefixes recognized at the start of a DM message. The /n- prefix
 // (operator's choice) keeps these from colliding with any other bot's

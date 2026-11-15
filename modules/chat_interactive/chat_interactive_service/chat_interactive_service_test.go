@@ -199,7 +199,7 @@ func TestRouteCommand_UnregisteredUserGetsInviteToRegister(t *testing.T) {
 
 	got := svc.RouteCommand(context.Background(), "ghost@esb.co.id", "/n-mytickets")
 
-	if !strings.Contains(got, "labcup.tech/nudge/register") {
+	if !strings.Contains(got, "https://nudge.labcup.tech/") {
 		t.Errorf("RouteCommand() = %q, want it to contain the registration link", got)
 	}
 }

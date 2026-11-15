@@ -57,12 +57,12 @@ jobs:
           retention-days: 7
 
   deploy:
-    name: Deploy to labcup.tech
+    name: Deploy to nudge.labcup.tech
     needs: build
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://labcup.tech/nudge/dashboard
+      url: https://nudge.labcup.tech/dashboard
     steps:
       # Only the pinned host keys are needed from the repo here.
       - uses: actions/checkout@v4
@@ -103,6 +103,6 @@ jobs:
 
       - name: Health check
         run: |
-          curl -sf --retry 5 --retry-delay 3 --retry-all-errors https://labcup.tech/nudge/ping -o /dev/null
-          curl -sf https://labcup.tech/nudge/ -o /dev/null
+          curl -sf --retry 5 --retry-delay 3 --retry-all-errors https://nudge.labcup.tech/ping -o /dev/null
+          curl -sf https://nudge.labcup.tech/ -o /dev/null
           echo "nudge OK"

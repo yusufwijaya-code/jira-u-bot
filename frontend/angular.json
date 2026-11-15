@@ -23,7 +23,7 @@
           "options": {
             "outputPath": "dist/frontend",
             "index": "src/index.html",
-            "baseHref": "/nudge/",
+            "baseHref": "/",
             "browser": "src/main.ts",
             "polyfills": [
               "zone.js"

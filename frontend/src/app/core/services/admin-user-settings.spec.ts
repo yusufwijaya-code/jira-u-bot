@@ -5,7 +5,7 @@ import { Router, provideRouter } from '@angular/router';
 import { ADMIN_TARGET_USER_ID, AdminUserScope, AdminUserSettingsApi } from './admin-user-settings';
 import { NotificationSettings } from './board.service';
 
-const API = '/nudge/api/dashboard/admin/users/12';
+const API = '/api/dashboard/admin/users/12';
 
 describe('AdminUserSettingsApi', () => {
   let api: AdminUserSettingsApi;
@@ -47,7 +47,7 @@ describe('AdminUserSettingsApi', () => {
     cred.flush({ status: 'ok' });
 
     api.deleteCredential().subscribe();
-    http.expectOne((r) => r.method === 'DELETE' && r.url === '/nudge/dashboard/admin/users/12/credential').flush({ status: 'ok' });
+    http.expectOne((r) => r.method === 'DELETE' && r.url === '/dashboard/admin/users/12/credential').flush({ status: 'ok' });
   });
 });
 

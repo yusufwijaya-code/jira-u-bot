@@ -15,7 +15,7 @@
 - Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
 - Command interaktif (`/n-mytickets`, `/n-budget <issueKey>`, `/n-overdue`, `/n-team`, `/n-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
 - Command `/n-geser<issueKey>:todo` dan `/n-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi (tidak lagi diiklankan di pesan reminder; tetap tercantum di `/n-help`)
-- **Dashboard web** (frontend Angular di `frontend/`, disajikan di `/nudge/`; backend hanya JSON API di `/nudge/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
+- **Dashboard web** (frontend Angular di `frontend/`, disajikan di root `https://nudge.labcup.tech/`; backend hanya JSON API di `/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
   - **Per board Jira**: pemilih board di navbar (ikon project dari Jira, via proxy `GET /api/dashboard/boards/:id/avatar`) berisi "Semua board" + board yang sprint aktifnya berisi tiket kamu. Board tiket = board dari sprint **aktif**-nya (field sprint Jira). Dashboard & Pengaturan mengikuti board terpilih (`?board=` di URL, diingat di browser)
   - Pengaturan per board: "Semua board" = pengaturan default; board tanpa pengaturan khusus mengikuti default (tombol **Atur khusus board ini** / **Kembalikan ke default**); mute dua level (semua board + per board). Disimpan di `ms_user_setting` dengan kunci `(userID, boardID)`, `boardID = 0` = default; cache board di `ms_board`
   - Layout: sidebar kiri (menu **Dashboard**, **Papan Tiket**, **Cuti**, dan **Pengaturan**), topbar dengan judul halaman dan dropdown user (foto profil, Admin khusus admin, Logout)
@@ -40,7 +40,7 @@
 
 ### Brand & UI
 
-- Nama aplikasi: **Nudge**; base path `/nudge` (env `BASE_PATH`), Go module `nudge`
+- Nama aplikasi: **Nudge**; subdomain sendiri `nudge.labcup.tech` (env `BASE_PATH` kosong; isi mis. `/nudge` hanya kalau disajikan di bawah prefix), Go module `nudge`
 - Ikon: `frontend/public/favicon.svg` (sumber), plus `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png` hasil render-nya, dan `manifest.webmanifest`
 - Design system di `frontend/src/styles.scss` (token warna indigo `--primary` + aksen amber `--accent`, font Plus Jakarta Sans); komponen UI bersama: `shared/ui/icon.component.ts` (ikon SVG inline), `core/ui/toast.service.ts` + `core/ui/confirm.service.ts` (toast & dialog konfirmasi, di-render oleh `shared/ui/overlays.component.ts`), dropdown custom `shared/ui/select.component.ts` dan pemilih jam `shared/ui/time-picker.component.ts` (pengganti `<select>`/`<input type="time">` native)
 - Command bot Google Chat memakai prefix `/n-` (Nudge; dulu `/u-`, prefix lama tidak dikenali lagi)
@@ -62,10 +62,10 @@
 
 ## Deploy
 
-Produksi: `https://labcup.tech/nudge/` (Ubuntu, nginx, systemd unit `nudge`, MySQL lokal).
+Produksi: `https://nudge.labcup.tech/` (Ubuntu, nginx, systemd unit `nudge`, MySQL lokal). `labcup.tech` sendiri dibiarkan kosong untuk repo lain; URL lama `labcup.tech/nudge/*` dan `/jira-notif/*` di-redirect 301 ke subdomain.
 
 - **CI** (`.github/workflows/ci.yml`) — tiap PR dan push ke `feat/**`: `go vet`, `go test` (MySQL 8 service), build backend; `ng test` (ChromeHeadless) dan `ng build` frontend.
-- **Deploy** (`.github/workflows/deploy.yml`) — push ke `main` atau manual (*Run workflow*): jalankan CI → build binary Linux + bundle Angular jadi satu `nudge.tar.gz` → `scp` ke server → `deploy/remote-deploy.sh` membuka release baru, memindah symlink `current`, restart service, dan **rollback otomatis** kalau `/nudge/ping` tidak menjawab. Lima release terakhir disimpan.
+- **Deploy** (`.github/workflows/deploy.yml`) — push ke `main` atau manual (*Run workflow*): jalankan CI → build binary Linux + bundle Angular jadi satu `nudge.tar.gz` → `scp` ke server → `deploy/remote-deploy.sh` membuka release baru, memindah symlink `current`, restart service, dan **rollback otomatis** kalau `<BASE_PATH>/ping` tidak menjawab. Lima release terakhir disimpan.
 - **Secrets GitHub** (environment `production`): `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, opsional `SSH_PORT` (default 22) dan `SSH_KNOWN_HOSTS` (override; default pakai host key yang di-pin di `deploy/known_hosts` — update file itu kalau server di-rebuild).
 
 Layout server:
@@ -77,7 +77,7 @@ Layout server:
   shared/.env, shared/data/           konfigurasi & token OAuth — tidak ikut release
 ```
 
-File server di repo: `deploy/nudge.service` (`/etc/systemd/system/`), `deploy/nginx-nudge.conf` (`/etc/nginx/snippets/nudge.conf`, di-`include` di server block labcup.tech). nginx menyajikan Angular langsung dan meneruskan `/nudge/api|auth|dashboard/admin/` serta `/nudge/ping` ke Go (port `PORT` di `shared/.env`).
+File server di repo: `deploy/nudge.service` (`/etc/systemd/system/`), `deploy/nginx-nudge.conf` (site `/etc/nginx/sites-available/nudge.labcup.tech`, sertifikat `certbot certonly --nginx -d nudge.labcup.tech`), `deploy/nginx-labcup-redirects.conf` (`/etc/nginx/snippets/nudge-redirects.conf`, di-`include` di server block labcup.tech). nginx menyajikan Angular langsung dan meneruskan `/api|auth|dashboard/admin/` serta `/ping` ke Go (port `PORT` di `shared/.env`). DNS: A record `nudge` → IP server (Hostinger hPanel).
 
 ## Struktur
 

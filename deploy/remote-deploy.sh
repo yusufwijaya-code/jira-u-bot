@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs ON the server. Unpacks a release built by .github/workflows/deploy.yml,
 # switches /var/www/nudge/current to it, restarts the service and rolls back
-# when /nudge/ping does not answer.
+# when <BASE_PATH>/ping does not answer.
 #
 # Usage: tar -xzf nudge.tar.gz -O ./deploy/remote-deploy.sh | bash -s -- nudge.tar.gz <release-id>
 set -euo pipefail
@@ -29,14 +29,16 @@ switch_to "$rel"
 systemctl restart "$SERVICE"
 
 port=$(grep -E '^PORT=' "$APP/shared/.env" | cut -d= -f2 | tr -d '[:space:]')
+base=$(grep -E '^BASE_PATH=' "$APP/shared/.env" | cut -d= -f2 | tr -d '[:space:]' || true)
+base=${base%/}
 ok=""
 for _ in $(seq 1 20); do
-    if curl -sf "http://127.0.0.1:${port:-8081}/nudge/ping" >/dev/null; then ok=1; break; fi
+    if curl -sf "http://127.0.0.1:${port:-8081}${base}/ping" >/dev/null; then ok=1; break; fi
     sleep 2
 done
 
 if [ -z "$ok" ]; then
-    echo "!! $id did not answer /nudge/ping — rolling back" >&2
+    echo "!! $id did not answer ${base}/ping — rolling back" >&2
     journalctl -u "$SERVICE" -n 40 --no-pager >&2 || true
     if [ -n "$prev" ] && [ "$prev" != "$rel" ]; then
         switch_to "$prev"
