@@ -48,8 +48,8 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
               </label>
             }
           </div>
-          @if (userId === null && !s.activated && (activateFirst() || s.operatorAccount)) {
-            <div class="sender-activate" data-activate-first>
+          @if (userId === null && !s.activated && s.operatorAccount) {
+            <div class="sender-activate" data-activate-operator>
               <p>Aktifkan app Nudge dulu supaya pesan bisa dikirim dari sana.</p>
               @if (s.oneClick) {
                 <a class="btn btn-primary btn-sm" [href]="chatApp.activateUrl('sender')">Aktifkan Nudge</a>
@@ -58,6 +58,31 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
             </div>
           }
         </section>
+        @if (activateFirst() && !s.activated) {
+          <div class="modal-backdrop" (click)="activateFirst.set(false)">
+            <div
+              class="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="activate-first-title"
+              data-activate-first
+              (click)="$event.stopPropagation()"
+            >
+              <div class="modal-icon"><app-icon name="send" [size]="22" /></div>
+              <h3 id="activate-first-title">Aktifkan Nudge dulu</h3>
+              <p>Pesan baru bisa dikirim dari app Nudge setelah app-nya diaktifkan di Google Chat kamu.</p>
+              <div class="modal-actions">
+                @if (s.oneClick) {
+                  <button type="button" class="btn btn-ghost" (click)="openManual()">Cara manual</button>
+                  <a class="btn btn-primary" [href]="chatApp.activateUrl('sender')">Aktifkan Nudge</a>
+                } @else {
+                  <button type="button" class="btn btn-ghost" (click)="activateFirst.set(false)">Batal</button>
+                  <button type="button" class="btn btn-primary" (click)="openManual()">Cara manual</button>
+                }
+              </div>
+            </div>
+          </div>
+        }
         <app-chat-app-manual-dialog [open]="manualOpen()" (closed)="manualOpen.set(false)" />
       }
     }
@@ -86,6 +111,17 @@ export class ChatSenderCardComponent implements OnInit {
 
   protected reload(): void {
     this.chatApp.load(this.userId).subscribe({ next: (s) => this.status.set(s), error: () => undefined });
+  }
+
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    this.activateFirst.set(false);
+  }
+
+  /** "Aktifkan Nudge dulu" → the manual steps (one dialog at a time). */
+  protected openManual(): void {
+    this.activateFirst.set(false);
+    this.manualOpen.set(true);
   }
 
   protected nudgeDisabled(s: ChatAppStatus): boolean {

@@ -42,6 +42,7 @@ func (g *googleOAuth) AuthCodeURL(state, loginHint string) string {
 		oauth2.AccessTypeOnline,
 		oauth2.SetAuthURLParam("login_hint", loginHint),
 		oauth2.SetAuthURLParam("prompt", "consent"),
+		oauth2.SetAuthURLParam("include_granted_scopes", "false"),
 	)
 }
 

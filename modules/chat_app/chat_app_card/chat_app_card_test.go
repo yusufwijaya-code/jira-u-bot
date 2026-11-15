@@ -39,6 +39,18 @@ func TestBuild_CodeProcessReminderHasBothMovesAndJira(t *testing.T) {
 	}
 }
 
+func TestBuild_HeaderIsIssueKeyDashReminderTitle(t *testing.T) {
+	_, cards := Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueSummary: "S", IsOverage: true})
+	h := cards[0].Card.Header
+	if h.Title != "CORE-1 — SUDAH LEWAT BUDGET" || h.Subtitle != "S" {
+		t.Errorf("overage header = %+v", h)
+	}
+	_, cards = Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", Tier: "5m"})
+	if title := cards[0].Card.Header.Title; !strings.HasPrefix(title, "CORE-1 — Reminder") || strings.Contains(title, "*") {
+		t.Errorf("tier header = %q", title)
+	}
+}
+
 func TestBuild_ReviewReminderOnlyMovesToTodo(t *testing.T) {
 	_, cards := Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueURL: "u", InReview: true})
 	bs := buttons(cards[0].Card)

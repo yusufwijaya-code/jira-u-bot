@@ -37,9 +37,7 @@ type reminderEngineServiceImpl struct {
 	reminderLog      reminder_log_service.ReminderLogService
 	issueSession     issue_session_service.IssueSessionService
 	registrationRepo registration_repository.RegistrationRepository
-	webhookNotifier  google_chat_notifier_service.GoogleChatNotifierService
-	dmNotifier       google_chat_notifier_service.GoogleChatNotifierService
-	selfEmail        string
+	notifier         google_chat_notifier_service.GoogleChatNotifierService
 	userSettings     UserSettingReader
 }
 
@@ -53,9 +51,7 @@ func NewReminderEngineService(
 	reminderLog reminder_log_service.ReminderLogService,
 	issueSession issue_session_service.IssueSessionService,
 	registrationRepo registration_repository.RegistrationRepository,
-	webhookNotifier google_chat_notifier_service.GoogleChatNotifierService,
-	dmNotifier google_chat_notifier_service.GoogleChatNotifierService,
-	selfEmail string,
+	notifier google_chat_notifier_service.GoogleChatNotifierService,
 	userSettings UserSettingReader,
 ) ReminderEngineService {
 	return &reminderEngineServiceImpl{
@@ -65,21 +61,9 @@ func NewReminderEngineService(
 		reminderLog:      reminderLog,
 		issueSession:     issueSession,
 		registrationRepo: registrationRepo,
-		webhookNotifier:  webhookNotifier,
-		dmNotifier:       dmNotifier,
-		selfEmail:        selfEmail,
+		notifier:         notifier,
 		userSettings:     userSettings,
 	}
-}
-
-// pickNotifier implements spec AC2.1/AC2.2/AC2.3: the assignee's own
-// tickets always stay on the existing webhook (unchanged v1 behavior);
-// everyone else's tickets go to a personal DM — UNLESS OAuth was never
-// configured (dmNotifier is nil, decided once at startup in main.go), in
-// which case every reminder falls back to the webhook, matching pre-this-
-// enhancement behavior exactly.
-func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_chat_notifier_service.GoogleChatNotifierService {
-	return google_chat_notifier_service.PickNotifier(assigneeEmail, e.selfEmail, e.webhookNotifier, e.dmNotifier)
 }
 
 // deliveryStatus maps a send result to its tr_reminderlog status: a
@@ -285,7 +269,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 
 	// Only record the send AFTER the notifier confirms success, so a failed
 	// POST is retried on the next poll cycle (spec Reliability).
-	status, err := deliveryStatus(e.pickNotifier(session.AssigneeEmail).SendReminder(ctx, msg))
+	status, err := deliveryStatus(e.notifier.SendReminder(ctx, msg))
 	if err != nil {
 		return err
 	}
@@ -394,7 +378,7 @@ func (e *reminderEngineServiceImpl) sendOverage(ctx context.Context, issue jira_
 	// Order matters: only record the send (log + timestamp) AFTER the
 	// notifier confirms success, so a failed POST can be retried on the
 	// next poll cycle instead of being silently marked as sent.
-	status, err := deliveryStatus(e.pickNotifier(assigneeEmail).SendReminder(ctx, msg))
+	status, err := deliveryStatus(e.notifier.SendReminder(ctx, msg))
 	if err != nil {
 		return err
 	}

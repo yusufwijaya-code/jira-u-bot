@@ -190,7 +190,10 @@ func TestCallbackErrors(t *testing.T) {
 	}{
 		{"bad state", fakeOAuth{email: me}, nil, "state=other&code=c", true, "failed"},
 		{"denied", fakeOAuth{email: me}, nil, "error=access_denied", true, "cancelled"},
-		{"other google error", fakeOAuth{email: me}, nil, "error=org_internal", true, "blocked"},
+		{"org policy", fakeOAuth{email: me}, nil, "error=org_internal", true, "blocked"},
+		{"admin policy", fakeOAuth{email: me}, nil, "error=admin_policy_enforced", true, "blocked"},
+		{"embedded browser", fakeOAuth{email: me}, nil, "error=disallowed_useragent", true, "blocked"},
+		{"other google error", fakeOAuth{email: me}, nil, "error=server_error", true, "failed"},
 		{"exchange error", fakeOAuth{err: errors.New("x")}, nil, "code=c", true, "failed"},
 		{"other account", fakeOAuth{email: "else@esb.co.id"}, nil, "code=c", true, "mismatch"},
 		{"not in visibility", fakeOAuth{email: me}, func(context.Context, string) (string, error) {
@@ -211,6 +214,58 @@ func TestCallbackErrors(t *testing.T) {
 		w := call(r, http.MethodGet, "/callback?"+q, "", cookie)
 		if want := "https://nudge.labcup.tech/dashboard?chatApp=" + c.want; w.Header().Get("Location") != want {
 			t.Errorf("%s: Location = %q, want %q", c.name, w.Header().Get("Location"), want)
+		}
+	}
+}
+
+func TestActivate_StateCookieAndConsentURL(t *testing.T) {
+	r := engine(newHandler(&fakeStates{states: map[string]chat_app_dto.State{}}, fakeOAuth{email: me}, nil, nil), me)
+	w := call(r, http.MethodGet, "/activate?then=https://evil.example", "")
+	cookie := w.Result().Cookies()[0]
+	if cookie.MaxAge != 10*60 || !cookie.HttpOnly || !cookie.Secure {
+		t.Errorf("state cookie = %+v, want HttpOnly+Secure, 10 minutes", cookie)
+	}
+	if !strings.HasSuffix(cookie.Value, "|") {
+		t.Errorf("an unexpected then must not be kept: cookie = %q", cookie.Value)
+	}
+
+	u := NewGoogleOAuth("id", "secret", "https://nudge.labcup.tech/auth/chat-app/callback").AuthCodeURL("S", me)
+	for _, want := range []string{"include_granted_scopes=false", "prompt=consent", "access_type=online", "login_hint=dev%40esb.co.id", "chat.spaces.create"} {
+		if !strings.Contains(u, want) {
+			t.Errorf("consent URL %q lacks %q", u, want)
+		}
+	}
+}
+
+func TestCallback_StateAndThenGuards(t *testing.T) {
+	cases := []struct {
+		name   string
+		cookie *http.Cookie
+		query  string
+		want   string
+	}{
+		{"missing cookie", nil, "state=S1&code=c", "https://nudge.labcup.tech/dashboard?chatApp=failed"},
+		{"then=sender with a wrong state", &http.Cookie{Name: stateCookieName, Value: "S1|sender"}, "state=S2&code=c", "https://nudge.labcup.tech/dashboard/settings?chatApp=failed"},
+		{"unexpected then is ignored", &http.Cookie{Name: stateCookieName, Value: "S1|https://evil.example"}, "state=S1&code=c", "https://nudge.labcup.tech/dashboard?chatApp=activated"},
+		{"empty state in cookie", &http.Cookie{Name: stateCookieName, Value: "|sender"}, "state=&code=c", "https://nudge.labcup.tech/dashboard/settings?chatApp=failed"},
+	}
+	for _, c := range cases {
+		states := &fakeStates{states: map[string]chat_app_dto.State{me: {Email: me}}}
+		setup := func(context.Context, string) (string, error) { return "spaces/NEW", nil }
+		r := engine(newHandler(states, fakeOAuth{email: me}, setup, nil), me)
+		var cookies []*http.Cookie
+		if c.cookie != nil {
+			cookies = append(cookies, c.cookie)
+		}
+		w := call(r, http.MethodGet, "/callback?"+c.query, "", cookies...)
+		if loc := w.Header().Get("Location"); loc != c.want {
+			t.Errorf("%s: Location = %q, want %q", c.name, loc, c.want)
+		}
+		if c.want != "https://nudge.labcup.tech/dashboard?chatApp=activated" && len(states.set) != 0 {
+			t.Errorf("%s: a rejected callback stored a space: %v", c.name, states.set)
+		}
+		if states.sender[me] != nil {
+			t.Errorf("%s: sender changed without then=sender: %v", c.name, *states.sender[me])
 		}
 	}
 }

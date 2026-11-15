@@ -49,7 +49,8 @@ const CARD_FIELDS: Record<SettingsCard, (keyof NotificationSettings)[]> = {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [ChatSenderCardComponent, 
+  imports: [
+    ChatSenderCardComponent,
     FormsModule,
     NgTemplateOutlet,
     IconComponent,

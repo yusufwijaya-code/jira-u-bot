@@ -72,6 +72,19 @@ describe('BroadcastComponent', () => {
     expect(msg.classList).toContain('error');
   });
 
+  it('lists skipped recipients without marking the result as an error', async () => {
+    fixture.componentInstance['message'] = 'Update baru!';
+    confirmService.ask.and.resolveTo(true);
+    adminService.broadcast.and.returnValue(of({ sentCount: 2, failedEmails: [], skippedEmails: ['op@x.com'] }));
+
+    await fixture.componentInstance['onSend']();
+    fixture.detectChanges();
+
+    const msg = fixture.nativeElement.querySelector('.msg');
+    expect(msg.textContent).toContain('dilewati (belum bisa dihubungi): op@x.com');
+    expect(msg.classList).not.toContain('error');
+  });
+
   it('shows the DM-not-configured message on a 503 response and keeps the textarea', async () => {
     fixture.componentInstance['message'] = 'Update baru!';
     confirmService.ask.and.resolveTo(true);

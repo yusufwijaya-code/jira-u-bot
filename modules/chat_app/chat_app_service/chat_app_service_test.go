@@ -43,12 +43,17 @@ func (f *fakeStates) ClearBySpace(_ context.Context, space string) error {
 }
 
 type fakeCommands struct {
-	delay time.Duration
-	got   []string
+	delay  time.Duration
+	panics bool
+	got    []string
 }
 
 func (f *fakeCommands) RouteCommand(_ context.Context, email, text string) string {
 	time.Sleep(f.delay)
+	if f.panics {
+		var m map[string]string
+		m["nil deref"] = text // a real runtime panic, as from a nil map in a Jira path
+	}
 	f.got = append(f.got, email+"|"+text)
 	return "reply to " + text
 }
@@ -252,5 +257,107 @@ func TestHandle_CardClickByNonOwnerIsPrivateAndLeavesCard(t *testing.T) {
 	res := svc.Handle(context.Background(), clickEvent(dev))
 	if res.ActionResponse == nil || res.ActionResponse.Type != "NEW_MESSAGE" || res.PrivateMessageViewer == nil || res.Text != "bukan tiket kamu" || len(res.CardsV2) != 0 {
 		t.Errorf("response = %+v", res)
+	}
+}
+
+func TestHandle_PanickingCommandRepliesWithAnErrorInsteadOfCrashing(t *testing.T) {
+	states := &fakeStates{states: map[string]chat_app_dto.State{dev: {Email: dev, SpaceID: "spaces/DM"}}}
+	res := newSvc(states, &fakeCommands{panics: true}, nil).Handle(context.Background(), dmEvent("MESSAGE", dev, &chat_app_dto.Message{Text: "/n-team"}))
+	if res.Text != errorText {
+		t.Errorf("reply = %q, want %q", res.Text, errorText)
+	}
+}
+
+func TestHandle_SlowPanickingCommandSendsTheErrorLater(t *testing.T) {
+	states := &fakeStates{states: map[string]chat_app_dto.State{dev: {Email: dev, SpaceID: "spaces/DM"}}}
+	app := &fakeApp{sent: make(chan chat_app_dto.OutgoingMessage, 1)}
+	svc := New(Deps{
+		Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: states,
+		Commands: &fakeCommands{delay: 50 * time.Millisecond, panics: true}, App: app, CommandTimeout: 10 * time.Millisecond,
+	})
+	if res := svc.Handle(context.Background(), dmEvent("MESSAGE", dev, &chat_app_dto.Message{Text: "/n-team"})); res.Text != processingText {
+		t.Fatalf("immediate reply = %q", res.Text)
+	}
+	select {
+	case msg := <-app.sent:
+		if msg.Text != errorText {
+			t.Errorf("late reply = %q, want %q", msg.Text, errorText)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no late reply sent")
+	}
+}
+
+type panickingApp struct{ called chan struct{} }
+
+func (p *panickingApp) CreateMessage(context.Context, string, chat_app_dto.OutgoingMessage) error {
+	close(p.called)
+	panic("app client bug")
+}
+
+func TestHandle_PanicInTheLateReplyDoesNotCrash(t *testing.T) {
+	states := &fakeStates{states: map[string]chat_app_dto.State{dev: {Email: dev, SpaceID: "spaces/DM"}}}
+	app := &panickingApp{called: make(chan struct{})}
+	svc := New(Deps{
+		Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: states,
+		Commands: &fakeCommands{delay: 30 * time.Millisecond}, App: app, CommandTimeout: 5 * time.Millisecond,
+	})
+	svc.Handle(context.Background(), dmEvent("MESSAGE", dev, &chat_app_dto.Message{Text: "/n-team"}))
+	select {
+	case <-app.called:
+		time.Sleep(20 * time.Millisecond) // the recover runs; a crash would end the test binary
+	case <-time.After(time.Second):
+		t.Fatal("late reply never attempted")
+	}
+}
+
+type slowGeser struct {
+	fakeCommands
+	delay  time.Duration
+	panics bool
+	result chat_interactive_service.GeserResult
+}
+
+func (f *slowGeser) Geser(context.Context, string, string, string) chat_interactive_service.GeserResult {
+	time.Sleep(f.delay)
+	if f.panics {
+		panic("geser bug")
+	}
+	return f.result
+}
+
+func TestHandle_SlowCardClickRepliesProcessingThenPostsTheOutcome(t *testing.T) {
+	app := &fakeApp{sent: make(chan chat_app_dto.OutgoingMessage, 1)}
+	g := &slowGeser{delay: 50 * time.Millisecond, result: chat_interactive_service.GeserResult{OK: true, StatusName: "Code Review"}}
+	svc := New(Deps{
+		Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{}},
+		Commands: g, App: app, CommandTimeout: 10 * time.Millisecond,
+	})
+	res := svc.Handle(context.Background(), clickEvent(dev))
+	if res.ActionResponse == nil || res.ActionResponse.Type != "NEW_MESSAGE" || res.Text != processingText || len(res.CardsV2) != 0 {
+		t.Fatalf("immediate response = %+v", res)
+	}
+	select {
+	case msg := <-app.sent:
+		if !strings.Contains(msg.Text, "CORE-1") || !strings.Contains(msg.Text, "Digeser ke Code Review oleh Dev") {
+			t.Errorf("late outcome = %q", msg.Text)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no late outcome sent")
+	}
+}
+
+func TestHandle_PanickingCardClickUpdatesTheCardWithAnError(t *testing.T) {
+	svc := New(Deps{
+		Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{}},
+		Commands: &slowGeser{panics: true},
+	})
+	res := svc.Handle(context.Background(), clickEvent(dev))
+	if len(res.CardsV2) != 1 {
+		t.Fatalf("response = %+v", res)
+	}
+	secs := res.CardsV2[0].Card.Sections
+	if got := secs[len(secs)-1].Widgets[0].TextParagraph.Text; !strings.Contains(got, "Tidak bisa digeser") {
+		t.Errorf("status line = %q", got)
 	}
 }

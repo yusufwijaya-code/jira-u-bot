@@ -24,7 +24,7 @@ import (
 
 const (
 	stateCookieName   = "chat_app_state"
-	stateCookieMaxAge = 15 * 60
+	stateCookieMaxAge = 10 * 60 // AC3.2: 10 minutes
 	confirmText       = "✅ Mulai sekarang notifikasi Nudge dikirim dari sini."
 	notifyTimeout     = 10 * time.Second
 )
@@ -228,11 +228,7 @@ func (h *Handler) Callback(c *gin.Context) {
 		return
 	}
 	if e := c.Query("error"); e != "" {
-		if e == "access_denied" {
-			h.finish(c, then, "cancelled")
-		} else {
-			h.finish(c, then, "blocked")
-		}
+		h.finish(c, then, consentErrorCode(e))
 		return
 	}
 	if h.d.OAuth == nil {
@@ -272,6 +268,17 @@ func (h *Handler) Callback(c *gin.Context) {
 		}
 	}
 	h.finish(c, then, "activated")
+}
+
+// consentErrorCode maps the OAuth "error" parameter to a chatApp code (AC3.4).
+func consentErrorCode(e string) string {
+	switch e {
+	case "access_denied":
+		return "cancelled"
+	case "admin_policy_enforced", "org_internal", "disallowed_useragent":
+		return "blocked"
+	}
+	return "failed"
 }
 
 func (h *Handler) finish(c *gin.Context, then, code string) {

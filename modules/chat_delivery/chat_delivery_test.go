@@ -222,3 +222,54 @@ func TestSendReminder_UsesCardsOnAppAndTextOnOperator(t *testing.T) {
 		t.Errorf("fallback text = %q, want the full plain text", legacy.sent[user])
 	}
 }
+
+func TestOperatorAccount_AppGoneClearsStateAndReturnsTheAppError(t *testing.T) {
+	for _, code := range []int{403, 404} {
+		store := &fakeStore{states: map[string]chat_app_dto.State{op: {Email: op, SpaceID: "spaces/OP"}}}
+		gone := &curl_helper.HTTPError{StatusCode: code}
+		legacy := &fakeLegacy{}
+		err := newRouter(store, &fakeApp{err: gone}, legacy).SendPlainTextDM(context.Background(), op, "halo")
+		if !errors.Is(err, gone) || errors.Is(err, ErrRecipientNotActivated) {
+			t.Errorf("%d: err = %v, want the app error", code, err)
+		}
+		if len(store.cleared) != 1 || store.cleared[0] != op {
+			t.Errorf("%d: cleared = %v, want the operator's state reset (AC1.3)", code, store.cleared)
+		}
+		if len(legacy.sent) != 0 {
+			t.Errorf("%d: the operator account must never fall back to its own DM: %v", code, legacy.sent)
+		}
+	}
+}
+
+func TestNoOperatorOAuth_AppFailureReturnsTheAppError(t *testing.T) {
+	store := &fakeStore{states: map[string]chat_app_dto.State{user: active(ptr("nudge"))}}
+	appErr := &curl_helper.HTTPError{StatusCode: 500}
+	err := newRouter(store, &fakeApp{err: appErr}, nil).SendPlainTextDM(context.Background(), user, "halo")
+	if !errors.Is(err, appErr) {
+		t.Errorf("err = %v, want the app error (no fallback without operator OAuth)", err)
+	}
+}
+
+func TestNoOperatorOAuth_ExplicitOperatorIsSkipped(t *testing.T) {
+	store := &fakeStore{states: map[string]chat_app_dto.State{user: active(ptr("operator"))}}
+	app := &fakeApp{}
+	err := newRouter(store, app, nil).SendPlainTextDM(context.Background(), user, "halo")
+	if !errors.Is(err, ErrRecipientNotActivated) || len(app.sent) != 0 {
+		t.Errorf("err = %v app=%d, want ErrRecipientNotActivated (AC1.4a)", err, len(app.sent))
+	}
+}
+
+type failingStore struct{ fakeStore }
+
+func (failingStore) FindByEmail(context.Context, string) (chat_app_dto.State, bool, error) {
+	return chat_app_dto.State{}, false, errors.New("db down")
+}
+
+func TestStateLookupErrorIsReturnedAndNothingIsSent(t *testing.T) {
+	app, legacy := &fakeApp{}, &fakeLegacy{}
+	r := New(Deps{Store: &failingStore{}, App: app, Legacy: legacy, OperatorEmail: op})
+	err := r.SendPlainTextDM(context.Background(), user, "halo")
+	if err == nil || errors.Is(err, ErrRecipientNotActivated) || len(app.sent) != 0 || len(legacy.sent) != 0 {
+		t.Errorf("err=%v app=%d legacy=%d", err, len(app.sent), len(legacy.sent))
+	}
+}

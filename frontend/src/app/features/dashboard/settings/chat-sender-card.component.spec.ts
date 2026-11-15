@@ -52,7 +52,37 @@ describe('ChatSenderCardComponent', () => {
     fixture.detectChanges();
     expect(service.setSender).not.toHaveBeenCalled();
     expect(radio('operator').checked).toBeTrue();
-    expect(el().querySelector('[data-activate-first]')).not.toBeNull();
+    const dialog = el().querySelector('[data-activate-first]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute('role')).toBe('dialog');
+    expect(dialog.textContent).toContain('Aktifkan Nudge dulu');
+    expect((dialog.querySelector('a.btn-primary') as HTMLAnchorElement).getAttribute('href')).toBe('/auth/chat-app/activate?then=sender');
+  });
+
+  it('switches from the activate-first dialog to the manual steps', () => {
+    setup({ ...BASE, activated: false, effectiveSender: 'operator' });
+    radio('nudge').click();
+    fixture.detectChanges();
+    const manual = Array.from(el().querySelectorAll('[data-activate-first] button')).find((b) => b.textContent?.includes('Cara manual')) as HTMLButtonElement;
+    manual.click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-activate-first]')).toBeNull();
+    expect(el().querySelector('.chat-app-manual')).not.toBeNull();
+  });
+
+  it('closes the activate-first dialog on the backdrop', () => {
+    setup({ ...BASE, activated: false, effectiveSender: 'operator' });
+    radio('nudge').click();
+    fixture.detectChanges();
+    (el().querySelector('.modal-backdrop') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-activate-first]')).toBeNull();
+  });
+
+  it('shows the activation button inline for the operator account before activation', () => {
+    setup({ ...BASE, operatorAccount: true, activated: false });
+    expect(el().querySelector('[data-activate-operator]')).not.toBeNull();
+    expect(el().querySelector('[data-activate-first]')).toBeNull();
   });
 
   it('locks the operator account to Nudge', () => {

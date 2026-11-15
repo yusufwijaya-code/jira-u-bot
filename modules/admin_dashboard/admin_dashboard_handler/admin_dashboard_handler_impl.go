@@ -153,5 +153,5 @@ func (h *adminDashboardHandlerImpl) BroadcastMessage(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengirim broadcast, coba lagi"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"sentCount": result.SentCount, "failedEmails": result.FailedEmails})
+	c.JSON(http.StatusOK, gin.H{"sentCount": result.SentCount, "failedEmails": result.FailedEmails, "skippedEmails": result.SkippedEmails})
 }

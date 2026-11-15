@@ -28,7 +28,7 @@
     <div class="table-wrap" *ngIf="!loading && !error">
       <table class="admin-users">
         <thead>
-          <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th>Pengirim</th><th class="th-actions">Aksi</th></tr>
+          <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th>Nudge App</th><th>Pengirim</th><th class="th-actions">Aksi</th></tr>
         </thead>
         <tbody>
           <tr
@@ -84,11 +84,11 @@
                 </button>
               </div>
             </td>
-            <td data-col="sender">
-              <span class="status-badge" [class.active]="user.chatAppActivated">
-                {{ user.effectiveChatSender === 'nudge' ? 'Nudge' : 'Operator' }}{{ user.chatAppActivated ? '' : ' · belum aktivasi' }}
-              </span>
+            <td data-col="chat-app">
+              <span class="status-badge active" *ngIf="user.chatAppActivated">✓ {{ activationDate(user.chatAppActivatedDate) }}</span>
+              <span class="muted" *ngIf="!user.chatAppActivated">—</span>
             </td>
+            <td data-col="sender">{{ user.effectiveChatSender === 'nudge' ? 'Nudge' : operatorName() }}</td>
             <td class="actions">
               <div class="action-row" (click)="$event.stopPropagation()">
                 <a class="btn btn-sm btn-soft" [routerLink]="['/admin/users', user.userId]">

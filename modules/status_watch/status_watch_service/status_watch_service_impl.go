@@ -51,8 +51,9 @@ type SessionSource interface {
 	GetSessionByIssueKey(ctx context.Context, issueKey string) (*issue_session_dto.IssueSession, bool, error)
 }
 
-// Deps wires the watcher. DM may be nil (no OAuth): everything then goes
-// through Webhook, as for the bot account's own tickets (SelfEmail).
+// Deps wires the watcher. Notifier is the chat_delivery router: every
+// notice, the operator account's included, goes through it (Tech Spec
+// "Nudge sebagai Google Chat App", AC1.6).
 type Deps struct {
 	Jira          IssueSource
 	Users         UserDirectory
@@ -61,9 +62,7 @@ type Deps struct {
 	Snapshots     status_watch_repository.StatusWatchRepository
 	BusinessHours business_hours_service.BusinessHoursService
 	Calendar      business_hours_dto.CalendarSource
-	Webhook       google_chat_notifier_service.GoogleChatNotifierService
-	DM            google_chat_notifier_service.GoogleChatNotifierService
-	SelfEmail     string
+	Notifier      google_chat_notifier_service.GoogleChatNotifierService
 	JiraBaseURL   string
 }
 
@@ -223,8 +222,7 @@ func (s *statusWatchServiceImpl) notifyChange(ctx context.Context, issue jira_cl
 		msg := google_chat_notifier_dto.ReminderMessage{
 			IssueKey: issue.Key, IssueURL: url, IssueSummary: issue.Fields.Summary, AssigneeEmail: email, Text: text,
 		}
-		notifier := google_chat_notifier_service.PickNotifier(email, s.SelfEmail, s.Webhook, s.DM)
-		if err := notifier.SendReminder(ctx, msg); err != nil && !errors.Is(err, chat_delivery.ErrRecipientNotActivated) {
+		if err := s.Notifier.SendReminder(ctx, msg); err != nil && !errors.Is(err, chat_delivery.ErrRecipientNotActivated) {
 			log.Printf("status_watch: notice for %s to %s failed: %v", issue.Key, email, err)
 		}
 	}

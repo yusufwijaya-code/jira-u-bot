@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/registration/registration_dto"
@@ -225,6 +226,23 @@ func TestBroadcastMessage_CollectsFailedEmailsWithoutStoppingOthers(t *testing.T
 	}
 	if len(result.FailedEmails) != 1 || result.FailedEmails[0] != "a@esb.co.id" {
 		t.Errorf("FailedEmails = %v, want [a@esb.co.id]", result.FailedEmails)
+	}
+}
+
+func TestBroadcastMessage_UnreachableRecipientsAreSkippedNotFailed(t *testing.T) {
+	regRepo := &fakeRegistrationRepoForAdmin{users: []registration_dto.User{
+		{UserID: 1, Email: "a@esb.co.id", FlagActive: true},
+		{UserID: 2, Email: "b@esb.co.id", FlagActive: true},
+	}}
+	dmNotifier := &fakeChatDMNotifierForAdmin{failEmails: map[string]error{"a@esb.co.id": chat_delivery.ErrRecipientNotActivated}}
+	svc := NewAdminDashboardService(regRepo, &fakeJiraCredentialForAdmin{}, dmNotifier, "")
+
+	result, err := svc.BroadcastMessage(context.Background(), "Ada fitur baru!")
+	if err != nil {
+		t.Fatalf("BroadcastMessage returned error: %v", err)
+	}
+	if result.SentCount != 1 || len(result.FailedEmails) != 0 || len(result.SkippedEmails) != 1 || result.SkippedEmails[0] != "a@esb.co.id" {
+		t.Errorf("result = %+v, want 1 sent, a@esb.co.id skipped, none failed", result)
 	}
 }
 

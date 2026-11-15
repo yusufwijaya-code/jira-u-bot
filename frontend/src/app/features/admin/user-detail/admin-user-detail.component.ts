@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AdminService, UserRow } from '../../../core/services/admin.service';
+import { AdminService, UserRow, formatActivationDate } from '../../../core/services/admin.service';
 import { ADMIN_TARGET_USER_ID, AdminUserScope, AdminUserSettingsApi } from '../../../core/services/admin-user-settings';
 import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 import { ToastService } from '../../../core/ui/toast.service';
@@ -32,6 +32,7 @@ import { SettingsComponent } from '../../dashboard/settings/settings.component';
 })
 export class AdminUserDetailComponent implements OnInit {
   protected readonly avatarUrl = adminUserAvatarUrl;
+  protected readonly activationDate = formatActivationDate;
   private adminService = inject(AdminService);
   private toast = inject(ToastService);
   protected userId = inject(ADMIN_TARGET_USER_ID);

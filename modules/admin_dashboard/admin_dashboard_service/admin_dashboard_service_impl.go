@@ -2,6 +2,7 @@ package admin_dashboard_service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 
@@ -54,7 +55,9 @@ func (s *adminDashboardServiceImpl) ListUsers(ctx context.Context) ([]admin_dash
 	// "not activated" with the automatic sender.
 	var chatStates map[string]chat_app_dto.State
 	if s.chatApp != nil {
-		if m, err := s.chatApp.ListAll(ctx); err == nil {
+		if m, err := s.chatApp.ListAll(ctx); err != nil {
+			log.Printf("admin_dashboard_service: loading Chat App states failed, showing every user as not activated: %v", err)
+		} else {
 			chatStates = m
 		}
 	}
@@ -134,12 +137,17 @@ func (s *adminDashboardServiceImpl) BroadcastMessage(ctx context.Context, messag
 		return admin_dashboard_dto.BroadcastResult{}, err
 	}
 
-	var result admin_dashboard_dto.BroadcastResult
+	result := admin_dashboard_dto.BroadcastResult{FailedEmails: []string{}, SkippedEmails: []string{}}
 	for _, u := range users {
 		if !u.FlagActive || u.Email == s.selfEmail {
 			continue
 		}
-		if err := s.dmNotifier.SendPlainTextDM(ctx, u.Email, message); err != nil {
+		err := s.dmNotifier.SendPlainTextDM(ctx, u.Email, message)
+		if errors.Is(err, chat_delivery.ErrRecipientNotActivated) {
+			result.SkippedEmails = append(result.SkippedEmails, u.Email)
+			continue
+		}
+		if err != nil {
 			log.Printf("admin_dashboard_service: broadcast DM to %s failed: %v", u.Email, err)
 			result.FailedEmails = append(result.FailedEmails, u.Email)
 			continue

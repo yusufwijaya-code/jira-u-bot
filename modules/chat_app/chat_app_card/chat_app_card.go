@@ -35,6 +35,7 @@ type move struct {
 func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto.CardWithID) {
 	var short, body string
 	var moves []move
+	header := &chat_app_dto.CardHeader{Title: msg.IssueKey, Subtitle: msg.IssueSummary}
 	if msg.Text != "" {
 		// Status change notice (AC6.2): Jira link only.
 		short, body, _ = strings.Cut(msg.Text, "\n")
@@ -44,6 +45,11 @@ func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto
 	} else {
 		short = google_chat_notifier_service.MessageHeader(msg)
 		body = google_chat_notifier_service.BuildMessageText(msg)
+		// AC6.1: header "<issueKey> — <judul reminder>". Card headers show
+		// plain text, so the title drops the *bold* markup of short.
+		if _, title, ok := strings.Cut(short, " — "); ok {
+			header.Title = msg.IssueKey + " — " + strings.ReplaceAll(title, "*", "")
+		}
 		// Same targets /n-geser supports; a ticket in review only goes back.
 		if !msg.InReview {
 			moves = append(moves, move{"Geser ke Code Review", "code-review"})
@@ -70,7 +76,7 @@ func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto
 		widgets = append(widgets, chat_app_dto.Widget{ButtonList: &chat_app_dto.ButtonList{Buttons: bs}})
 	}
 	card := chat_app_dto.Card{
-		Header:   &chat_app_dto.CardHeader{Title: msg.IssueKey, Subtitle: msg.IssueSummary},
+		Header:   header,
 		Sections: []chat_app_dto.Section{{Widgets: widgets}},
 	}
 	return short, []chat_app_dto.CardWithID{{CardID: "nudge-" + msg.IssueKey, Card: card}}

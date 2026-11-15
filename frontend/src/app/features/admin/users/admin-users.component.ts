@@ -1,7 +1,8 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgFor, NgIf } from '@angular/common';
-import { AdminService, UserRow } from '../../../core/services/admin.service';
+import { AdminService, UserRow, formatActivationDate } from '../../../core/services/admin.service';
+import { ChatAppService } from '../../../core/services/chat-app.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
@@ -16,6 +17,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 })
 export class AdminUsersComponent implements OnInit {
   protected readonly avatarUrl = adminUserAvatarUrl;
+  protected readonly activationDate = formatActivationDate;
   protected users: UserRow[] = [];
   protected loading = true;
   protected error: string | null = null;
@@ -30,9 +32,18 @@ export class AdminUsersComponent implements OnInit {
   private toast = inject(ToastService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private chatApp = inject(ChatAppService);
+
+  /** The operator account's display name (AC4.4), from the status endpoint. */
+  protected operatorName(): string {
+    return this.chatApp.status()?.operatorName || 'Operator';
+  }
 
   ngOnInit(): void {
     this.onlyNotActivated = this.route.snapshot.queryParamMap.get('chatApp') === 'inactive';
+    if (!this.chatApp.status()) {
+      this.chatApp.load().subscribe({ error: () => undefined });
+    }
     this.loadUsers();
   }
 

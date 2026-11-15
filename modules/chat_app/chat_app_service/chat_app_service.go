@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 const (
 	defaultCommandTimeout = 25 * time.Second
 	asyncCommandTimeout   = 2 * time.Minute
+	lateReplyTimeout      = 15 * time.Second
 
 	processingText    = "⏳ Sedang diproses…"
 	errorText         = "Terjadi kesalahan, coba lagi."
@@ -179,36 +182,64 @@ func commandText(msg *chat_app_dto.Message) (string, string) {
 	return strings.TrimSpace(msg.Text), ""
 }
 
-// runCommand answers within CommandTimeout; slower commands reply
-// "processing" now and post the result through the app later.
-func (s *service) runCommand(email, space, text string) string {
-	done := make(chan string, 1)
+// goSafe runs work in its own goroutine with a detached context (the
+// request's ends when Google gets its reply). A panic is logged and turned
+// into fallback, so it can't crash the process (AC2.7).
+func goSafe[T any](what string, fallback T, work func(ctx context.Context) T) <-chan T {
+	done := make(chan T, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), asyncCommandTimeout)
 		defer cancel()
-		done <- s.d.Commands.RouteCommand(ctx, email, text)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("chat_app_service: %s panicked: %v\n%s", what, r, debug.Stack())
+				done <- fallback
+			}
+		}()
+		done <- work(ctx)
 	}()
+	return done
+}
+
+// lateReply posts the text wait returns through the app once it is ready.
+func (s *service) lateReply(email, space string, wait func() string) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("chat_app_service: late reply to %s panicked: %v\n%s", email, r, debug.Stack())
+			}
+		}()
+		out := wait()
+		if s.d.App == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), lateReplyTimeout)
+		defer cancel()
+		if err := s.d.App.CreateMessage(ctx, space, chat_app_dto.OutgoingMessage{Text: out}); err != nil {
+			log.Printf("chat_app_service: late reply to %s failed: %v", email, err)
+		}
+	}()
+}
+
+// runCommand answers within CommandTimeout; slower commands reply
+// "processing" now and post the result through the app later (AC2.6).
+func (s *service) runCommand(email, space, text string) string {
+	done := goSafe("command "+strconv.Quote(text)+" of "+email, errorText, func(ctx context.Context) string {
+		return s.d.Commands.RouteCommand(ctx, email, text)
+	})
 	select {
 	case out := <-done:
 		return out
 	case <-time.After(s.d.CommandTimeout):
-		go func() {
-			out := <-done
-			if s.d.App == nil {
-				return
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			if err := s.d.App.CreateMessage(ctx, space, chat_app_dto.OutgoingMessage{Text: out}); err != nil {
-				log.Printf("chat_app_service: late reply to %s failed: %v", email, err)
-			}
-		}()
+		s.lateReply(email, space, func() string { return <-done })
 		return processingText
 	}
 }
 
 // cardClicked handles the reminder card's move buttons (AC6.3, AC6.4). It
 // acts only as the clicking user (ev.User.Email), never a card parameter.
+// Like commands it answers within CommandTimeout: a slow Jira gets
+// "processing" now and the outcome as a new message later.
 func (s *service) cardClicked(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
 	if ev.Action == nil || ev.Action.ActionMethodName != chat_app_card.GeserFunction {
 		return chat_app_dto.Response{}
@@ -216,17 +247,40 @@ func (s *service) cardClicked(ctx context.Context, ev chat_app_dto.Event) chat_a
 	if reply, ok := s.checkUser(ctx, ev.User.Email); !ok {
 		return s.private(ev, reply)
 	}
-	res := s.d.Commands.Geser(ctx, ev.User.Email, ev.Action.Param("issueKey"), ev.Action.Param("target"))
+	email, issueKey, target := ev.User.Email, ev.Action.Param("issueKey"), ev.Action.Param("target")
+	done := goSafe("geser "+strconv.Quote(issueKey)+" by "+email, chat_interactive_service.GeserResult{Message: errorText},
+		func(ctx context.Context) chat_interactive_service.GeserResult {
+			return s.d.Commands.Geser(ctx, email, issueKey, target)
+		})
+	select {
+	case res := <-done:
+		return s.geserResponse(ev, res)
+	case <-time.After(s.d.CommandTimeout):
+		s.lateReply(email, ev.Space.Name, func() string {
+			res := <-done
+			if res.NotOwner {
+				return res.Message
+			}
+			return "*" + issueKey + "* — " + geserStatus(ev, res)
+		})
+		return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseNewMessage}, Text: processingText}
+	}
+}
+
+// geserStatus is the status line of a move (AC6.3, AC6.4).
+func geserStatus(ev chat_app_dto.Event, res chat_interactive_service.GeserResult) string {
+	if res.OK {
+		now := time.Now().In(user_setting_dto.Jakarta)
+		return fmt.Sprintf("✅ Digeser ke %s oleh %s · %s WIB", res.StatusName, ev.User.DisplayName, now.Format("15:04"))
+	}
+	return "⚠️ Tidak bisa digeser: " + res.Message
+}
+
+func (s *service) geserResponse(ev chat_app_dto.Event, res chat_interactive_service.GeserResult) chat_app_dto.Response {
 	if res.NotOwner {
 		return s.private(ev, res.Message)
 	}
-	var status string
-	if res.OK {
-		now := time.Now().In(user_setting_dto.Jakarta)
-		status = fmt.Sprintf("✅ Digeser ke %s oleh %s · %s WIB", res.StatusName, ev.User.DisplayName, now.Format("15:04"))
-	} else {
-		status = "⚠️ Tidak bisa digeser: " + res.Message
-	}
+	status := geserStatus(ev, res)
 	if ev.Message == nil || len(ev.Message.CardsV2) == 0 {
 		return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseNewMessage}, Text: status}
 	}

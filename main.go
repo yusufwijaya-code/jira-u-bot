@@ -205,12 +205,11 @@ func main() {
 	}
 	deliveryRouter := chat_delivery.New(deliveryDeps)
 
-	// The router fills both notifier slots and selfEmail is "", so
-	// PickNotifier always returns the router — the webhook space is no
-	// longer used (Tech Spec "Nudge sebagai Google Chat App", AC1.6).
+	// Every notice goes through the router; the webhook space is no longer
+	// used (Tech Spec "Nudge sebagai Google Chat App", AC1.6).
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
 		cfg.JiraBaseURL, userLeaveSvc, businessHoursSvc, reminderLogSvc,
-		issueSessionSvc, registrationRepo, deliveryRouter, deliveryRouter, "", userSettingSvc,
+		issueSessionSvc, registrationRepo, deliveryRouter, userSettingSvc,
 	)
 
 	pollerSvc := poller_service.NewPollerService(
@@ -252,7 +251,7 @@ func main() {
 		Jira: jiraAgileClient, Users: registrationRepo, Settings: userSettingSvc, Sessions: issueSessionRepo,
 		Snapshots:     status_watch_repository.NewStatusWatchRepository(db),
 		BusinessHours: businessHoursSvc, Calendar: userLeaveSvc,
-		Webhook: deliveryRouter, DM: deliveryRouter, SelfEmail: "", JiraBaseURL: cfg.JiraBaseURL,
+		Notifier: deliveryRouter, JiraBaseURL: cfg.JiraBaseURL,
 	})
 	shutdownMgr.AddWorker()
 	go func() {

@@ -27,6 +27,9 @@ type UserRow struct {
 type BroadcastResult struct {
 	SentCount    int
 	FailedEmails []string
+	// SkippedEmails are users no sender can reach yet
+	// (chat_delivery.ErrRecipientNotActivated) — not failures.
+	SkippedEmails []string
 }
 
 // UserChange is a write an admin made to another user's settings (Tech

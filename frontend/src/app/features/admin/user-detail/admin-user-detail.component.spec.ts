@@ -63,6 +63,13 @@ describe('AdminUserDetailComponent', () => {
     expect(el().querySelector('.profile-card')!.textContent).toContain('••••50CF');
     expect(el().querySelector('.admin-editing-banner')!.textContent).toContain('fernando.marco@esb.co.id');
     expect(el().querySelector('.settings-stub')).not.toBeNull();
+    expect(el().querySelector('[data-row="chat-app"]')!.textContent).toContain('Belum aktivasi');
+  });
+
+  it('shows the Nudge App activation date (AC4.3)', () => {
+    adminService.getUser.and.returnValue(of({ ...USER, chatAppActivated: true, chatAppActivatedDate: '2026-11-15T02:00:00Z' }));
+    fixture.detectChanges();
+    expect(el().querySelector('[data-row="chat-app"]')!.textContent).toContain('Aktif sejak 15 Nov 2026');
   });
 
   it('points SettingsApi at the admin endpoints in admin mode', () => {
