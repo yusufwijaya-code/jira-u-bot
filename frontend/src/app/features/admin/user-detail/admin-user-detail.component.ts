@@ -1,13 +1,14 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AdminService, UserRow } from '../../../core/services/admin.service';
+import { AdminService, UserRow, formatActivationDate } from '../../../core/services/admin.service';
 import { ADMIN_TARGET_USER_ID, AdminUserScope, AdminUserSettingsApi } from '../../../core/services/admin-user-settings';
 import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
 import { UserAvatarComponent, adminUserAvatarUrl } from '../../../shared/ui/user-avatar.component';
 import { SelectComponent, SelectOption } from '../../../shared/ui/select.component';
+import { ChatSenderCardComponent } from '../../dashboard/settings/chat-sender-card.component';
 import { SettingsComponent } from '../../dashboard/settings/settings.component';
 
 /**
@@ -18,7 +19,7 @@ import { SettingsComponent } from '../../dashboard/settings/settings.component';
 @Component({
   selector: 'app-admin-user-detail',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, UserAvatarComponent, SelectComponent, SettingsComponent],
+  imports: [ChatSenderCardComponent, FormsModule, RouterLink, IconComponent, UserAvatarComponent, SelectComponent, SettingsComponent],
   templateUrl: './admin-user-detail.component.html',
   providers: [
     { provide: ADMIN_TARGET_USER_ID, useFactory: () => Number(inject(ActivatedRoute).snapshot.paramMap.get('id')) },
@@ -31,6 +32,7 @@ import { SettingsComponent } from '../../dashboard/settings/settings.component';
 })
 export class AdminUserDetailComponent implements OnInit {
   protected readonly avatarUrl = adminUserAvatarUrl;
+  protected readonly activationDate = formatActivationDate;
   private adminService = inject(AdminService);
   private toast = inject(ToastService);
   protected userId = inject(ADMIN_TARGET_USER_ID);

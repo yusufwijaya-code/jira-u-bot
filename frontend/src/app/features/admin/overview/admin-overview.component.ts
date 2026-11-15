@@ -28,6 +28,7 @@ export class AdminOverviewComponent implements OnInit {
 
   protected activeCount = computed(() => this.users().filter((u) => u.flagActive).length);
   protected credentialCount = computed(() => this.users().filter((u) => u.hasCredential).length);
+  protected chatAppInactiveCount = computed(() => this.users().filter((u) => u.flagActive && !u.chatAppActivated).length);
   protected withoutCredential = computed(() => this.users().filter((u) => !u.hasCredential).slice(0, SHORTLIST_SIZE));
   protected inactive = computed(() => this.users().filter((u) => !u.flagActive).slice(0, SHORTLIST_SIZE));
 

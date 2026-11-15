@@ -54,7 +54,8 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 // not "ke bot ini".
 const helpHint = "💡 Ketik */n-help* di sini buat lihat command lain"
 
-func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
+// MessageHeader is the first line of a reminder ("⏰ *KEY* — Reminder T-5 menit").
+func MessageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
 	case msg.IsOverage:
 		return fmt.Sprintf("🔴 *%s* — SUDAH LEWAT BUDGET", msg.IssueKey)
@@ -79,7 +80,7 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	remainingSeconds := msg.BudgetSeconds - msg.ElapsedSeconds
 
 	lines := []string{
-		messageHeader(msg),
+		MessageHeader(msg),
 		msg.IssueURL,
 		msg.IssueSummary,
 		"",

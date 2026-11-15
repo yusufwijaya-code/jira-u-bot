@@ -76,6 +76,9 @@ var userSettingStatusChangeSQL string
 //go:embed 0016c_migration_marker.sql
 var migrationMarkerSQL string
 
+//go:embed 0017_chat_app.sql
+var chatAppSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -162,6 +165,11 @@ func apply(db *sql.DB) error {
 		return err
 	}
 	if err := addColumnIfNotExists(db, userSettingStatusChangeSQL); err != nil {
+		return err
+	}
+	// Tech Spec "Nudge sebagai Google Chat App" — one ALTER, so a
+	// duplicate-column error means it already ran.
+	if err := addColumnIfNotExists(db, chatAppSQL); err != nil {
 		return err
 	}
 	// The new toggle starts ON when either old toggle was ON — exactly once
@@ -267,4 +275,3 @@ func addColumnIfNotExists(db *sql.DB, alterSQL string) error {
 	}
 	return err
 }
-

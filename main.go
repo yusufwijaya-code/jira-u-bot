@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,18 +24,26 @@ import (
 	"nudge/modules/board/board_repository"
 	"nudge/modules/board/board_service"
 	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_app/chat_app_auth"
+	"nudge/modules/chat_app/chat_app_card"
+	"nudge/modules/chat_app/chat_app_client"
+	"nudge/modules/chat_app/chat_app_handler"
+	"nudge/modules/chat_app/chat_app_repository"
+	"nudge/modules/chat_app/chat_app_service"
+	"nudge/modules/chat_app_activation"
 	"nudge/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
 	"nudge/modules/chat_command_poller/chat_command_poller_service"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
 	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/chat_oauth/chat_oauth_service"
-	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
 	"nudge/modules/issue_session/issue_session_repository"
 	"nudge/modules/issue_session/issue_session_service"
 	"nudge/modules/jira_client/jira_client_service"
 	"nudge/modules/jira_credential/jira_credential_repository"
 	"nudge/modules/jira_credential/jira_credential_service"
 	"nudge/modules/poller/poller_service"
+	"nudge/modules/registration/registration_dto"
 	"nudge/modules/registration/registration_repository"
 	"nudge/modules/registration/registration_service"
 	"nudge/modules/reminder_engine/reminder_engine_service"
@@ -157,19 +166,15 @@ func main() {
 
 	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, jiraClientSvc, jiraCredentialSvc)
 
-	notifierSvc := google_chat_notifier_service.NewGoogleChatNotifierService(&cfg)
-
 	chatOAuthSvc, err := chat_oauth_service.NewChatOAuthService(&cfg)
 	if err != nil {
 		log.Fatalf("failed to initialize chat oauth service: %v", err)
 	}
 
-	var dmNotifierSvc google_chat_notifier_service.GoogleChatNotifierService
 	var chatDMNotifierSvc chat_dm_notifier_service.ChatDMNotifierService
 	var chatCommandPollerSvc chat_command_poller_service.ChatCommandPollerService
 	if chatOAuthSvc != nil {
 		chatDMNotifierSvc = chat_dm_notifier_service.NewChatDMNotifierService(chatOAuthSvc, registrationRepo)
-		dmNotifierSvc = chatDMNotifierSvc
 
 		cursorRepo := chat_command_poll_cursor_repository.NewChatCommandPollCursorRepository(db)
 		chatCommandPollerSvc = chat_command_poller_service.NewChatCommandPollerService(
@@ -177,9 +182,34 @@ func main() {
 		)
 	}
 
+	// Tech Spec "Nudge sebagai Google Chat App": every message goes through
+	// chat_delivery, which picks the recipient's sender (Nudge app or the
+	// operator DM) and falls back to the operator DM when the app fails.
+	chatAppRepo := chat_app_repository.NewRepository(db)
+	var chatAppClient chat_app_client.Client
+	if cfg.GoogleChatAppCredentialsFile != "" {
+		if c, err := chat_app_client.NewFromFile(cfg.GoogleChatAppCredentialsFile); err != nil {
+			log.Printf("main: Chat App disabled: %v", err)
+		} else {
+			chatAppClient = c
+		}
+	}
+	operatorName := resolveOperatorName(context.Background(), registrationRepo, cfg.JiraEmail)
+	deliveryDeps := chat_delivery.Deps{Store: chatAppRepo, OperatorEmail: cfg.JiraEmail, OperatorName: operatorName}
+	deliveryDeps.Cards = chat_app_card.Build // phase 3: cards with action buttons on the app path
+	if chatAppClient != nil {
+		deliveryDeps.App = chatAppClient
+	}
+	if chatDMNotifierSvc != nil {
+		deliveryDeps.Legacy = chatDMNotifierSvc
+	}
+	deliveryRouter := chat_delivery.New(deliveryDeps)
+
+	// Every notice goes through the router; the webhook space is no longer
+	// used (Tech Spec "Nudge sebagai Google Chat App", AC1.6).
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
 		cfg.JiraBaseURL, userLeaveSvc, businessHoursSvc, reminderLogSvc,
-		issueSessionSvc, registrationRepo, notifierSvc, dmNotifierSvc, cfg.JiraEmail, userSettingSvc,
+		issueSessionSvc, registrationRepo, deliveryRouter, userSettingSvc,
 	)
 
 	pollerSvc := poller_service.NewPollerService(
@@ -221,7 +251,7 @@ func main() {
 		Jira: jiraAgileClient, Users: registrationRepo, Settings: userSettingSvc, Sessions: issueSessionRepo,
 		Snapshots:     status_watch_repository.NewStatusWatchRepository(db),
 		BusinessHours: businessHoursSvc, Calendar: userLeaveSvc,
-		Webhook: notifierSvc, DM: dmNotifierSvc, SelfEmail: cfg.JiraEmail, JiraBaseURL: cfg.JiraBaseURL,
+		Notifier: deliveryRouter, JiraBaseURL: cfg.JiraBaseURL,
 	})
 	shutdownMgr.AddWorker()
 	go func() {
@@ -237,7 +267,7 @@ func main() {
 		}()
 	}
 
-	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo, chatDMNotifierSvc, cfg.JiraEmail)
+	registrationService := registration_service.NewRegistrationService(jiraClientSvc, registrationRepo, deliveryRouter, cfg.JiraEmail)
 
 	authSessionRepo := auth_session_repository.NewAuthSessionRepository(db)
 	authSvc := auth_service.NewAuthService(&cfg, registrationService, registrationRepo, authSessionRepo)
@@ -261,8 +291,9 @@ func main() {
 	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc, sprint_report_handler.WithBackfiller(sprintBackfillSvc))
 
 	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(
-		registrationRepo, jiraCredentialSvc, chatDMNotifierSvc, cfg.JiraEmail,
+		registrationRepo, jiraCredentialSvc, deliveryRouter, cfg.JiraEmail,
 		admin_dashboard_service.WithBoardNamer(boardSvc),
+		admin_dashboard_service.WithChatApp(chatAppRepo, chatAppClient != nil),
 	)
 	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
 
@@ -276,6 +307,29 @@ func main() {
 	userAvatarHandler := user_avatar_handler.NewUserAvatarHandler(userAvatarSvc)
 
 	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings, userAvatarHandler, user_leave_handler.NewUserLeaveHandler(userLeaveSvc))
+
+	chatAppRoutes := ChatAppRoutes{}
+	if chatAppClient != nil && cfg.GoogleChatAppProjectNumber != "" {
+		chatAppSvc := chat_app_service.New(chat_app_service.Deps{
+			Users: registrationRepo, States: chatAppRepo, Commands: chatInteractiveSvc, App: chatAppClient,
+		})
+		chatAppRoutes.Events = chat_app_handler.New(chat_app_auth.NewVerifier(cfg.GoogleChatAppProjectNumber), chatAppSvc).Events
+	} else if chatAppClient != nil {
+		log.Printf("main: GOOGLE_CHAT_APP_PROJECT_NUMBER is empty — /api/chat/events not mounted")
+	}
+	var activationOAuth chat_app_activation.OAuth
+	if cfg.GoogleChatAppOneClick && cfg.GoogleChatAppActivationRedirectURL != "" && cfg.GoogleSignInClientID != "" {
+		activationOAuth = chat_app_activation.NewGoogleOAuth(cfg.GoogleSignInClientID, cfg.GoogleSignInClientSecret, cfg.GoogleChatAppActivationRedirectURL)
+	}
+	chatAppRoutes.Activation = chat_app_activation.New(chat_app_activation.Deps{
+		States: chatAppRepo, OAuth: activationOAuth, Notify: deliveryRouter,
+		AppEnabled: chatAppClient != nil, OneClick: cfg.GoogleChatAppOneClick,
+		OperatorEmail: cfg.JiraEmail, OperatorName: operatorName,
+		AppURL: cfg.FrontendURL + cfg.BasePath, CookiePath: cfg.BasePath,
+	})
+	chatAppRoutes.AdminTarget = admin_dashboard_handler.AdminTarget(adminDashboardSvc)
+	chatAppRoutes.AdminChange = admin_dashboard_handler.AdminChangeListener(adminDashboardSvc)
+	MountChatApp(router, &cfg, authSvc, chatAppRoutes)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -304,4 +358,18 @@ func main() {
 
 	shutdownMgr.Wait()
 	log.Println("nudge: shutdown complete")
+}
+
+// resolveOperatorName is the operator account's name for "dikirim lewat
+// akun <name>" footers — its ms_user name, or the email before "@".
+func resolveOperatorName(ctx context.Context, users interface {
+	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
+}, email string) string {
+	if u, found, err := users.FindUserByEmail(ctx, email); err == nil && found && u.UserName != "" {
+		return u.UserName
+	}
+	if i := strings.Index(email, "@"); i > 0 {
+		return email[:i]
+	}
+	return "operator Nudge"
 }

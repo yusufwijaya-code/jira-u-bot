@@ -34,6 +34,9 @@ const (
 	// ChangeNotificationsSwitch: the master on/off switch (Tech Spec
 	// "Notification On-Off Consent").
 	ChangeNotificationsSwitch SettingsChangeKind = "notifications_switch"
+	// ChangeChatSender: Pengaturan › Pengirim pesan (Tech Spec "Nudge
+	// sebagai Google Chat App", US-7).
+	ChangeChatSender SettingsChangeKind = "chat_sender"
 )
 
 // SettingsChange describes one successful write. BoardID 0 = the default

@@ -67,6 +67,10 @@ func TestApply_NewColumnsExistOnMsUserAndTrIssuesession(t *testing.T) {
 		{"ms_user", "jiraAccountId"},
 		{"tr_issuesession", "assigneeEmail"},
 		{"tr_issuesession", "issueSummary"},
+		{"ms_user", "chatAppSpaceID"},
+		{"ms_user", "chatAppUserID"},
+		{"ms_user", "chatAppActivatedDate"},
+		{"ms_user", "chatSender"},
 	}
 	for _, c := range cases {
 		var name string
@@ -74,6 +78,15 @@ func TestApply_NewColumnsExistOnMsUserAndTrIssuesession(t *testing.T) {
 		if err != nil {
 			t.Errorf("column %s.%s was not created: %v", c.table, c.column, err)
 		}
+	}
+
+	var idxCount int
+	err := db.QueryRow(`SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = 'jira_db' AND TABLE_NAME = 'ms_user' AND INDEX_NAME = 'idx_ms_user_chatAppSpaceID'`).Scan(&idxCount)
+	if err != nil {
+		t.Fatalf("index query returned error: %v", err)
+	}
+	if idxCount <= 0 {
+		t.Errorf("index ms_user.idx_ms_user_chatAppSpaceID was not created")
 	}
 }
 

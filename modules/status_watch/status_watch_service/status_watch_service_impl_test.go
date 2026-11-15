@@ -107,7 +107,7 @@ type fixture struct {
 	svc      *statusWatchServiceImpl
 	jira     *fakeJira
 	snaps    *fakeSnapshots
-	dm, hook *fakeNotifier
+	dm       *fakeNotifier
 	settings *fakeSettings
 	calendar business_hours_dto.HolidayCalendar
 	sessions fakeSessions
@@ -118,7 +118,6 @@ func newFixture() *fixture {
 		jira:     &fakeJira{changelogs: map[string][]jira_client_dto.ChangelogEntry{}},
 		snaps:    &fakeSnapshots{rows: map[string]status_watch_dto.Snapshot{}},
 		dm:       &fakeNotifier{},
-		hook:     &fakeNotifier{},
 		settings: &fakeSettings{s: user_setting_dto.Default()},
 		sessions: fakeSessions{},
 	}
@@ -134,7 +133,7 @@ func (f *fixture) build() *statusWatchServiceImpl {
 		}},
 		Settings: settingsRef{f.settings}, Sessions: f.sessions, Snapshots: f.snaps,
 		BusinessHours: business_hours_service.NewBusinessHoursService(), Calendar: f.calendar,
-		Webhook: f.hook, DM: f.dm, SelfEmail: "bot@esb.co.id", JiraBaseURL: "https://jira.example/",
+		Notifier: f.dm, JiraBaseURL: "https://jira.example/",
 	}).(*statusWatchServiceImpl)
 	svc.now = func() time.Time { return fixedNow }
 	f.svc = svc
@@ -279,12 +278,12 @@ func TestRunOnce_MovesWithinTrackedStatusesHaveNoBudgetLine(t *testing.T) {
 	}
 }
 
-func TestRunOnce_RoutesTheBotAccountToTheWebhook(t *testing.T) {
+func TestRunOnce_TheBotAccountGoesThroughTheSameNotifier(t *testing.T) {
 	f := newFixture()
 	f.build()
 	f.cycle(t, "OMS-1", "To Do", "Code Process", "acc-bot")
-	if len(f.hook.sent) != 1 || len(f.dm.sent) != 0 {
-		t.Fatalf("webhook %d / dm %d, want 1 / 0", len(f.hook.sent), len(f.dm.sent))
+	if len(f.dm.sent) != 1 || f.dm.sent[0].AssigneeEmail != "bot@esb.co.id" {
+		t.Fatalf("sent %+v, want one notice to the bot account (no webhook, AC1.6)", f.dm.sent)
 	}
 }
 
@@ -292,8 +291,8 @@ func TestRunOnce_UnregisteredAssigneesAreIgnored(t *testing.T) {
 	f := newFixture()
 	f.build()
 	f.cycle(t, "OMS-9", "To Do", "Code Process", "acc-stranger")
-	if len(f.dm.sent)+len(f.hook.sent) != 0 || len(f.snaps.rows) != 0 {
-		t.Fatalf("stranger: sent %d/%d, snapshots %v", len(f.dm.sent), len(f.hook.sent), f.snaps.rows)
+	if len(f.dm.sent) != 0 || len(f.snaps.rows) != 0 {
+		t.Fatalf("stranger: sent %d, snapshots %v", len(f.dm.sent), f.snaps.rows)
 	}
 }
 
@@ -307,11 +306,17 @@ func TestRunOnce_HandOffNotifiesTheNewAndThePreviousAssignee(t *testing.T) {
 	if err := f.svc.RunOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.dm.sent) != 1 || len(f.hook.sent) != 1 {
-		t.Fatalf("dm %d / webhook %d, want 1 / 1 (new + previous assignee)", len(f.dm.sent), len(f.hook.sent))
+	if len(f.dm.sent) != 2 {
+		t.Fatalf("sent %d, want 2 (new + previous assignee)", len(f.dm.sent))
 	}
-	if !strings.Contains(f.hook.sent[0].Text, "lebih awal") {
-		t.Errorf("the previous assignee's notice lacks the budget line: %q", f.hook.sent[0].Text)
+	var previous *google_chat_notifier_dto.ReminderMessage
+	for i := range f.dm.sent {
+		if f.dm.sent[i].AssigneeEmail == "bot@esb.co.id" {
+			previous = &f.dm.sent[i]
+		}
+	}
+	if previous == nil || !strings.Contains(previous.Text, "lebih awal") {
+		t.Errorf("the previous assignee's notice is missing or lacks the budget line: %+v", previous)
 	}
 	if f.snaps.rows["OMS-1"].AssigneeEmail != "dev@esb.co.id" {
 		t.Error("the snapshot must follow the new assignee")

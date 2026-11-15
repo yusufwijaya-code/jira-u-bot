@@ -1,8 +1,8 @@
 package config
 
 import (
-	"strings"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/spf13/viper"
@@ -58,6 +58,15 @@ type AppConfig struct {
 	// behind nginx) means relative redirects; in local dev set it to
 	// http://localhost:4200 so the browser lands on the Angular dev server.
 	FrontendURL string
+	// Tech Spec "Nudge sebagai Google Chat App": the service account key of
+	// the Chat App (empty = app disabled, every message goes through the
+	// operator DM), the GCP project number Google puts in the event JWT
+	// audience, whether the one-click activation button is offered, and its
+	// OAuth redirect URI (registered on the Sign-In client).
+	GoogleChatAppCredentialsFile       string
+	GoogleChatAppProjectNumber         string
+	GoogleChatAppOneClick              bool
+	GoogleChatAppActivationRedirectURL string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -78,6 +87,7 @@ func LoadConfig(cfg *AppConfig) error {
 	v.SetDefault("MYSQL_USER", "root")
 	v.SetDefault("MYSQL_DATABASE", "jira_db")
 	v.SetDefault("GOOGLE_OAUTH_TOKEN_PATH", "./data/chat_oauth_token.json")
+	v.SetDefault("GOOGLE_CHAT_APP_ONE_CLICK", true)
 
 	cfg.JiraBaseURL = v.GetString("JIRA_BASE_URL")
 	cfg.JiraEmail = v.GetString("JIRA_EMAIL")
@@ -101,6 +111,10 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.CredentialEncryptionKey = v.GetString("CREDENTIAL_ENCRYPTION_KEY")
 	cfg.BasePath = strings.TrimRight(v.GetString("BASE_PATH"), "/")
 	cfg.FrontendURL = strings.TrimRight(v.GetString("FRONTEND_URL"), "/")
+	cfg.GoogleChatAppCredentialsFile = v.GetString("GOOGLE_CHAT_APP_CREDENTIALS_FILE")
+	cfg.GoogleChatAppProjectNumber = v.GetString("GOOGLE_CHAT_APP_PROJECT_NUMBER")
+	cfg.GoogleChatAppOneClick = v.GetBool("GOOGLE_CHAT_APP_ONE_CLICK")
+	cfg.GoogleChatAppActivationRedirectURL = v.GetString("GOOGLE_CHAT_APP_ACTIVATION_REDIRECT_URL")
 
 	return nil
 }

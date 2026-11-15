@@ -13,6 +13,10 @@ export interface UserRow {
   jiraAccountId: string;
   hasCredential: boolean;
   credentialMasked: string;
+  chatAppActivated: boolean;
+  chatAppActivatedDate: string | null;
+  chatSender: 'nudge' | 'operator' | null;
+  effectiveChatSender: 'nudge' | 'operator';
 }
 
 export interface ListUsersResponse {
@@ -22,6 +26,16 @@ export interface ListUsersResponse {
 export interface BroadcastResponse {
   sentCount: number;
   failedEmails: string[];
+  /** Users no sender can reach yet (e.g. not activated) — not failures. */
+  skippedEmails?: string[] | null;
+}
+
+/** A Nudge App activation date as "15 Nov 2026" (WIB), or "—" (AC4.1). */
+export function formatActivationDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso)
+    .toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', year: 'numeric' })
+    .replace('.', '');
 }
 
 @Injectable({ providedIn: 'root' })

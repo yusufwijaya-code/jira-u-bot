@@ -8,6 +8,7 @@ import (
 
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/issue_session/issue_session_dto"
 	"nudge/modules/jira_client/jira_client_dto"
@@ -134,11 +135,12 @@ func (f *fakeRegistrationRepository) FindAllWithGoogleChatDMSpaceID(ctx context.
 
 type fakeGoogleChatNotifierService struct {
 	sentMessages []google_chat_notifier_dto.ReminderMessage
+	err          error
 }
 
 func (f *fakeGoogleChatNotifierService) SendReminder(ctx context.Context, msg google_chat_notifier_dto.ReminderMessage) error {
 	f.sentMessages = append(f.sentMessages, msg)
-	return nil
+	return f.err
 }
 
 // fakeBusinessHoursGate wraps the real BusinessHoursService (for accurate
@@ -170,8 +172,6 @@ func newTestEngine(reminderLog *fakeReminderLogService, issueSession *fakeIssueS
 		issueSession,
 		registrationRepo,
 		notifier,
-		nil,
-		"",
 		nil,
 	)
 }
@@ -264,7 +264,7 @@ func TestEvaluateAndSend_TierSkipsSendOutsideBusinessHours(t *testing.T) {
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		&fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: false},
-		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier, nil, "",
+		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier,
 		nil,
 	)
 
@@ -314,7 +314,7 @@ func TestEvaluateAndSend_NoReminderOnAssigneeLeaveDay(t *testing.T) {
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", leaveCalendar{email: "anwar@esb.co.id"},
 		leaveAwareGate{business_hours_service.NewBusinessHoursService()},
-		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier, nil, "",
+		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier,
 		nil,
 	)
 
@@ -393,8 +393,6 @@ func settingsEngine(reminderLog *fakeReminderLogService, issueSession *fakeIssue
 		issueSession,
 		&fakeRegistrationRepository{users: map[string]registration_dto.User{}},
 		notifier,
-		nil,
-		"",
 		&fakeUserSettings{byEmail: map[string]user_setting_dto.UserSetting{"anwar@esb.co.id": setting}},
 	)
 }
@@ -775,7 +773,7 @@ func TestEvaluateAndSend_OverageSkipsSendOutsideBusinessHours(t *testing.T) {
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		&fakeBusinessHoursGate{BusinessHoursService: business_hours_service.NewBusinessHoursService(), within: false},
-		reminderLog, issueSession, registrationRepo, notifier, nil, "",
+		reminderLog, issueSession, registrationRepo, notifier,
 		nil,
 	)
 
@@ -808,7 +806,7 @@ func TestEvaluateAndSend_OverageResumesAsSoonAsBusinessHoursReturn(t *testing.T)
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(),
-		reminderLog, issueSession, registrationRepo, notifier, nil, "",
+		reminderLog, issueSession, registrationRepo, notifier,
 		nil,
 	)
 
@@ -913,92 +911,23 @@ func TestEvaluateAndSend_UnassignedTicketUsesPlaceholderWithoutError(t *testing.
 	}
 }
 
-func TestEvaluateAndSend_SelfAssigneeAlwaysUsesWebhookNotifier(t *testing.T) {
-	reminderLog := newFakeReminderLogService()
-	issueSession := &fakeIssueSessionService{}
-	webhookNotifier := &fakeGoogleChatNotifierService{}
-	dmNotifier := &fakeGoogleChatNotifierService{}
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
-
-	engine := NewReminderEngineService(
-		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
-		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
-		nil,
-	)
-
-	session := issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000, // forces overage so exactly one message is sent
-		AssigneeEmail: "yusuf.wijaya@esb.co.id",
-	}
-
-	if err := engine.EvaluateAndSend(context.Background(), testIssue("yusuf.wijaya@esb.co.id", "Yusuf Wijaya"), session); err != nil {
-		t.Fatalf("EvaluateAndSend returned error: %v", err)
-	}
-
-	if len(webhookNotifier.sentMessages) != 1 {
-		t.Errorf("webhookNotifier.sentMessages = %d, want 1 (self assignee must always use the webhook, AC2.1)", len(webhookNotifier.sentMessages))
-	}
-	if len(dmNotifier.sentMessages) != 0 {
-		t.Errorf("dmNotifier.sentMessages = %d, want 0", len(dmNotifier.sentMessages))
-	}
-}
-
-func TestEvaluateAndSend_TeammateAssigneeUsesDMNotifierWhenConfigured(t *testing.T) {
-	reminderLog := newFakeReminderLogService()
-	issueSession := &fakeIssueSessionService{}
-	webhookNotifier := &fakeGoogleChatNotifierService{}
-	dmNotifier := &fakeGoogleChatNotifierService{}
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
-
-	engine := NewReminderEngineService(
-		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
-		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
-		nil,
-	)
-
-	session := issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000,
-		AssigneeEmail: "teammate@esb.co.id",
-	}
-
-	if err := engine.EvaluateAndSend(context.Background(), testIssue("teammate@esb.co.id", "Teammate"), session); err != nil {
-		t.Fatalf("EvaluateAndSend returned error: %v", err)
-	}
-
-	if len(dmNotifier.sentMessages) != 1 {
-		t.Errorf("dmNotifier.sentMessages = %d, want 1 (non-self assignee with OAuth configured must use DM, AC2.2)", len(dmNotifier.sentMessages))
-	}
-	if len(webhookNotifier.sentMessages) != 0 {
-		t.Errorf("webhookNotifier.sentMessages = %d, want 0", len(webhookNotifier.sentMessages))
-	}
-}
-
-func TestEvaluateAndSend_TeammateAssigneeFallsBackToWebhookWhenDMNotifierNil(t *testing.T) {
-	reminderLog := newFakeReminderLogService()
-	issueSession := &fakeIssueSessionService{}
-	webhookNotifier := &fakeGoogleChatNotifierService{}
-	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
-
-	engine := NewReminderEngineService(
-		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
-		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
-		registrationRepo, webhookNotifier, nil, "yusuf.wijaya@esb.co.id",
-		nil,
-	)
-
-	session := issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000,
-		AssigneeEmail: "teammate@esb.co.id",
-	}
-
-	if err := engine.EvaluateAndSend(context.Background(), testIssue("teammate@esb.co.id", "Teammate"), session); err != nil {
-		t.Fatalf("EvaluateAndSend returned error: %v", err)
-	}
-
-	if len(webhookNotifier.sentMessages) != 1 {
-		t.Errorf("webhookNotifier.sentMessages = %d, want 1 (OAuth not configured — ALL reminders fall back to webhook, AC2.3)", len(webhookNotifier.sentMessages))
+func TestEvaluateAndSend_EveryAssigneeGoesThroughTheOneNotifier(t *testing.T) {
+	// Tech Spec "Nudge sebagai Google Chat App", AC1.6: no webhook routing —
+	// the operator account's own tickets go through the same notifier
+	// (the chat_delivery router) as everyone else's.
+	for _, email := range []string{"yusuf.wijaya@esb.co.id", "teammate@esb.co.id"} {
+		notifier := &fakeGoogleChatNotifierService{}
+		engine := newTestEngine(newFakeReminderLogService(), &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}}, notifier)
+		session := issue_session_dto.IssueSession{
+			IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000, // forces overage so exactly one message is sent
+			AssigneeEmail: email,
+		}
+		if err := engine.EvaluateAndSend(context.Background(), testIssue(email, "X"), session); err != nil {
+			t.Fatalf("%s: EvaluateAndSend returned error: %v", email, err)
+		}
+		if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].AssigneeEmail != email {
+			t.Errorf("%s: sentMessages = %+v, want one message to the assignee", email, notifier.sentMessages)
+		}
 	}
 }
 
@@ -1013,15 +942,13 @@ func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T)
 	// with no identifier).
 	reminderLog := newFakeReminderLogService()
 	issueSession := &fakeIssueSessionService{}
-	webhookNotifier := &fakeGoogleChatNotifierService{}
 	dmNotifier := &fakeGoogleChatNotifierService{}
 	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
 
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{},
 		newAlwaysOpenBusinessHours(), reminderLog, issueSession,
-		registrationRepo, webhookNotifier, dmNotifier, "yusuf.wijaya@esb.co.id",
-		nil,
+		registrationRepo, dmNotifier, nil,
 	)
 
 	session := issue_session_dto.IssueSession{
@@ -1048,9 +975,6 @@ func TestEvaluateAndSend_UsesSessionAssigneeEmailNotBlankJiraEmail(t *testing.T)
 	if dmNotifier.sentMessages[0].AssigneeEmail != "rio.pratama@esb.co.id" {
 		t.Errorf("AssigneeEmail = %q, want %q (from session, not the blank Jira field)", dmNotifier.sentMessages[0].AssigneeEmail, "rio.pratama@esb.co.id")
 	}
-	if len(webhookNotifier.sentMessages) != 0 {
-		t.Errorf("webhookNotifier.sentMessages = %d, want 0", len(webhookNotifier.sentMessages))
-	}
 }
 
 func (f *fakeIssueSessionService) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
@@ -1070,7 +994,7 @@ func TestEvaluateAndSend_UsesTheSettingsOfTheTicketsBoard(t *testing.T) {
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{}, newAlwaysOpenBusinessHours(),
 		reminderLog, &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}},
-		notifier, nil, "", settings,
+		notifier, settings,
 	)
 
 	board := int64(28)
@@ -1094,7 +1018,7 @@ func TestEvaluateAndSend_TicketWithoutActiveSprintUsesDefaultScope(t *testing.T)
 	engine := NewReminderEngineService(
 		"https://esb-id.atlassian.net", business_hours_dto.HolidayCalendar{}, newAlwaysOpenBusinessHours(),
 		newFakeReminderLogService(), &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}},
-		&fakeGoogleChatNotifierService{}, nil, "", settings,
+		&fakeGoogleChatNotifierService{}, settings,
 	)
 	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 1000, AssigneeEmail: "anwar@esb.co.id"}
 	engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session)
@@ -1213,5 +1137,41 @@ func TestEvaluateAndSend_StaleOverageTierSkippedThenRepeatStillRuns(t *testing.T
 	}
 	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "overage" {
 		t.Fatalf("sentMessages = %+v, want exactly the repeat notice", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_RecipientWithoutSenderIsSkippedNotRetried(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|2h"] = true
+	reminderLog.sentTiers["OMS-1|1h"] = true
+	notifier := &fakeGoogleChatNotifierService{err: chat_delivery.ErrRecipientNotActivated}
+	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}}, notifier)
+
+	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 9100}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("bot@esb.co.id", "Bot"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if reminderLog.statuses["OMS-1|30m"] != "skipped" {
+		t.Errorf("status = %q, want skipped", reminderLog.statuses["OMS-1|30m"])
+	}
+}
+
+func TestEvaluateAndSend_OverageWithoutSenderIsSkippedAndAdvancesSchedule(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{err: chat_delivery.ErrRecipientNotActivated}
+	engine := newTestEngine(reminderLog, issueSession, &fakeRegistrationRepository{users: map[string]registration_dto.User{}}, notifier)
+
+	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("bot@esb.co.id", "Bot"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(issueSession.updateOverageCalls) != 1 {
+		t.Errorf("UpdateLastOverageReminder calls = %d, want 1 (no resend every poll)", len(issueSession.updateOverageCalls))
+	}
+	for key, status := range reminderLog.statuses {
+		if status != "skipped" {
+			t.Errorf("%s = %q, want skipped", key, status)
+		}
 	}
 }

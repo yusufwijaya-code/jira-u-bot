@@ -2,12 +2,14 @@ package reminder_engine_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
 	"nudge/modules/issue_session/issue_session_dto"
@@ -35,9 +37,7 @@ type reminderEngineServiceImpl struct {
 	reminderLog      reminder_log_service.ReminderLogService
 	issueSession     issue_session_service.IssueSessionService
 	registrationRepo registration_repository.RegistrationRepository
-	webhookNotifier  google_chat_notifier_service.GoogleChatNotifierService
-	dmNotifier       google_chat_notifier_service.GoogleChatNotifierService
-	selfEmail        string
+	notifier         google_chat_notifier_service.GoogleChatNotifierService
 	userSettings     UserSettingReader
 }
 
@@ -51,9 +51,7 @@ func NewReminderEngineService(
 	reminderLog reminder_log_service.ReminderLogService,
 	issueSession issue_session_service.IssueSessionService,
 	registrationRepo registration_repository.RegistrationRepository,
-	webhookNotifier google_chat_notifier_service.GoogleChatNotifierService,
-	dmNotifier google_chat_notifier_service.GoogleChatNotifierService,
-	selfEmail string,
+	notifier google_chat_notifier_service.GoogleChatNotifierService,
 	userSettings UserSettingReader,
 ) ReminderEngineService {
 	return &reminderEngineServiceImpl{
@@ -63,21 +61,23 @@ func NewReminderEngineService(
 		reminderLog:      reminderLog,
 		issueSession:     issueSession,
 		registrationRepo: registrationRepo,
-		webhookNotifier:  webhookNotifier,
-		dmNotifier:       dmNotifier,
-		selfEmail:        selfEmail,
+		notifier:         notifier,
 		userSettings:     userSettings,
 	}
 }
 
-// pickNotifier implements spec AC2.1/AC2.2/AC2.3: the assignee's own
-// tickets always stay on the existing webhook (unchanged v1 behavior);
-// everyone else's tickets go to a personal DM — UNLESS OAuth was never
-// configured (dmNotifier is nil, decided once at startup in main.go), in
-// which case every reminder falls back to the webhook, matching pre-this-
-// enhancement behavior exactly.
-func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_chat_notifier_service.GoogleChatNotifierService {
-	return google_chat_notifier_service.PickNotifier(assigneeEmail, e.selfEmail, e.webhookNotifier, e.dmNotifier)
+// deliveryStatus maps a send result to its tr_reminderlog status: a
+// recipient no chat sender can reach (chat_delivery) is skipped, so it is
+// not retried every poll cycle (Tech Spec "Nudge sebagai Google Chat App",
+// AC1.5).
+func deliveryStatus(err error) (string, error) {
+	switch {
+	case err == nil:
+		return reminder_log_dto.DeliverySent, nil
+	case errors.Is(err, chat_delivery.ErrRecipientNotActivated):
+		return reminder_log_dto.DeliverySkipped, nil
+	}
+	return "", err
 }
 
 // settingsFor returns the assignee's effective settings for boardID. The
@@ -269,10 +269,11 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 
 	// Only record the send AFTER the notifier confirms success, so a failed
 	// POST is retried on the next poll cycle (spec Reliability).
-	if err := e.pickNotifier(session.AssigneeEmail).SendReminder(ctx, msg); err != nil {
+	status, err := deliveryStatus(e.notifier.SendReminder(ctx, msg))
+	if err != nil {
 		return err
 	}
-	if err := e.reminderLog.LogReminder(ctx, issue.Key, target, reminder_log_dto.DeliverySent); err != nil {
+	if err := e.reminderLog.LogReminder(ctx, issue.Key, target, status); err != nil {
 		return err
 	}
 	// Older crossed tiers were superseded by the one just sent (AC1.3).
@@ -377,10 +378,11 @@ func (e *reminderEngineServiceImpl) sendOverage(ctx context.Context, issue jira_
 	// Order matters: only record the send (log + timestamp) AFTER the
 	// notifier confirms success, so a failed POST can be retried on the
 	// next poll cycle instead of being silently marked as sent.
-	if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
+	status, err := deliveryStatus(e.notifier.SendReminder(ctx, msg))
+	if err != nil {
 		return err
 	}
-	if err := e.reminderLog.LogReminder(ctx, issue.Key, tier, reminder_log_dto.DeliverySent); err != nil {
+	if err := e.reminderLog.LogReminder(ctx, issue.Key, tier, status); err != nil {
 		return err
 	}
 	if err := e.logAll(ctx, issue.Key, stale, reminder_log_dto.DeliverySkipped); err != nil {

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/registration/registration_dto"
 )
 
@@ -60,7 +61,6 @@ func (f *fakeRegistrationRepoForPoller) FindUserByJiraAccountID(ctx context.Cont
 func (f *fakeRegistrationRepoForPoller) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	return nil
 }
-
 
 func (f *fakeRegistrationRepoForPoller) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
@@ -514,4 +514,8 @@ func TestPollOnce_CursorPersistFailureOnlyReplaysUnpersistedTail(t *testing.T) {
 	if chatInteractive.calls[2] != "teammate@esb.co.id|/n-geser<CORE-2>:code-review" {
 		t.Errorf("the replayed call = %q, want it to be the CORE-2 message", chatInteractive.calls[2])
 	}
+}
+
+func (f *fakeChatInteractiveServiceForPoller) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) chat_interactive_service.GeserResult {
+	return chat_interactive_service.GeserResult{}
 }

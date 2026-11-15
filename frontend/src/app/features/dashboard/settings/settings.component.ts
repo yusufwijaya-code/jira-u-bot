@@ -22,6 +22,7 @@ import { IconComponent } from '../../../shared/ui/icon.component';
 import { JiraCredentialComponent } from './jira-credential.component';
 import { MutePanelComponent, activeUntil, formatWib } from './mute-panel.component';
 import { TierPickerComponent } from './tier-picker.component';
+import { ChatSenderCardComponent } from './chat-sender-card.component';
 import { sortTiers, tierDuration } from './tier-codes';
 
 /** Which card's Simpan button is running — each card saves only its own fields. */
@@ -49,6 +50,7 @@ const CARD_FIELDS: Record<SettingsCard, (keyof NotificationSettings)[]> = {
   selector: 'app-settings',
   standalone: true,
   imports: [
+    ChatSenderCardComponent,
     FormsModule,
     NgTemplateOutlet,
     IconComponent,

@@ -13,6 +13,10 @@ const user = (userId: number, flagActive: boolean, hasCredential: boolean): User
   jiraAccountId: '',
   hasCredential,
   credentialMasked: hasCredential ? '••••abcd' : '',
+  chatAppActivated: userId === 1,
+  chatAppActivatedDate: null,
+  chatSender: null,
+  effectiveChatSender: 'operator',
 });
 
 describe('AdminOverviewComponent', () => {
@@ -34,7 +38,8 @@ describe('AdminOverviewComponent', () => {
     fixture.detectChanges();
 
     const stats = Array.from(el().querySelectorAll('.stat-value')).map((s) => s.textContent!.trim());
-    expect(stats).toEqual(['4', '3', '1']);
+    expect(stats).toEqual(['4', '3', '1', '2']);
+    expect(el().querySelector('[data-stat="chat-app-inactive"] .stat-value')!.textContent!.trim()).toBe('2');
 
     const noCred = Array.from(el().querySelectorAll('[data-list="credential"] li a')).map((a) => a.getAttribute('href'));
     expect(noCred).toEqual(['/admin/users/2', '/admin/users/3', '/admin/users/4']);

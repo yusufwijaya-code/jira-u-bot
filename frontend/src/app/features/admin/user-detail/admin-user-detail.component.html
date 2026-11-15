@@ -83,6 +83,16 @@
             }
           </dd>
         </div>
+        <div data-row="chat-app">
+          <dt>Nudge App</dt>
+          <dd>
+            @if (u.chatAppActivated) {
+              <span class="status-badge active">✓ Aktif sejak {{ activationDate(u.chatAppActivatedDate) }}</span>
+            } @else {
+              <span class="muted">Belum aktivasi</span>
+            }
+          </dd>
+        </div>
       </dl>
       @if (rowMessage(); as message) {
         <p class="msg error">{{ message }}</p>
@@ -110,6 +120,7 @@
       </div>
     </section>
 
+    <app-chat-sender-card [userId]="u.userId" />
     <app-settings />
   }
 </div>

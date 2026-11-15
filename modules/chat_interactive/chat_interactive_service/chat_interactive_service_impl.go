@@ -41,7 +41,7 @@ var geserCommandPattern = regexp.MustCompile(`^/n-geser<([A-Za-z]+-\d+)>:(\S+)$`
 
 // geserTargetStatusNames maps the command's target slug to the Jira status
 // name to search for among the issue's available transitions. Matching is
-// case-insensitive at use (see handleGeser) because projects spell the
+// case-insensitive at use (see Geser) because projects spell the
 // same status differently — OMS uses "Code Review", CORE uses "CODE REVIEW".
 var geserTargetStatusNames = map[string]string{
 	"todo":        "To Do",
@@ -93,7 +93,7 @@ func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, senderEma
 		return s.handleTeam(ctx)
 	case geserCommandPattern.MatchString(text):
 		matches := geserCommandPattern.FindStringSubmatch(text)
-		return s.handleGeser(ctx, senderEmail, matches[1], matches[2])
+		return s.Geser(ctx, senderEmail, matches[1], matches[2]).Message
 	default:
 		return s.handleHelp()
 	}
@@ -105,18 +105,18 @@ func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, senderEma
 // assigned to (same ownership check as /n-budget's data, just enforced
 // rather than merely displayed) — this command can change real Jira state,
 // so it must not let anyone move someone else's ticket.
-func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmail, issueKey, targetSlug string) string {
+func (s *chatInteractiveServiceImpl) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) GeserResult {
 	targetStatusName, recognized := geserTargetStatusNames[strings.ToLower(targetSlug)]
 	if !recognized {
-		return fmt.Sprintf("Target %q nggak dikenali. Target yang didukung: todo, code-review", targetSlug)
+		return GeserResult{Message: fmt.Sprintf("Target %q nggak dikenali. Target yang didukung: todo, code-review", targetSlug)}
 	}
 
 	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)
 	if err != nil || !found || !session.FlagActive {
-		return fmt.Sprintf("Tiket %s nggak ditemukan atau nggak lagi aktif di-track 🤔", issueKey)
+		return GeserResult{Message: fmt.Sprintf("Tiket %s nggak ditemukan atau nggak lagi aktif di-track 🤔", issueKey)}
 	}
 	if session.AssigneeEmail != senderEmail {
-		return fmt.Sprintf("Tiket %s bukan tiket kamu — cuma assignee tiket yang bisa geser statusnya 🙏", issueKey)
+		return GeserResult{NotOwner: true, Message: fmt.Sprintf("Tiket %s bukan tiket kamu — cuma assignee tiket yang bisa geser statusnya 🙏", issueKey)}
 	}
 
 	// Resolve the sender's personal Jira credential if they've set one up
@@ -135,7 +135,7 @@ func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmai
 
 	transitions, err := s.jiraClient.GetTransitionsAs(ctx, cred, issueKey)
 	if err != nil {
-		return fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", issueKey)
+		return GeserResult{Message: fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", issueKey)}
 	}
 
 	var matchedID string
@@ -146,14 +146,14 @@ func (s *chatInteractiveServiceImpl) handleGeser(ctx context.Context, senderEmai
 		}
 	}
 	if matchedID == "" {
-		return fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", issueKey, targetStatusName)
+		return GeserResult{Message: fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", issueKey, targetStatusName)}
 	}
 
 	if err := s.jiraClient.TransitionIssueAs(ctx, cred, issueKey, matchedID); err != nil {
-		return fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", issueKey, targetStatusName)
+		return GeserResult{Message: fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", issueKey, targetStatusName)}
 	}
 
-	return fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", issueKey, targetStatusName)
+	return GeserResult{OK: true, StatusName: targetStatusName, Message: fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", issueKey, targetStatusName)}
 }
 
 func (s *chatInteractiveServiceImpl) handleHelp() string {
@@ -162,8 +162,9 @@ func (s *chatInteractiveServiceImpl) handleHelp() string {
 		"*/n-budget <issueKey>* — detail budget satu tiket\n" +
 		"*/n-overdue* — semua tiket yang lewat budget\n" +
 		"*/n-team* — ringkasan semua tiket aktif per orang\n" +
-		"*/n-geser<issueKey>:todo* — geser tiket kamu balik ke To Do\n" +
-		"*/n-geser<issueKey>:code-review* — geser tiket kamu ke Code Review"
+		"*/n-geser <issueKey> todo* — geser tiket kamu balik ke To Do (di app Nudge)\n" +
+		"*/n-geser <issueKey> code-review* — geser tiket kamu ke Code Review (di app Nudge)\n" +
+		"*/n-geser<issueKey>:todo* / *:code-review* — format lama, tetap bisa"
 }
 
 func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {

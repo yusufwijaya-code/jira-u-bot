@@ -14,6 +14,11 @@ type UserRow struct {
 	JiraAccountID    string    `json:"jiraAccountId"`
 	HasCredential    bool      `json:"hasCredential"`
 	CredentialMasked string    `json:"credentialMasked"`
+	// Tech Spec "Nudge sebagai Google Chat App" (AC4.1, AC4.4).
+	ChatAppActivated     bool       `json:"chatAppActivated"`
+	ChatAppActivatedDate *time.Time `json:"chatAppActivatedDate"`
+	ChatSender           *string    `json:"chatSender"`
+	EffectiveChatSender  string     `json:"effectiveChatSender"`
 }
 
 // BroadcastResult reports the outcome of BroadcastMessage — FailedEmails is
@@ -22,6 +27,9 @@ type UserRow struct {
 type BroadcastResult struct {
 	SentCount    int
 	FailedEmails []string
+	// SkippedEmails are users no sender can reach yet
+	// (chat_delivery.ErrRecipientNotActivated) — not failures.
+	SkippedEmails []string
 }
 
 // UserChange is a write an admin made to another user's settings (Tech

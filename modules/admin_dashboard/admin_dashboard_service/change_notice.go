@@ -8,6 +8,7 @@ import (
 
 	"nudge/modules/admin_dashboard/admin_dashboard_dto"
 	"nudge/modules/board/board_dto"
+	"nudge/modules/chat_app/chat_app_dto"
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
@@ -26,6 +27,19 @@ type Option func(*adminDashboardServiceImpl)
 // WithBoardNamer lets change notices name the board instead of "#<id>".
 func WithBoardNamer(b BoardNamer) Option {
 	return func(s *adminDashboardServiceImpl) { s.boards = b }
+}
+
+// ChatAppStates lists every user's Chat App state — chat_app_repository.
+type ChatAppStates interface {
+	ListAll(ctx context.Context) (map[string]chat_app_dto.State, error)
+}
+
+// WithChatApp adds Nudge App activation and the sender to the user rows.
+func WithChatApp(states ChatAppStates, appEnabled bool) Option {
+	return func(s *adminDashboardServiceImpl) {
+		s.chatApp = states
+		s.chatAppEnabled = appEnabled
+	}
 }
 
 var shortMonth = [...]string{"Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}
@@ -59,6 +73,8 @@ func ChangeNoticeText(adminEmail, boardName string, ch admin_dashboard_dto.UserC
 		return fmt.Sprintf("Admin %s memperbarui Jira credential kamu.", adminEmail)
 	case "credential_deleted":
 		return fmt.Sprintf("Admin %s menghapus Jira credential kamu.", adminEmail)
+	case "chat_sender":
+		return fmt.Sprintf("Admin %s mengubah pengirim pesan Nudge kamu.", adminEmail)
 	}
 	return fmt.Sprintf("Admin %s mengubah pengaturan kamu.", adminEmail)
 }

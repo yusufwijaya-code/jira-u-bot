@@ -4,6 +4,7 @@ import { Component } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 import { AdminUserDetailComponent } from './admin-user-detail.component';
+import { ChatAppService } from '../../../core/services/chat-app.service';
 import { AdminService, UserRow } from '../../../core/services/admin.service';
 import { AdminUserSettingsApi } from '../../../core/services/admin-user-settings';
 import { SETTINGS_MODE, SettingsApi } from '../../../core/services/settings-api';
@@ -21,6 +22,10 @@ const USER: UserRow = {
   jiraAccountId: '712020:abc',
   hasCredential: true,
   credentialMasked: '••••50CF',
+  chatAppActivated: false,
+  chatAppActivatedDate: null,
+  chatSender: null,
+  effectiveChatSender: 'operator',
 };
 
 describe('AdminUserDetailComponent', () => {
@@ -37,6 +42,7 @@ describe('AdminUserDetailComponent', () => {
       providers: [
         provideRouter([]),
         provideHttpClient(),
+        { provide: ChatAppService, useValue: { load: () => of({ enabled: false }), activateUrl: () => '' } },
         { provide: AdminService, useValue: adminService },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: '12' }) } } },
       ],
@@ -57,6 +63,13 @@ describe('AdminUserDetailComponent', () => {
     expect(el().querySelector('.profile-card')!.textContent).toContain('••••50CF');
     expect(el().querySelector('.admin-editing-banner')!.textContent).toContain('fernando.marco@esb.co.id');
     expect(el().querySelector('.settings-stub')).not.toBeNull();
+    expect(el().querySelector('[data-row="chat-app"]')!.textContent).toContain('Belum aktivasi');
+  });
+
+  it('shows the Nudge App activation date (AC4.3)', () => {
+    adminService.getUser.and.returnValue(of({ ...USER, chatAppActivated: true, chatAppActivatedDate: '2026-11-15T02:00:00Z' }));
+    fixture.detectChanges();
+    expect(el().querySelector('[data-row="chat-app"]')!.textContent).toContain('Aktif sejak 15 Nov 2026');
   });
 
   it('points SettingsApi at the admin endpoints in admin mode', () => {

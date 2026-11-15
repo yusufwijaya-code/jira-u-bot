@@ -2,9 +2,11 @@ package registration_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
+	"nudge/modules/chat_delivery"
 	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
 	"nudge/modules/jira_client/jira_client_service"
 	"nudge/modules/registration/registration_repository"
@@ -64,7 +66,12 @@ Kalau notifikasi aktif, manfaatnya buat kamu:
 Fokus ngerjain tiketnya aja, biar Nudge yang ingetin waktunya 💪
 
 💡 Ketik */n-help* di sini buat lihat command lain`
-	if err := s.dmNotifier.SendPlainTextDM(ctx, email, text); err != nil {
+	err := s.dmNotifier.SendPlainTextDM(ctx, email, text)
+	switch {
+	case errors.Is(err, chat_delivery.ErrRecipientNotActivated):
+		// No sender can reach this user yet: skipped, not a failure.
+		log.Printf("registration_service: thank-you DM to %s skipped: no chat sender available", email)
+	case err != nil:
 		log.Printf("registration_service: thank-you DM to %s failed: %v", email, err)
 	}
 }

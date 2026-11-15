@@ -26,6 +26,10 @@
         <span class="stat-icon accent"><app-icon name="key" [size]="20" /></span>
         <div><span class="stat-value">{{ credentialCount() }}</span><span class="stat-label">Punya credential</span></div>
       </div>
+      <a class="stat-card" style="--i: 3" routerLink="/admin/users" [queryParams]="{ chatApp: 'inactive' }" data-stat="chat-app-inactive">
+        <span class="stat-icon"><app-icon name="bell" [size]="20" /></span>
+        <div><span class="stat-value">{{ chatAppInactiveCount() }}</span><span class="stat-label">Belum aktivasi Nudge App</span></div>
+      </a>
     </div>
 
     <div class="admin-shortlists">

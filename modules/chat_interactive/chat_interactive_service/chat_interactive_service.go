@@ -12,4 +12,18 @@ type ChatInteractiveService interface {
 	// poller) always treat the return value as something to send back to
 	// the same space.
 	RouteCommand(ctx context.Context, senderEmail, messageText string) string
+
+	// Geser moves one of the sender's own tracked tickets (the /n-geser
+	// rules) and reports the outcome in a structured form for the Chat
+	// App's card buttons (Tech Spec "Nudge sebagai Google Chat App", AC6.3).
+	Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) GeserResult
+}
+
+// GeserResult is the outcome of Geser. Message is the same user-facing
+// text /n-geser replies with.
+type GeserResult struct {
+	OK         bool
+	NotOwner   bool
+	StatusName string
+	Message    string
 }

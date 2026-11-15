@@ -44,9 +44,12 @@ export class BroadcastComponent {
       next: (res) => {
         this.submitting = false;
         this.message = '';
-        const failedPart = res.failedEmails.length ? `, gagal ke: ${res.failedEmails.join(', ')}` : '';
-        this.result = { text: `Terkirim ke ${res.sentCount} user${failedPart}`, isError: res.failedEmails.length > 0 };
-        if (!res.failedEmails.length) {
+        const failed = res.failedEmails ?? [];
+        const failedPart = failed.length ? `, gagal ke: ${failed.join(', ')}` : '';
+        const skipped = res.skippedEmails ?? [];
+        const skippedPart = skipped.length ? `, dilewati (belum bisa dihubungi): ${skipped.join(', ')}` : '';
+        this.result = { text: `Terkirim ke ${res.sentCount} user${failedPart}${skippedPart}`, isError: failed.length > 0 };
+        if (!failed.length) {
           this.toast.success('Broadcast terkirim', `Terkirim ke ${res.sentCount} user`);
         }
       },
