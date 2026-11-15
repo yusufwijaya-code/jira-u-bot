@@ -513,6 +513,15 @@ describe('BoardPageComponent', () => {
     expect(time.getAttribute('title')).toContain('Budget 1j');
     expect(time.getAttribute('title')).toContain('Lewat 15m');
   });
+  it('switches to the column view and remembers it', () => {
+    localStorage.removeItem('nudge.board.view');
+    const fixture = render();
+    (fixture.nativeElement.querySelector('[data-view="columns"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-board-columns')).not.toBeNull();
+    expect(localStorage.getItem('nudge.board.view')).toBe('columns');
+    localStorage.removeItem('nudge.board.view');
+  });
 });
 
 describe('board-page helpers', () => {

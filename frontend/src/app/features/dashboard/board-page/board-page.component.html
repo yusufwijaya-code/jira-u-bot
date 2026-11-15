@@ -68,10 +68,16 @@
         <button type="button" class="tb-chip" data-filter="over" [class.active]="filter() === 'over'" (click)="setFilter('over')">Lewat budget</button>
         <button type="button" class="tb-chip" data-filter="nosp" [class.active]="filter() === 'nosp'" (click)="setFilter('nosp')">Belum SP</button>
       </div>
+      <div class="tb-chips" role="group" aria-label="Tampilan">
+        <button type="button" class="tb-chip" data-view="list" [class.active]="view() === 'list'" (click)="setView('list')">☰ Daftar</button>
+        <button type="button" class="tb-chip" data-view="columns" [class.active]="view() === 'columns'" (click)="setView('columns')">▦ Kolom</button>
+      </div>
+      @if (view() === 'list') {
       <button type="button" class="tb-toggle-all" data-toggle-all [disabled]="!!query().trim() || filter() !== 'all'" (click)="toggleAll()">
         <app-icon class="tb-all-icon" [class.up]="!allCollapsed()" name="chevron-down" [size]="14" />
         {{ allCollapsed() ? 'Buka semua' : 'Tutup semua' }}
       </button>
+      }
     <label class="tb-search">
       <app-icon name="search" [size]="16" />
       <input
@@ -91,6 +97,7 @@
     Klik status di baris tiket atau subtask untuk memindahkannya sesuai workflow Jira.
   </p>
 
+  @if (view() === 'list') {
   @for (col of visible(); track col.status) {
     <section class="tb-section" [class.tb-dim]="refreshing() && !moving()" data-column [attr.data-status]="col.status" [attr.data-tone]="statusTone(col.status)" [id]="sectionId(col.status)">
       <button
@@ -194,6 +201,9 @@
       <span>Tidak ada tiket yang cocok.</span>
       <button type="button" class="btn btn-soft btn-sm" data-reset-filter (click)="resetFilters()">Reset filter</button>
     </div>
+  }
+  } @else {
+    <app-board-columns [columns]="visible()" [branchCount]="branchCount" [moving]="moving()" (moveRequested)="move($event.card, $event.option)" />
   }
 }
 }

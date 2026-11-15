@@ -6,6 +6,8 @@ import { DashboardService, TicketCard, TransitionOption } from '../../../core/se
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { NgTemplateOutlet } from '@angular/common';
+import { BoardColumnsComponent } from './board-columns.component';
+import { statusTone, shortDuration, StatusTone } from './board-format';
 import { IconComponent } from '../../../shared/ui/icon.component';
 
 interface Column {
@@ -20,31 +22,14 @@ interface MenuState {
   options: TransitionOption[];
 }
 
-/** Colour family of a status dot, from its name (Jira workflows differ per project). */
-export type StatusTone = 'todo' | 'process' | 'review' | 'done' | 'other';
+export { statusTone, shortDuration };
+export type { StatusTone };
 
 export type BoardFilter = 'all' | 'over' | 'nosp';
 
 export const COLLAPSED_STORAGE_KEY = 'nudge.board.collapsed';
 export const BRANCHES_STORAGE_KEY = 'nudge.board.branches';
-
-export function statusTone(status: string): StatusTone {
-  const s = status.toLowerCase();
-  if (/(complete|done|selesai|closed|resolved)/.test(s)) return 'done';
-  if (/review/.test(s)) return 'review';
-  if (/(process|progress|develop)/.test(s)) return 'process';
-  if (/(to do|todo|backlog|open)/.test(s)) return 'todo';
-  return 'other';
-}
-
-/** 5400 → "1j 30m", 2700 → "45m", 7200 → "2j", 20 → "0m". */
-export function shortDuration(totalSeconds: number): string {
-  const minutes = Math.floor(Math.abs(totalSeconds) / 60);
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}j` : `${h}j ${m}m`;
-}
+export const VIEW_STORAGE_KEY = 'nudge.board.view';
 
 /**
  * Papan Tiket (Tech Spec "Papan Tiket & Cuti", US-1): the caller's
@@ -55,7 +40,7 @@ export function shortDuration(totalSeconds: number): string {
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [IconComponent, NgTemplateOutlet],
+  imports: [IconComponent, NgTemplateOutlet, BoardColumnsComponent],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
 })
@@ -94,6 +79,12 @@ export class BoardPageComponent {
   private highlightTimer?: ReturnType<typeof setTimeout>;
   protected menu = signal<MenuState | null>(null);
   protected moving = signal<string | null>(null);
+  protected view = signal<'list' | 'columns'>(readView());
+  protected setView(v: 'list' | 'columns'): void {
+    this.view.set(v);
+    try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch { /* visit only */ }
+  }
+  protected branchCount = (key: string): number => (this.branchMap().get(key) ?? []).length;
   /** Moves sent to Jira and not answered yet; the board only reloads once none is left. */
   private pendingMoves = 0;
   /** Columns created on screen by applyLocalMove (status not in the last server load). */
@@ -461,6 +452,10 @@ export class BoardPageComponent {
     setTimeout(() => document.querySelector(`[data-card="${issueKey}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }));
     this.highlightTimer = setTimeout(() => this.justMoved.set(null), 2400);
   }
+}
+
+function readView(): 'list' | 'columns' {
+  try { return localStorage.getItem(VIEW_STORAGE_KEY) === 'columns' ? 'columns' : 'list'; } catch { return 'list'; }
 }
 
 function matches(card: TicketCard, q: string): boolean {
