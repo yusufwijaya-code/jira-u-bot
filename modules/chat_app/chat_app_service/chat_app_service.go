@@ -190,6 +190,10 @@ func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto
 		log.Printf("chat_app_service: storing the DM of %s failed: %v", ev.User.Email, err)
 		return chat_app_dto.Response{Text: errorText}
 	}
+	// The "/n-help" hint becomes a menu button.
+	if short, cards, ok := chat_app_card.TextCard(welcomeText); ok {
+		return chat_app_dto.Response{CardsV2: cards, FallbackText: short, LogText: welcomeText}
+	}
 	return chat_app_dto.Response{Text: welcomeText}
 }
 

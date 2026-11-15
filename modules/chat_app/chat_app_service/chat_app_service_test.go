@@ -103,8 +103,20 @@ func TestHandle_AddedRegisteredStoresSpaceAndWelcomes(t *testing.T) {
 	if len(states.set) != 1 || states.set[0] != dev+"|spaces/DM|users/9" {
 		t.Errorf("SetSpace calls = %v", states.set)
 	}
-	if !strings.Contains(res.Text, "/n-help") {
-		t.Errorf("welcome = %q", res.Text)
+	if res.Text != "" || len(res.CardsV2) != 1 || !strings.HasPrefix(res.FallbackText, "✅ App Nudge aktif") {
+		t.Fatalf("welcome = %+v, want a card", res)
+	}
+	var menu bool
+	for _, w := range res.CardsV2[0].Card.Sections[0].Widgets {
+		if w.ButtonList != nil && w.ButtonList.Buttons[0].OnClick.Action.Function == "nudge.cmd" {
+			menu = true
+		}
+		if w.TextParagraph != nil && strings.Contains(w.TextParagraph.Text, "n-help") {
+			t.Errorf("the /n-help hint must be a button, card text = %q", w.TextParagraph.Text)
+		}
+	}
+	if !menu {
+		t.Error("welcome card has no menu button")
 	}
 }
 
