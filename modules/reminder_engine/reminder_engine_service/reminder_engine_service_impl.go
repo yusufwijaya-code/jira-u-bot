@@ -203,6 +203,13 @@ func (e *reminderEngineServiceImpl) unhandled(ctx context.Context, issueKey stri
 	return out, nil
 }
 
+// newestIsDue reports whether the most relevant crossed tier (the last of
+// crossed) is still unhandled — due keeps crossed's order, so it is then
+// due's last entry too.
+func newestIsDue(crossed, due []string) bool {
+	return len(crossed) > 0 && len(due) > 0 && due[len(due)-1] == crossed[len(crossed)-1]
+}
+
 func (e *reminderEngineServiceImpl) logAll(ctx context.Context, issueKey string, codes []string, status string) error {
 	for _, code := range codes {
 		if err := e.reminderLog.LogReminder(ctx, issueKey, code, status); err != nil {
@@ -244,6 +251,12 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 	if setting.IsSilenced(time.Now()) {
 		// Muted / quiet hours: these tiers are stale by the time the mute
 		// ends, so they are recorded as skipped and never sent (AC4.1).
+		return e.logAll(ctx, issue.Key, due, reminder_log_dto.DeliverySkipped)
+	}
+
+	// A tier closer to the deadline was already handled (the user added a
+	// larger tier mid-ticket): what's left is stale, never sent late.
+	if !newestIsDue(crossed, due) {
 		return e.logAll(ctx, issue.Key, due, reminder_log_dto.DeliverySkipped)
 	}
 
@@ -327,9 +340,17 @@ func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue 
 		return e.sendOverage(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL, reminder_log_dto.TierOverage, due)
 	}
 
-	// 2. A post-budget tier is due.
+	// 2. A post-budget tier is due — only when it's the most recent crossed
+	// one. Otherwise a later tier was already handled (the user added a
+	// smaller tier mid-ticket): the leftovers are stale → skipped, and the
+	// repeat schedule below carries on untouched.
 	if len(due) > 0 {
-		return e.sendOverage(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL, due[len(due)-1], due[:len(due)-1])
+		if newestIsDue(crossed, due) {
+			return e.sendOverage(ctx, issue, session, elapsedSeconds, budgetSeconds, assigneeName, issueURL, due[len(due)-1], due[:len(due)-1])
+		}
+		if err := e.logAll(ctx, issue.Key, due, reminder_log_dto.DeliverySkipped); err != nil {
+			return err
+		}
 	}
 
 	// 3. Repeat — only once every post-budget tier has been crossed, and

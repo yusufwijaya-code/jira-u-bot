@@ -112,9 +112,6 @@ func (f *fakeRegistrationRepository) UpdateGoogleChatDMSpaceID(ctx context.Conte
 	return nil
 }
 
-func (f *fakeRegistrationRepository) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
-	return nil
-}
 
 func (f *fakeRegistrationRepository) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
@@ -1362,4 +1359,64 @@ func TestNotificationsOff_SilencesEveryAutomaticNotification(t *testing.T) {
 			t.Errorf("sent %d, want 0", len(notifier.sentMessages))
 		}
 	})
+}
+
+// --- tiers added mid-ticket (review finding #1) ---
+
+func TestEvaluateAndSend_LargerTierAddedAfterSmallerSentIsSkippedNotSent(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	_ = reminderLog.LogReminder(context.Background(), "OMS-1", "30m", "sent")
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withTiers("1h", "30m", "15m"))
+
+	session := issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 10800 - 20*60, // 20m left
+		AssigneeEmail: "anwar@esb.co.id",
+	}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Fatalf("sentMessages = %+v, want none — 30m (closer to the deadline) was already sent", notifier.sentMessages)
+	}
+	if reminderLog.statuses["OMS-1|1h"] != "skipped" {
+		t.Errorf("1h status = %q, want skipped so it never fires late", reminderLog.statuses["OMS-1|1h"])
+	}
+}
+
+func TestEvaluateAndSend_SmallerOverageTierAddedAfterLargerSentIsSkippedNotSent(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	_ = reminderLog.LogReminder(context.Background(), "OMS-1", "+1h", "sent")
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, issueSession, notifier, withOverage(nil, "1h", "15m"))
+
+	last := time.Now().Add(-time.Minute)
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(70*60, &last)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Fatalf("sentMessages = %+v, want none — +1h (the most recent tier) was already sent", notifier.sentMessages)
+	}
+	if reminderLog.statuses["OMS-1|+15m"] != "skipped" {
+		t.Errorf("+15m status = %q, want skipped", reminderLog.statuses["OMS-1|+15m"])
+	}
+	if len(issueSession.updateOverageCalls) != 0 {
+		t.Errorf("UpdateLastOverageReminder calls = %d, want 0 — the repeat schedule must not reset", len(issueSession.updateOverageCalls))
+	}
+}
+
+func TestEvaluateAndSend_StaleOverageTierSkippedThenRepeatStillRuns(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	_ = reminderLog.LogReminder(context.Background(), "OMS-1", "+1h", "sent")
+	notifier := &fakeGoogleChatNotifierService{}
+	engine := settingsEngine(reminderLog, &fakeIssueSessionService{}, notifier, withOverage(intPtr(5), "1h", "15m"))
+
+	last := time.Now().Add(-10 * time.Minute) // repeat (5m) is due
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), overageSession(70*60, &last)); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "overage" {
+		t.Fatalf("sentMessages = %+v, want exactly the repeat notice", notifier.sentMessages)
+	}
 }
