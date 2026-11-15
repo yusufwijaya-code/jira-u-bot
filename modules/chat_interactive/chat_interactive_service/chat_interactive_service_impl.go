@@ -180,21 +180,21 @@ func (s *service) menu(u *registration_dto.User, typed string) view {
 		sections: []section{
 			{items: []item{paragraph(greeting)}},
 			{items: []item{
+				entry("📋 *Tiket Saya*", "Semua tiket sprint aktif + deadline — geser status dari sini", "/n-mytickets"),
 				entry("📊 *Dashboard*", "Tiket yang lagi dikerjakan, sisa budget & overdue", "/n-dashboard"),
-				entry("📋 *Papan Tiket*", "Tiket sprint aktif kamu — geser status dari sini", "/n-tiket"),
 				entry("🌴 *Cuti*", "Lihat, tambah atau hapus hari cuti", "/n-cuti"),
 				entry("🔕 *Mute notifikasi*", "Diamkan pengingat sementara", "/n-mute"),
 			}},
 			{header: "Bisa juga diketik", collapseAfter: 1, items: []item{
-				paragraph("*/n-dashboard* — ringkasan\n" +
-					"*/n-tiket* — Papan Tiket · */n-tiket CORE-123* — buka 1 tiket\n" +
+				paragraph("*/n-mytickets* — semua tiket kamu + deadline · */n-dashboard* — ringkasan\n" +
+					"*/n-tiket CORE-123* — buka 1 tiket\n" +
 					"*/n-tiket CORE-123 review* — langsung geser ke Code Review\n" +
 					"*/n-cuti besok* · */n-cuti 20/11* · */n-cuti 20/11 - 22/11 Liburan*\n" +
 					"*/n-mute 1 jam* · */n-mute besok* · */n-unmute*"),
 			}},
 			{items: []item{buttons(link("Buka Nudge Web", s.d.WebURL+"/dashboard"))}},
 		},
-		tip: "Ketik */n-dashboard*, */n-tiket*, */n-cuti*, */n-mute* atau */n-unmute*.",
+		tip: "Ketik */n-mytickets*, */n-dashboard*, */n-cuti*, */n-mute* atau */n-unmute*.",
 	}
 }
 
@@ -284,7 +284,7 @@ func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view 
 	}
 	sections = append(sections, section{header: "Status", items: status})
 	sections = append(sections, section{items: []item{buttons(
-		action("📋 Papan Tiket", actCommand, "cmd", "/n-tiket"),
+		action("📋 Tiket Saya", actCommand, "cmd", "/n-mytickets"),
 		action("🌴 Cuti", actCommand, "cmd", "/n-cuti"),
 		link("Buka di web", s.d.WebURL+"/dashboard"),
 	)}})
@@ -301,6 +301,9 @@ func remaining(c user_dashboard_dto.Card) int64 { return c.BudgetSeconds - c.Ela
 // ticketRow is one ticket line; withButton adds the "Geser" button.
 func ticketRow(c user_dashboard_dto.Card, now time.Time, withButton bool) item {
 	r := &row{top: c.Status, main: "*" + c.IssueKey + "* " + c.Summary, bottom: budgetLine(c, now)}
+	if c.StoryPoints > 0 {
+		r.top += fmt.Sprintf(" · %s SP", spLabel(c.StoryPoints))
+	}
 	if c.ParentKey != "" {
 		r.top += " · " + relationLabel(c) + " " + c.ParentKey
 	}
@@ -318,20 +321,32 @@ func relationLabel(c user_dashboard_dto.Card) string {
 	return c.Relation
 }
 
+// spLabel: "3", "1.5".
+func spLabel(sp float64) string {
+	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.1f", sp), "0"), ".")
+}
+
+// budgetLine is a ticket's time info: running clock (sisa / lewat, waktu
+// berjalan, deadline), recorded time, or the budget it will get.
 func budgetLine(c user_dashboard_dto.Card, now time.Time) string {
+	deadline := ""
+	if t, err := time.Parse(time.RFC3339, c.DeadlineAt); err == nil {
+		deadline = whenLabel(t, now) + " WIB"
+	}
 	switch {
 	case c.HasBudgetDetail && overdue(c):
-		return fmt.Sprintf("🔴 Lewat budget %s · %.1f SP", humanDuration(-remaining(c)), c.StoryPoints)
+		return fmt.Sprintf("🔴 Lewat %s · berjalan %s dari budget %s", humanDuration(-remaining(c)),
+			humanDuration(c.ElapsedSeconds), humanDuration(c.BudgetSeconds))
 	case c.HasBudgetDetail:
-		line := fmt.Sprintf("⏱ Sisa %s · %.1f SP", humanDuration(remaining(c)), c.StoryPoints)
-		if t, err := time.Parse(time.RFC3339, c.DeadlineAt); err == nil {
-			line += " · selesai " + whenLabel(t, now)
+		line := fmt.Sprintf("⏱ Sisa %s · berjalan %s", humanDuration(remaining(c)), humanDuration(c.ElapsedSeconds))
+		if deadline != "" {
+			line += " · deadline " + deadline
 		}
 		return line
 	case c.TimeRecorded:
-		return fmt.Sprintf("Tercatat %s dari budget %s", humanDuration(c.ElapsedSeconds), humanDuration(c.BudgetSeconds))
+		return fmt.Sprintf("✔ Tercatat %s dari budget %s", humanDuration(c.ElapsedSeconds), humanDuration(c.BudgetSeconds))
 	case c.StoryPoints > 0:
-		return fmt.Sprintf("%.1f SP", c.StoryPoints)
+		return "Budget " + humanDuration(int64(c.StoryPoints*3600)) + " · dihitung saat masuk Code Process"
 	}
 	return ""
 }
@@ -345,7 +360,7 @@ func (s *service) tiketCommand(ctx context.Context, email, args string) view {
 	keyWord, target, _ := strings.Cut(args, " ")
 	key, ok := normalizeKey(keyWord)
 	if !ok {
-		return note("Papan Tiket", fmt.Sprintf("%q bukan kode tiket. Contoh: */n-tiket CORE-123* atau */n-tiket CORE-123 review*", keyWord))
+		return note("📋 Tiket Saya", fmt.Sprintf("%q bukan kode tiket. Contoh: */n-tiket CORE-123* atau */n-tiket CORE-123 review*", keyWord))
 	}
 	return s.ticketDetail(ctx, email, key, strings.TrimSpace(target))
 }
@@ -354,7 +369,7 @@ func (s *service) ticketList(ctx context.Context, email string) view {
 	board, err := s.d.Dashboard.GetMyBoard(ctx, email, 0)
 	if err != nil {
 		log.Printf("chat_interactive: GetMyBoard(%s) failed: %v", email, err)
-		return note("📋 Papan Tiket", jiraBody)
+		return note("📋 Tiket Saya", jiraBody)
 	}
 	now := s.d.Now()
 
@@ -381,9 +396,9 @@ func (s *service) ticketList(ctx context.Context, email string) view {
 			total++
 		}
 	}
-	if total == 0 {
+	if total == 0 && len(board.Related) == 0 {
 		return view{
-			id: "nudge-tiket", title: "📋 Papan Tiket",
+			id: "nudge-tiket", title: "📋 Tiket Saya",
 			sections: []section{{items: []item{
 				paragraph("Kamu belum punya tiket di sprint aktif 👍"),
 				buttons(action("📊 Dashboard", actCommand, "cmd", "/n-dashboard")),
@@ -392,7 +407,29 @@ func (s *service) ticketList(ctx context.Context, email string) view {
 	}
 	sort.SliceStable(ids, func(i, j int) bool { return groups[ids[i]].name < groups[ids[j]].name })
 
-	sections := []section{{items: []item{paragraph("Pilih *Geser* di tiket yang mau dipindah statusnya.")}}}
+	var counts []string
+	for _, col := range board.Columns {
+		counts = append(counts, fmt.Sprintf("%s *%d*", col.Status, len(col.Cards)))
+	}
+	working, late := 0, 0
+	for _, c := range append(cardsOf(board), board.Related...) {
+		if c.HasBudgetDetail {
+			working++
+		}
+		if overdue(c) {
+			late++
+		}
+	}
+	overview := strings.Join(counts, " · ")
+	if working > 0 {
+		overview += fmt.Sprintf("\n⏱ *%d* sedang dikerjakan", working)
+		if late > 0 {
+			overview += fmt.Sprintf(" · 🔴 *%d* lewat budget", late)
+		}
+	}
+	overview += "\n_Klik *Geser* untuk pindah status._"
+
+	sections := []section{{items: []item{paragraph(overview)}}}
 	shown := 0
 	for _, id := range ids {
 		g := groups[id]
@@ -411,15 +448,34 @@ func (s *service) ticketList(ctx context.Context, email string) view {
 	if shown < total {
 		sections = append(sections, section{items: []item{paragraph(fmt.Sprintf("_+%d tiket lain — lihat semua di web._", total-shown))}})
 	}
+	// Subtasks / linked items outside the sprint (shown under their parent on the web).
+	var related []item
+	for _, c := range board.Related {
+		if len(related) == 20 {
+			break
+		}
+		related = append(related, ticketRow(c, now, false))
+	}
+	if len(related) > 0 {
+		sections = append(sections, section{header: fmt.Sprintf("Subtask & terkait di luar sprint (%d)", len(board.Related)), collapseAfter: 3, items: related})
+	}
 	sections = append(sections, section{items: []item{buttons(
 		action("📊 Dashboard", actCommand, "cmd", "/n-dashboard"),
 		link("Buka Papan Tiket di web", s.d.WebURL+"/dashboard/board"),
 	)}})
 	return view{
-		id: "nudge-tiket", title: "📋 Papan Tiket", subtitle: fmt.Sprintf("%d tiket di sprint aktif", total),
+		id: "nudge-tiket", title: "📋 Tiket Saya", subtitle: fmt.Sprintf("%d tiket di sprint aktif · %s", total, dayLabel(now)),
 		sections: sections,
-		tip:      "Geser tiket: */n-tiket CORE-123 <status>*, contoh */n-tiket CORE-123 review*",
+		tip:      "Buka 1 tiket: */n-tiket CORE-123* · geser langsung: */n-tiket CORE-123 review*",
 	}
+}
+
+func cardsOf(b user_dashboard_dto.Board) []user_dashboard_dto.Card {
+	var out []user_dashboard_dto.Card
+	for _, col := range b.Columns {
+		out = append(out, col.Cards...)
+	}
+	return out
 }
 
 // findCard looks key up among the caller's active-sprint tickets.
@@ -448,7 +504,7 @@ func notOwnView(key string) view {
 func (s *service) ticketDetail(ctx context.Context, email, key, target string) view {
 	key, ok := normalizeKey(key)
 	if !ok {
-		return note("Papan Tiket", "Kode tiketnya nggak valid. Contoh: */n-tiket CORE-123*")
+		return note("📋 Tiket Saya", "Kode tiketnya nggak valid. Contoh: */n-tiket CORE-123*")
 	}
 	trs, err := s.d.Dashboard.ListTransitions(ctx, email, key)
 	if err != nil {
@@ -521,7 +577,7 @@ func (s *service) ticketDetail(ctx context.Context, email, key, target string) v
 	} else {
 		sections = append(sections, section{items: []item{paragraph("_Workflow Jira nggak punya jalur pindah dari status ini._")}})
 	}
-	nav := []button{action("⬅ Papan Tiket", actCommand, "cmd", "/n-tiket")}
+	nav := []button{action("⬅ Tiket Saya", actCommand, "cmd", "/n-mytickets")}
 	if card.IssueURL != "" {
 		nav = append(nav, link("Buka di Jira", card.IssueURL))
 	}
@@ -561,7 +617,7 @@ func (s *service) move(ctx context.Context, email, key, transitionID, toStatus s
 			{items: []item{paragraph(fmt.Sprintf("✅ *%s* berhasil digeser ke *%s* · %s WIB", key, status, now.In(wib).Format("15:04")))}},
 			{items: []item{buttons(
 				action("Geser lagi", actTicket, "key", key),
-				action("⬅ Papan Tiket", actCommand, "cmd", "/n-tiket"),
+				action("⬅ Tiket Saya", actCommand, "cmd", "/n-mytickets"),
 			)}},
 		},
 	}

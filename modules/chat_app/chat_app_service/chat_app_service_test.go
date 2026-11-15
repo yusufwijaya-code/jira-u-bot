@@ -190,8 +190,9 @@ func TestCommandText_SlashCommands(t *testing.T) {
 		msg  *chat_app_dto.Message
 		want string
 	}{
-		{slash("1", ""), "/n-dashboard"},
-		{slash("2", " CORE-12 review "), "/n-tiket CORE-12 review"},
+		{slash("1", ""), "/n-mytickets"},
+		{slash("1", " CORE-12 review "), "/n-mytickets CORE-12 review"},
+		{slash("2", ""), "/n-dashboard"},
 		{slash("3", "besok"), "/n-cuti besok"},
 		{slash("4", "1 jam"), "/n-mute 1 jam"},
 		{slash("5", ""), "/n-help"},
