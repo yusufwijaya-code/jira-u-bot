@@ -9,7 +9,7 @@ import { IssueCreateService, JiraUser } from '../../../../core/services/issue-cr
   standalone: true,
   template: `
     <div class="up">
-      <input type="search" [placeholder]="label()" [value]="text()" (input)="onInput($any($event.target).value)" (focus)="open.set(true)" (blur)="onBlur()" data-user-input />
+      <input type="search" [placeholder]="label()" [value]="text()" (input)="onInput($any($event.target).value)" (focus)="open.set(true)" (blur)="onBlur()" data-user-input [disabled]="disabled()" />
       @if (open()) {
         <ul class="up-list" role="listbox">
           <li><button type="button" (click)="pick(null)">Saya</button></li>
@@ -24,6 +24,7 @@ import { IssueCreateService, JiraUser } from '../../../../core/services/issue-cr
 export class UserPickerComponent {
   private api = inject(IssueCreateService);
   boardId = input.required<number>();
+  disabled = input(false);
   picked = output<string | null>();
   protected text = signal('');
   protected label = signal('Saya');

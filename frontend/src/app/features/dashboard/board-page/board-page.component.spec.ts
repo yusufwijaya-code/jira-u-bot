@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
+import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
 
@@ -551,5 +552,30 @@ describe('board-page helpers', () => {
     expect(statusTone('CODE REVIEW')).toBe('review');
     expect(statusTone('Code Completed')).toBe('done');
     expect(statusTone('QA')).toBe('other');
+  });
+
+  describe('canLeave (unsent bulk preview guard)', () => {
+    function setup(unsent: boolean) {
+      TestBed.configureTestingModule({ imports: [BoardPageComponent], providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()] });
+      const cmp = TestBed.createComponent(BoardPageComponent).componentInstance as any;
+      cmp.tab.set('create');
+      cmp.createCard = () => ({ hasUnsent: () => unsent });
+      return cmp;
+    }
+
+    it('allows leaving without asking when nothing is unsent', async () => {
+      const cmp = setup(false);
+      const ask = spyOn(TestBed.inject(ConfirmService), 'ask');
+      expect(await cmp.canLeave()).toBeTrue();
+      expect(ask).not.toHaveBeenCalled();
+    });
+
+    it('asks to discard when unsent and keeps the tab when declined', async () => {
+      const cmp = setup(true);
+      const ask = spyOn(TestBed.inject(ConfirmService), 'ask').and.resolveTo(false);
+      await cmp.setTab('board');
+      expect(ask).toHaveBeenCalled();
+      expect(cmp.tab()).toBe('create');
+    });
   });
 });

@@ -14,8 +14,8 @@
     }
     @if (board()) {
       <div class="tb-chips cc-modes" role="tablist">
-        <button type="button" class="tb-chip" data-mode="single" [class.active]="mode() === 'single'" (click)="mode.set('single')">Satu card</button>
-        <button type="button" class="tb-chip" data-mode="bulk" [class.active]="mode() === 'bulk'" (click)="mode.set('bulk')">Bulk subtask</button>
+        <button type="button" class="tb-chip" data-mode="single" [class.active]="mode() === 'single'" (click)="setMode('single')">Satu card</button>
+        <button type="button" class="tb-chip" data-mode="bulk" [class.active]="mode() === 'bulk'" (click)="setMode('bulk')">Bulk subtask</button>
       </div>
       @if (metaError()) { <p class="cc-err">{{ metaError() }}</p> }
       @if (meta(); as m) {

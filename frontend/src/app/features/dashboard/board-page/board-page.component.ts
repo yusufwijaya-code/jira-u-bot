@@ -143,11 +143,14 @@ export class BoardPageComponent {
       .filter((c) => c.cards.length > 0);
   });
 
+  /** Route/tab guard: an unsent bulk preview needs an explicit confirm before it is discarded. */
+  async canLeave(): Promise<boolean> {
+    if (this.tab() !== 'create' || !this.createCard()?.hasUnsent()) return true;
+    return this.confirm.ask({ title: 'Buang preview?', message: 'Preview subtask yang belum dibuat akan hilang.', confirmText: 'Ya, buang', tone: 'danger' });
+  }
+
   protected async setTab(tab: 'board' | 'create', extra: Record<string, string | null> = {}): Promise<void> {
-    if (tab === 'board' && this.tab() === 'create' && this.createCard()?.hasUnsent()) {
-      const ok = await this.confirm.ask({ title: 'Buang preview?', message: 'Preview subtask yang belum dibuat akan hilang.', confirmText: 'Ya, buang', tone: 'danger' });
-      if (!ok) return;
-    }
+    if (tab === 'board' && !(await this.canLeave())) return;
     this.tab.set(tab);
     this.router.navigate([], { queryParams: { tab: tab === 'create' ? 'create' : null, ...extra }, queryParamsHandling: 'merge', replaceUrl: true });
   }

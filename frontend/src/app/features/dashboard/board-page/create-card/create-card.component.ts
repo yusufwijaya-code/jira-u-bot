@@ -1,5 +1,7 @@
 import { Subscription } from 'rxjs';
 import { Component, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { ToastService } from '../../../../core/ui/toast.service';
+import { ConfirmService } from '../../../../core/ui/confirm.service';
 import { RouterLink } from '@angular/router';
 import { BoardContextService } from '../../../../core/services/board-context.service';
 import { CreateMeta, CreateStatus, IssueCreateService } from '../../../../core/services/issue-create.service';
@@ -16,6 +18,8 @@ import { BulkSubtasksComponent } from './bulk-subtasks.component';
 })
 export class CreateCardComponent {
   private api = inject(IssueCreateService);
+  private toast = inject(ToastService);
+  private confirm = inject(ConfirmService);
   protected boards = inject(BoardContextService).boards;
   boardId = input<number | null>(null);
   initialMode = input<'single' | 'bulk'>('single');
@@ -36,8 +40,18 @@ export class CreateCardComponent {
     this.api.status().subscribe({ next: (s) => this.status.set(s), error: () => this.statusError.set(true) });
     effect(() => {
       const id = this.boardId() ?? this.localBoard();
-      untracked(() => { this.mode.set(this.initialMode()); this.loadMeta(id); });
+      untracked(() => {
+        if (this.board() !== id && this.hasUnsent()) this.toast.info('Preview dibuang karena board diganti');
+        this.mode.set(this.initialMode());
+        this.loadMeta(id);
+      });
     });
+  }
+
+  protected async setMode(m: 'single' | 'bulk'): Promise<void> {
+    if (m === this.mode()) return;
+    if (this.hasUnsent() && !(await this.confirm.ask({ title: 'Buang preview?', message: 'Preview subtask yang belum dibuat akan hilang.', confirmText: 'Ya, buang', tone: 'danger' }))) return;
+    this.mode.set(m);
   }
 
   hasUnsent(): boolean {

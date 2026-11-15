@@ -51,11 +51,11 @@
                   @case ('failed') { <small class="bs-state err">❌ {{ r.error }}</small> }
                 }
                 <button type="button" class="bs-more" (click)="patch(r.id, { open: !r.open })">{{ r.open ? 'Tutup detail' : 'Detail' }}</button>
-                @if (r.open) { <textarea rows="3" [value]="r.details" (input)="patch(r.id, { details: $any($event.target).value })"></textarea> }
+                @if (r.open) { <textarea rows="3" [disabled]="r.state === 'done' || r.state === 'sending'" [value]="r.details" (input)="patch(r.id, { details: $any($event.target).value })"></textarea> }
               </td>
               <td class="tb-num"><input type="number" min="0" max="100" step="0.5" class="bs-sp" [value]="r.storyPoints ?? ''" [disabled]="r.state === 'done'"
                 (input)="patch(r.id, { storyPoints: $any($event.target).value === '' ? null : +$any($event.target).value })" /></td>
-              <td><app-user-picker [boardId]="boardId()" (picked)="patch(r.id, { assignee: $event })" /></td>
+              <td><app-user-picker [boardId]="boardId()" [disabled]="r.state === 'done' || r.state === 'sending'" (picked)="patch(r.id, { assignee: $event })" /></td>
               <td><button type="button" class="tb-act" aria-label="Hapus baris" [disabled]="r.state === 'done' || sending()" (click)="removeRow(r.id)">🗑</button></td>
             </tr>
           }
@@ -71,6 +71,7 @@
         <button type="button" class="btn btn-primary" data-create [disabled]="!canCreate()" (click)="create()">
           {{ sending() ? 'Membuat…' : 'Buat ' + checked().length + ' subtask di Jira' }}</button>
       </div>
+      @if (rows().length && blocker(); as why) { <small class="tb-hint" data-blocker>{{ why }}</small> }
     </div>
   </div>
 </div>

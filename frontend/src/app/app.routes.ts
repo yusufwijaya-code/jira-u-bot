@@ -23,6 +23,7 @@ export const routes: Routes = [
       {
         path: 'board',
         loadComponent: () => import('./features/dashboard/board-page/board-page.component').then((m) => m.BoardPageComponent),
+        canDeactivate: [(component: { canLeave?: () => Promise<boolean> }) => component.canLeave?.() ?? true],
         title: 'Papan Tiket · Nudge',
         data: { heading: 'Papan Tiket', subheading: 'Pindahkan status tiket sprint aktif kamu sesuai workflow Jira' },
       },

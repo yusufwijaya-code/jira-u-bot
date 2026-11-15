@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ConfirmService } from '../../../../core/ui/confirm.service';
 import { BulkSubtasksComponent, titleKey } from './bulk-subtasks.component';
 
 const meta = { projectKey: 'CORE', subtaskTypeId: '10133', types: [{ id: '10133', name: 'Subtask', subtask: true, supported: true, parentAllowed: true, storyPointField: 'customfield_11053', fields: [] }] };
@@ -91,5 +92,45 @@ describe('BulkSubtasksComponent', () => {
 
   it('normalizes titles for duplicate checks', () => {
     expect(titleKey('[Docs]  Release-Document!')).toBe(titleKey('[docs] release document'));
+  });
+
+  it('on a transport error re-reads the parent and flags already-created titles', () => {
+    const f = render();
+    normalize(f);
+    const el: HTMLElement = f.nativeElement;
+    (el.querySelector('[data-create]') as HTMLButtonElement).click();
+    const req = http.expectOne((r) => r.url.endsWith('/create/subtasks'));
+    req.error(new ProgressEvent('error'), { status: 0 });
+    http.expectOne((r) => r.url.endsWith('/create/parent/CORE-10923')).flush({
+      key: 'CORE-10923', summary: 'Required Date',
+      subtasks: [{ key: 'CORE-10961', summary: '[Docs] Release Document' }, { key: 'CORE-20000', summary: '[Exec Plan] Implementasi' }],
+    });
+    f.detectChanges();
+    expect(el.textContent).toContain('Koneksi terputus');
+    expect(el.querySelector('[data-row="0"]')?.textContent).toContain('sudah ada: CORE-20000');
+    expect((el.querySelector('[data-row="0"] [data-check]') as HTMLInputElement).checked).toBeFalse();
+  });
+
+  it('asks before replacing an existing preview and keeps it when declined', async () => {
+    const f = render();
+    normalize(f);
+    const confirm = TestBed.inject(ConfirmService);
+    const ask = spyOn(confirm, 'ask').and.resolveTo(false);
+    const el: HTMLElement = f.nativeElement;
+    (el.querySelector('[data-normalize]') as HTMLButtonElement).click();
+    await f.whenStable();
+    expect(ask).toHaveBeenCalled();
+    http.expectNone((r) => r.url.endsWith('/create/normalize'));
+    expect(el.querySelectorAll('[data-row]').length).toBe(3);
+  });
+
+  it('blocks create and explains when SP is out of range', () => {
+    const f = render();
+    normalize(f);
+    const el: HTMLElement = f.nativeElement;
+    const sp = el.querySelector('[data-row="0"] .bs-sp') as HTMLInputElement;
+    sp.value = '101'; sp.dispatchEvent(new Event('input')); f.detectChanges();
+    expect((el.querySelector('[data-create]') as HTMLButtonElement).disabled).toBeTrue();
+    expect(el.querySelector('[data-blocker]')?.textContent).toContain('SP harus 0–100');
   });
 });
