@@ -2775,13 +2775,34 @@ table.admin-users {
 /* ==========================================================================
    Admin › Pesan (chat client)
    ========================================================================== */
+/* The Pesan page fills the screen: only the list and the thread scroll. */
+.shell-main:has(.chat-window) { height: 100vh; height: 100dvh; overflow: hidden; }
+.page:has(.chat-window) {
+  flex: 1;
+  min-height: 0;
+  max-width: 1440px;
+  padding: 16px 24px 20px;
+  display: flex;
+  flex-direction: column;
+}
+app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
 .chat-window {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   padding: 0;
   overflow: hidden;
-  height: calc(100vh - var(--topbar-h) - 56px);
-  min-height: 540px;
+}
+
+.chat-conv-list, .chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d8e4 transparent;
+
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-thumb { background: #d6d8e4; border-radius: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
 }
 
 /* Sidebar ----------------------------------------------------------------- */
@@ -3121,8 +3142,14 @@ table.admin-users {
   &.folded { max-height: 15.5em; overflow: hidden; -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent); mask-image: linear-gradient(180deg, #000 70%, transparent); }
 }
 .chat-msg:not(.first) .chat-bubble { border-radius: 18px; }
+/* Nudge's automatic messages: soft; what the admin typed: solid. */
 .chat-msg.out .chat-bubble {
   border-radius: 18px 4px 18px 18px;
+  background: #efedff;
+  border-color: #e0dcff;
+  color: var(--ink);
+}
+.chat-msg.out.admin .chat-bubble {
   background: linear-gradient(135deg, #6c5cff 0%, var(--primary) 60%, var(--primary-strong) 100%);
   border-color: transparent;
   color: #fff;
@@ -3300,7 +3327,8 @@ table.admin-users {
 
 /* Mobile: list or chat ---------------------------------------------------- */
 @media (max-width: 860px) {
-  .chat-window { grid-template-columns: minmax(0, 1fr); height: calc(100vh - var(--topbar-h) - 32px); }
+  .page:has(.chat-window) { padding: 10px 10px 12px; }
+  .chat-window { grid-template-columns: minmax(0, 1fr); }
   .chat-window.show-list .chat-main { display: none; }
   .chat-window:not(.show-list) .chat-sidebar { display: none; }
   .chat-sidebar { border-right: 0; }

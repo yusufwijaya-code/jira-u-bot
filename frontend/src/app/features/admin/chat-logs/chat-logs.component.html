@@ -95,7 +95,7 @@
           (click)="filtersOpen.set(!filtersOpen())"
           data-filter-toggle
         >
-          <app-icon name="selector" [size]="17" />
+          <app-icon name="filter" [size]="16" />
           @if (activeFilters()) {
             <span class="chat-filter-dot">{{ activeFilters() }}</span>
           }
@@ -183,6 +183,7 @@
               [class.failed]="r.e.status === 'failed' || r.e.pending === 'failed'"
               [class.skipped]="r.e.status === 'skipped'"
               [class.pending]="r.e.pending === 'sending'"
+              [class.admin]="r.e.kind === 'admin'"
               [attr.data-log-id]="r.e.id"
             >
               <div class="chat-avatar">
@@ -220,7 +221,7 @@
                       [title]="copied() === r.e.id ? 'Tersalin' : 'Salin pesan'"
                       (click)="copy(r.e)"
                     >
-                      <app-icon [name]="copied() === r.e.id ? 'check' : 'layers'" [size]="14" />
+                      <app-icon [name]="copied() === r.e.id ? 'check' : 'copy'" [size]="14" />
                     </button>
                   }
                 </div>
