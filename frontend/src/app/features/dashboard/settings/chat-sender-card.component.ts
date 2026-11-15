@@ -21,7 +21,7 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
             <span class="card-icon"><app-icon name="send" [size]="20" /></span>
             <div>
               <h2>Pengirim pesan</h2>
-              <p>Dari akun mana notifikasi Nudge dikirim ke Google Chat {{ userId === null ? 'kamu' : 'user ini' }}.</p>
+              <p>Dari akun mana notifikasi Nudge dikirim ke Google Chat {{ userId === null ? 'kamu' : 'user ini' }}. Berlaku untuk semua board.</p>
             </div>
           </header>
           <div class="sender-choices" role="radiogroup" aria-label="Pengirim pesan">
