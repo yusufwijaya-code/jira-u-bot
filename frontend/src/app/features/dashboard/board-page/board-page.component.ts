@@ -273,7 +273,12 @@ export class BoardPageComponent {
   }
 
   protected copyKey(card: TicketCard): void {
-    navigator.clipboard?.writeText(card.issueKey).then(
+    const clipboard = navigator.clipboard;
+    if (!clipboard) {
+      this.toast.error('Gagal menyalin', card.issueKey);
+      return;
+    }
+    clipboard.writeText(card.issueKey).then(
       () => this.toast.success('Disalin', card.issueKey),
       () => this.toast.error('Gagal menyalin', card.issueKey),
     );
@@ -287,8 +292,9 @@ export class BoardPageComponent {
     const parts = [`Dipakai ${shortDuration(card.elapsedSeconds)}`, `Budget ${shortDuration(card.budgetSeconds)}`];
     const diff = shortDuration(card.budgetSeconds - card.elapsedSeconds);
     parts.push(this.isOverBudget(card) ? `Lewat ${diff}` : `Sisa ${diff}`);
-    if (card.startedAt) {
-      parts.push(`Mulai ${new Date(card.startedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' })}`);
+    const started = card.startedAt ? new Date(card.startedAt) : null;
+    if (started && !isNaN(started.getTime())) {
+      parts.push(`Mulai ${started.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' })}`);
     }
     return parts.join(' · ');
   }

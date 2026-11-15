@@ -199,4 +199,4 @@ tr:hover .tb-row-actions, tr:focus-within .tb-row-actions { opacity: 1; }
   app-icon { transition: transform .2s; } app-icon:not(.open) { transform: rotate(-90deg); } }
 .tb-mini-bar { width: 56px; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden;
   span { display: block; height: 100%; background: var(--success); } }
-@media (prefers-reduced-motion: reduce) { .tb-branch-toggle app-icon { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tb-branch-toggle app-icon, .tb-row-actions { transition: none; } .tb-table tr.just-moved > td { animation: none; } }

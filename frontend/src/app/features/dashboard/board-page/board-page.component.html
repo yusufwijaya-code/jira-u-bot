@@ -142,7 +142,7 @@
                         <button type="button" class="tb-branch-toggle" [attr.data-branch-toggle]="card.issueKey" [attr.aria-expanded]="isBranchOpen(card.issueKey)" (click)="toggleBranches(card.issueKey)">
                           <app-icon name="chevron-down" [size]="12" [class.open]="isBranchOpen(card.issueKey)" />
                           <span [attr.data-branch-progress]="card.issueKey">{{ branchProgress(card).total }} subtask · {{ branchProgress(card).done }}/{{ branchProgress(card).total }} selesai</span>
-                          <span class="tb-mini-bar"><span [style.width.%]="(branchProgress(card).done / branchProgress(card).total) * 100"></span></span>
+                          <span class="tb-mini-bar" aria-hidden="true"><span [style.width.%]="(branchProgress(card).done / branchProgress(card).total) * 100"></span></span>
                         </button>
                       }
                       @if (card.parentKey) {
@@ -156,17 +156,17 @@
                     <ng-container *ngTemplateOutlet="statusCell; context: { $implicit: card }" />
                   </td>
                 </tr>
-                <!-- Subtasks / linked items outside the sprint hang under their parent . -->
+                <!-- Subtasks / linked items outside the sprint hang under their parent row. -->
                 @for (b of branchesOf(card); track b.issueKey) {
                   <tr class="tb-branch" [attr.data-branch]="b.issueKey" [attr.data-branch-of]="card.issueKey">
                     <td data-label="Tiket">
                       <span class="tb-branch-key">
                         <span class="tb-elbow" aria-hidden="true"></span>
                         <a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a>
-                      <span class="tb-row-actions">
-                        <a class="tb-act" [href]="b.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
-                        <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(b)"><app-icon name="copy" [size]="13" /></button>
-                      </span>
+                        <span class="tb-row-actions">
+                          <a class="tb-act" [href]="b.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
+                          <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(b)"><app-icon name="copy" [size]="13" /></button>
+                        </span>
                       </span>
                     </td>
                     <td data-label="Ringkasan">

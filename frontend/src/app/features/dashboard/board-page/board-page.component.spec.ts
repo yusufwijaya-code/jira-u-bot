@@ -405,6 +405,37 @@ describe('BoardPageComponent', () => {
     expect(el.querySelector('[data-branch="CORE-2"] [data-add-subtask]')).toBeNull();
   });
 
+  it('offers + Subtask on the parent row only and opens the create tab for it', () => {
+    const fixture = renderWithBranch();
+    const cmp = fixture.componentInstance as any;
+    cmp.createCardEnabled = true;
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-branch="CORE-2"] [data-add-subtask]')).toBeNull();
+    const btn = el.querySelector('[data-card="CORE-1"] [data-add-subtask]') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    const spy = spyOn(cmp, 'setTab');
+    btn.click();
+    expect(spy).toHaveBeenCalledWith('create', { mode: 'bulk', parent: 'CORE-1' });
+  });
+
+  it('toasts an error when the clipboard is unavailable', () => {
+    const fixture = renderWithBranch();
+    spyOnProperty(navigator, 'clipboard').and.returnValue(undefined as unknown as Clipboard);
+    const toast = spyOn(TestBed.inject(ToastService), 'error');
+    (fixture.nativeElement.querySelector('[data-card="CORE-1"] [data-copy]') as HTMLButtonElement).click();
+    expect(toast).toHaveBeenCalledWith('Gagal menyalin', 'CORE-1');
+  });
+
+  it('shows Sisa and Mulai for an under-budget card with a start time, and skips an unparsable one', () => {
+    const cmp = renderWithBranch().componentInstance as any;
+    const base = { issueKey: 'X-1', hasBudgetDetail: true, elapsedSeconds: 1800, budgetSeconds: 3600 };
+    const tip = cmp.timeTooltip({ ...base, startedAt: '2026-11-15T03:00:00Z' });
+    expect(tip).toContain('Sisa 30m');
+    expect(tip).toContain('Mulai');
+    expect(cmp.timeTooltip({ ...base, startedAt: 'garbage' })).not.toContain('Mulai');
+  });
+
   it('explains the time bar in a tooltip', () => {
     const fixture = render();
     const time = fixture.nativeElement.querySelector('[data-card="OMS-2"] [data-time]') as HTMLElement;
