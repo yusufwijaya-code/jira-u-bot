@@ -52,8 +52,9 @@
       </section>
     }
 
-    <!-- Pengirim pesan (Tech Spec "Nudge sebagai Google Chat App", US-7) — global, so only on "Semua board" -->
-    @if (!isAdminMode && scopeBoardId() === null) {
+    <!-- Pengirim pesan (Tech Spec "Nudge sebagai Google Chat App", US-7) — one choice for
+         every board, shown in every board scope so it's always at hand -->
+    @if (!isAdminMode) {
       <app-chat-sender-card />
     }
 
