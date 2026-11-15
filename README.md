@@ -51,6 +51,19 @@
 - Design system di `frontend/src/styles.scss` (token warna indigo `--primary` + aksen amber `--accent`, font Plus Jakarta Sans); komponen UI bersama: `shared/ui/icon.component.ts` (ikon SVG inline), `core/ui/toast.service.ts` + `core/ui/confirm.service.ts` (toast & dialog konfirmasi, di-render oleh `shared/ui/overlays.component.ts`), dropdown custom `shared/ui/select.component.ts` dan pemilih jam `shared/ui/time-picker.component.ts` (pengganti `<select>`/`<input type="time">` native)
 - Command bot Google Chat memakai prefix `/n-` (Nudge; dulu `/u-`, prefix lama tidak dikenali lagi)
 
+### Buat Card Jira
+
+Di Papan Tiket, tombol **Buat Card** membuat issue (dan subtask massal) langsung ke Jira memakai **token Jira pribadi** user (isi dulu di Pengaturan). Teks Task Breakdown yang ditempel bisa dirapikan otomatis oleh Gemini sebelum dikirim. Endpoint: `/api/dashboard/create/{status,meta,users,parent/:key,issue,normalize,subtasks}`.
+
+Env (opsional; kosongkan `GEMINI_API_KEY` untuk mematikan fitur AI):
+
+```
+GEMINI_API_KEY=       # API key AI Studio
+GEMINI_MODEL=gemini-flash-lite-latest
+```
+
+Catatan free tier: input yang dikirim ke Gemini bisa dipakai Google untuk training. Hanya teks yang ditempel user yang dikirim, tidak ada data lain.
+
 ## Tech Stack
 
 - Go

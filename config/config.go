@@ -67,6 +67,9 @@ type AppConfig struct {
 	GoogleChatAppProjectNumber         string
 	GoogleChatAppOneClick              bool
 	GoogleChatAppActivationRedirectURL string
+	// Gemini (Buat Card normalize): AI Studio API key (empty = AI off) and model.
+	GeminiAPIKey string
+	GeminiModel  string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -88,6 +91,7 @@ func LoadConfig(cfg *AppConfig) error {
 	v.SetDefault("MYSQL_DATABASE", "jira_db")
 	v.SetDefault("GOOGLE_OAUTH_TOKEN_PATH", "./data/chat_oauth_token.json")
 	v.SetDefault("GOOGLE_CHAT_APP_ONE_CLICK", true)
+	v.SetDefault("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 	cfg.JiraBaseURL = v.GetString("JIRA_BASE_URL")
 	cfg.JiraEmail = v.GetString("JIRA_EMAIL")
@@ -115,6 +119,8 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.GoogleChatAppProjectNumber = v.GetString("GOOGLE_CHAT_APP_PROJECT_NUMBER")
 	cfg.GoogleChatAppOneClick = v.GetBool("GOOGLE_CHAT_APP_ONE_CLICK")
 	cfg.GoogleChatAppActivationRedirectURL = v.GetString("GOOGLE_CHAT_APP_ACTIVATION_REDIRECT_URL")
+	cfg.GeminiAPIKey = v.GetString("GEMINI_API_KEY")
+	cfg.GeminiModel = v.GetString("GEMINI_MODEL")
 
 	return nil
 }
