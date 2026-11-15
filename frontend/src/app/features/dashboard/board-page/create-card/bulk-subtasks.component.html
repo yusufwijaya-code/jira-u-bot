@@ -43,7 +43,7 @@
             <tr [attr.data-row]="i" [class.done]="r.state === 'done'" [class.failed]="r.state === 'failed'">
               <td><input type="checkbox" data-check [checked]="r.checked" [disabled]="r.state === 'done' || sending()" (change)="patch(r.id, { checked: $any($event.target).checked })" /></td>
               <td>
-                <input class="bs-title" [value]="r.title" [disabled]="r.state === 'done'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
+                <input class="bs-title" [value]="r.title" [disabled]="r.state === 'done' || r.state === 'sending'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
                 @if (r.duplicateOf) { <small class="bs-dup">⚠ sudah ada: {{ r.duplicateOf }}</small> }
                 @switch (r.state) {
                   @case ('sending') { <small class="bs-state">⏳ membuat…</small> }
@@ -66,7 +66,7 @@
         <span data-total>{{ checked().length }} baris · {{ totalSP() }} SP</span>
         @if (finished(); as s) {
           <span data-summary-result>{{ s.ok }} dibuat, {{ s.failed }} gagal</span>
-          @if (s.failed) { <button type="button" class="btn btn-soft btn-sm" data-retry [disabled]="sending()" (click)="create(true)">Ulangi yang gagal</button> }
+          @if (s.failed) { <button type="button" class="btn btn-soft btn-sm" data-retry [disabled]="sending() || refreshing()" (click)="create(true)">Ulangi yang gagal</button> }
         }
         <button type="button" class="btn btn-primary" data-create [disabled]="!canCreate()" (click)="create()">
           {{ sending() ? 'Membuat…' : 'Buat ' + checked().length + ' subtask di Jira' }}</button>

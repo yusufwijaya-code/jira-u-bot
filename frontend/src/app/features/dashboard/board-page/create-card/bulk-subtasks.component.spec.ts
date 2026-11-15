@@ -63,6 +63,8 @@ describe('BulkSubtasksComponent', () => {
     req.flush({ results: [{ clientId: ids[0], key: 'CORE-1' }, { clientId: ids[1], error: 'SP: bad' }] });
     f.detectChanges();
     expect(el.querySelector('[data-summary-result]')?.textContent).toContain('1 dibuat, 1 gagal');
+    http.expectOne((r) => r.url.endsWith('/create/parent/CORE-10923')).flush({ key: 'CORE-10923', summary: 'Required Date', subtasks: [{ key: 'CORE-10961', summary: '[Docs] Release Document' }] });
+    f.detectChanges();
     (el.querySelector('[data-retry]') as HTMLButtonElement).click();
     const retry = http.expectOne((r) => r.url.endsWith('/create/subtasks'));
     expect(retry.request.body.rows.length).toBe(1);
@@ -94,7 +96,7 @@ describe('BulkSubtasksComponent', () => {
     expect(titleKey('[Docs]  Release-Document!')).toBe(titleKey('[docs] release document'));
   });
 
-  it('on a transport error re-reads the parent and flags already-created titles', () => {
+  it('on a transport error re-reads the parent and adopts already-created titles', () => {
     const f = render();
     normalize(f);
     const el: HTMLElement = f.nativeElement;
@@ -107,8 +109,25 @@ describe('BulkSubtasksComponent', () => {
     });
     f.detectChanges();
     expect(el.textContent).toContain('Koneksi terputus');
-    expect(el.querySelector('[data-row="0"]')?.textContent).toContain('sudah ada: CORE-20000');
+    expect(el.querySelector('[data-row="0"]')?.textContent).toContain('✅ CORE-20000');
     expect((el.querySelector('[data-row="0"] [data-check]') as HTMLInputElement).checked).toBeFalse();
+  });
+
+  it('adopts rows found in Jira after a transport error and retries only the rest', () => {
+    const f = render();
+    normalize(f);
+    const el: HTMLElement = f.nativeElement;
+    (el.querySelector('[data-create]') as HTMLButtonElement).click();
+    http.expectOne((r) => r.url.endsWith('/create/subtasks')).error(new ProgressEvent('error'), { status: 0 });
+    http.expectOne((r) => r.url.endsWith('/create/parent/CORE-10923')).flush({
+      key: 'CORE-10923', summary: 'Required Date', subtasks: [{ key: 'CORE-20000', summary: '[Exec Plan] Implementasi' }],
+    });
+    f.detectChanges();
+    expect(el.querySelector('[data-row="0"]')?.textContent).toContain('✅ CORE-20000');
+    (el.querySelector('[data-retry]') as HTMLButtonElement).click();
+    const retry = http.expectOne((r) => r.url.endsWith('/create/subtasks'));
+    expect(retry.request.body.rows.map((r: { title: string }) => r.title)).toEqual(['Tanpa SP']);
+    retry.flush({ results: [] });
   });
 
   it('asks before replacing an existing preview and keeps it when declined', async () => {

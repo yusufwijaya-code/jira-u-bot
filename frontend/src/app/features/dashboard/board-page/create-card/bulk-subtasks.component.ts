@@ -51,6 +51,8 @@ export class BulkSubtasksComponent implements OnInit {
   protected parentError = signal<string | null>(null);
   protected text = signal('');
   protected normalizing = signal(false);
+  protected confirming = signal(false);
+  protected refreshing = signal(false);
   protected aiError = signal<string | null>(null);
   protected warnings = signal<string[]>([]);
   protected rows = signal<PreviewRow[]>([]);
@@ -72,7 +74,7 @@ export class BulkSubtasksComponent implements OnInit {
     if (c.some((r) => r.storyPoints !== null && !(r.storyPoints >= 0 && r.storyPoints <= 100))) return 'SP harus 0–100';
     return null;
   });
-  protected canCreate = computed(() => !this.sending() && this.blocker() === null);
+  protected canCreate = computed(() => !this.sending() && !this.refreshing() && this.blocker() === null);
 
   ngOnInit(): void {
     this.dashboard.getBoard(this.boardId()).subscribe({ next: (b) => this.candidates.set((b.columns ?? []).flatMap((c) => c.cards).filter((c) => !c.parentKey)) });
@@ -95,8 +97,13 @@ export class BulkSubtasksComponent implements OnInit {
   }
 
   protected async normalize(): Promise<void> {
-    if (!this.aiReady() || !this.text().trim() || this.normalizing()) return;
-    if (this.rows().length > 0 && !(await this.confirm.ask({ title: 'Ganti preview?', message: 'Preview saat ini (termasuk edit dan baris yang sudah dibuat) akan diganti hasil normalize baru.', confirmText: 'Ya, ganti', tone: 'danger' }))) return;
+    if (!this.aiReady() || !this.text().trim() || this.normalizing() || this.confirming()) return;
+    if (this.rows().length > 0) {
+      this.confirming.set(true);
+      const ok = await this.confirm.ask({ title: 'Ganti preview?', message: 'Preview saat ini (termasuk edit dan baris yang sudah dibuat) akan diganti hasil normalize baru.', confirmText: 'Ya, ganti', tone: 'danger' });
+      this.confirming.set(false);
+      if (!ok) return;
+    }
     this.normalizing.set(true);
     this.aiError.set(null);
     this.api.normalize(this.boardId(), this.text()).subscribe({
@@ -115,11 +122,15 @@ export class BulkSubtasksComponent implements OnInit {
     return { id: `r${++seq}`, checked: true, title, storyPoints: sp, assignee: null, details, open: false, duplicateOf: null, state: 'idle' };
   }
 
-  private markDuplicates(): void {
+  /** `adoptSent`: after an uncertain send, a failed/sending row that already exists in Jira counts as created. */
+  private markDuplicates(adoptSent = false): void {
     const existing = new Map((this.parent()?.subtasks ?? []).map((s) => [titleKey(s.summary), s.key]));
     this.rows.update((rows) => rows.map((r) => {
       if (r.state === 'done') return r;
       const dup = existing.get(titleKey(r.title)) ?? null;
+      if (adoptSent && dup && (r.state === 'failed' || r.state === 'sending')) {
+        return { ...r, state: 'done', key: dup, duplicateOf: null, error: undefined, checked: false };
+      }
       return { ...r, duplicateOf: dup, checked: dup ? false : r.checked };
     }));
   }
@@ -131,15 +142,24 @@ export class BulkSubtasksComponent implements OnInit {
     if (p.title !== undefined) this.markDuplicates();
   }
 
-  private refreshParent(): void {
+  private refreshParent(adoptSent = false): void {
     const parent = this.parent();
     if (!parent) return;
-    this.api.parent(this.boardId(), parent.key).subscribe({ next: (p) => { this.parent.set(p); this.markDuplicates(); } });
+    this.refreshing.set(true);
+    this.api.parent(this.boardId(), parent.key).subscribe({
+      next: (p) => {
+        this.parent.set(p);
+        this.refreshing.set(false);
+        this.markDuplicates(adoptSent);
+        if (adoptSent) this.finished.set({ ok: this.rows().filter((r) => r.state === 'done').length, failed: this.rows().filter((r) => r.state === 'failed').length });
+      },
+      error: () => this.refreshing.set(false),
+    });
   }
 
   protected create(onlyFailed = false): void {
     const parent = this.parent();
-    const targets = this.rows().filter((r) => r.state !== 'done' && (onlyFailed ? r.state === 'failed' : r.checked));
+    const targets = this.rows().filter((r) => r.state !== 'done' && (onlyFailed ? r.state === 'failed' && !r.duplicateOf : r.checked));
     if (!parent || targets.length === 0) return;
     this.sending.set(true);
     const ids = new Set(targets.map((t) => t.id));
@@ -153,7 +173,7 @@ export class BulkSubtasksComponent implements OnInit {
         const transport = !err?.status || err.status >= 500;
         this.rows.update((rows) => rows.map((r) => (ids.has(r.id) ? { ...r, state: 'failed', error: transport ? 'Koneksi terputus — sebagian subtask mungkin sudah dibuat. Baris yang sudah ada ditandai.' : err?.error?.error ?? 'Gagal mengirim' } : r)));
         this.finished.set({ ok: this.rows().filter((r) => r.state === 'done').length, failed: this.rows().filter((r) => r.state === 'failed').length });
-        if (transport) this.refreshParent();
+        if (transport) this.refreshParent(true);
       },
     });
   }
