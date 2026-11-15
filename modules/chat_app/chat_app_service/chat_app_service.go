@@ -214,8 +214,8 @@ func (s *service) message(ctx context.Context, ev chat_app_dto.Event) chat_app_d
 // configuration to the /n-* text chat_interactive understands. Old names
 // typed as text still work (chat_interactive keeps them as aliases).
 var slashCommands = map[string]string{
-	"1": "/n-dashboard",
-	"2": "/n-tiket",
+	"1": "/n-mytickets",
+	"2": "/n-dashboard",
 	"3": "/n-cuti",
 	"4": "/n-mute",
 	"5": "/n-help",

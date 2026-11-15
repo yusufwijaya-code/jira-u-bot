@@ -16,10 +16,10 @@
 - **Command chat** = fitur dashboard web, memakai service yang sama (`modules/chat_interactive`). Di app Nudge balasannya card bertombol; di DM akun operator (polling `spaces.messages.list`) versi teksnya:
   - `/n-help` (atau ketik apa saja) — menu dengan tombol Dashboard, Papan Tiket, Cuti, Mute
   - `/n-dashboard` — tiket yang sedang dikerjakan (Code Process; untuk CORE juga Code Review) + sisa budget, jumlah per status, overdue, status mute, cuti berikutnya
-  - `/n-tiket` — Papan Tiket: tiket sprint aktif per board, tombol *Geser* → pilih status sesuai workflow Jira; `/n-tiket CORE-1` buka satu tiket; `/n-tiket CORE-1 review` langsung geser (hanya tiket sprint aktif milik sendiri, Jira credential pribadi bila ada)
+  - `/n-mytickets` (alias `/n-tiket`) — semua tiket sprint aktif per board: status, SP, waktu berjalan, sisa/lewat budget, deadline, waktu tercatat, plus subtask/terkait di luar sprint; tombol *Geser* → pilih status sesuai workflow Jira; `/n-tiket CORE-1` buka satu tiket; `/n-tiket CORE-1 review` langsung geser (hanya tiket sprint aktif milik sendiri, Jira credential pribadi bila ada)
   - `/n-cuti` — daftar cuti + form tanggal; `/n-cuti besok`, `/n-cuti 20/11 - 22/11 catatan`, `/n-cuti hapus 20/11`
   - `/n-mute` — tombol durasi (30m / 1j / 2j / 4j / besok pagi / matikan); `/n-mute 2 jam`, `/n-unmute`
-  - Nama lama (`/n-mytickets`, `/n-budget`, `/n-overdue`, `/n-team`, `/n-geser`) tetap diterima sebagai alias. Slash command app: ID 1 dashboard, 2 tiket, 3 cuti, 4 mute, 5 help, 6 unmute
+  - Nama lama (`/n-budget`, `/n-overdue`, `/n-team`, `/n-geser`) tetap diterima sebagai alias. Slash command app: ID 1 mytickets, 2 dashboard, 3 cuti, 4 mute, 5 help, 6 unmute
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di root `https://nudge.labcup.tech/`; backend hanya JSON API di `/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
   - **Per board Jira**: pemilih board di navbar (ikon project dari Jira, via proxy `GET /api/dashboard/boards/:id/avatar`) berisi "Semua board" + board yang sprint aktifnya berisi tiket kamu. Board tiket = board dari sprint **aktif**-nya (field sprint Jira). Dashboard & Pengaturan mengikuti board terpilih (`?board=` di URL, diingat di browser)
   - Pengaturan per board: "Semua board" = pengaturan default; board tanpa pengaturan khusus mengikuti default (tombol **Atur khusus board ini** / **Kembalikan ke default**); mute dua level (semua board + per board). Disimpan di `ms_user_setting` dengan kunci `(userID, boardID)`, `boardID = 0` = default; cache board di `ms_board`
@@ -94,7 +94,7 @@ File server di repo: `deploy/nudge.service` (`/etc/systemd/system/`), `deploy/ng
 - `modules/chat_app` — Google Chat App "Nudge": client REST (service account), verifikasi JWT event, event service/handler (`POST /api/chat/events`), repository state per user (`ms_user.chatApp*`, `chatSender`)
 - `modules/chat_app_activation` — aktivasi app 1-klik (OAuth `spaces.setup`), status & pilihan pengirim
 - `modules/chat_delivery` — router pengirim per penerima (Nudge / operator) + cadangan ke akun operator saat app gagal
-- `modules/chat_interactive` — command chat (`/n-dashboard`, `/n-tiket`, `/n-cuti`, `/n-mute`, `/n-help`) + tombol card, dirender ke card & teks
+- `modules/chat_interactive` — command chat (`/n-mytickets`, `/n-dashboard`, `/n-cuti`, `/n-mute`, `/n-help`) + tombol card, dirender ke card & teks
 - `modules/chat_command_poller` — loop polling pesan DM tiap 10 detik, mendeteksi & membalas command
 - `modules/chat_command_poll_cursor` — penyimpanan cursor (createTime pesan terakhir diproses) per DM space
 - `modules/registration` — repository & service data user (`ms_user`) — dipakai auto-registrasi, bukan lagi form manual

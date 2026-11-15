@@ -194,7 +194,7 @@ func TestCommand_UnknownTextShowsTheMenuWithAButtonPerFeature(t *testing.T) {
 			}
 		}
 	}
-	if strings.Join(fns, ",") != "/n-dashboard,/n-tiket,/n-cuti,/n-mute" {
+	if strings.Join(fns, ",") != "/n-mytickets,/n-dashboard,/n-cuti,/n-mute" {
 		t.Errorf("menu buttons = %v", fns)
 	}
 }
@@ -215,7 +215,7 @@ func TestDashboard_ShowsOnlyWorkingTicketsWithBudgetAndCountsCOREReviewAsWorking
 		"To Do *1* · Code Process *1* · CODE REVIEW *1* · Done *1*",
 		"🔴 *1 tiket lewat budget*",
 		"*CORE-2* Voucher API", // CORE in Code Review is still counted
-		"🔴 Lewat budget 1 jam",
+		"🔴 Lewat 1 jam",
 		"*CORE-1* Fix login",
 		"⏱ Sisa 2 jam",
 		"🔔 Notifikasi aktif",
@@ -512,5 +512,31 @@ func TestRouteCommand_IsTheTextRendering(t *testing.T) {
 	f := newFixture()
 	if got := f.svc.RouteCommand(context.Background(), dev, "/n-mute"); !strings.HasPrefix(got, "*🔕 Mute notifikasi*") || !strings.Contains(got, "💡 Ketik */n-mute 30m*") {
 		t.Errorf("text = %q", got)
+	}
+}
+
+func TestMyTickets_ListsEveryTicketWithItsTimeInfo(t *testing.T) {
+	f := newFixture()
+	b := sampleBoard()
+	b.Columns[0].Cards[0].StoryPoints = 2 // To Do ticket: budget it will get
+	b.Columns[3].Cards[0].TimeRecorded = true
+	b.Columns[3].Cards[0].ElapsedSeconds, b.Columns[3].Cards[0].BudgetSeconds = 1800, 3600
+	b.Related = []user_dashboard_dto.Card{{IssueKey: "CORE-50", Summary: "Sub", Status: "To Do", ParentKey: "CORE-1", Relation: "subtask"}}
+	f.dash.board = b
+	r := f.svc.Command(context.Background(), dev, "/n-mytickets")
+	for _, want := range []string{
+		"*📋 Tiket Saya*",
+		"To Do *1* · Code Process *1* · CODE REVIEW *1* · Done *1*",
+		"⏱ *2* sedang dikerjakan · 🔴 *1* lewat budget",
+		"• *CORE-1* Fix login\n   Code Process · 3 SP\n   ⏱ Sisa 2 jam · berjalan 1 jam · deadline 14:00 WIB",
+		"• *CORE-2* Voucher API\n   CODE REVIEW · 2 SP\n   🔴 Lewat 1 jam · berjalan 3 jam dari budget 2 jam",
+		"• *CORE-3* Report\n   To Do · 2 SP\n   Budget 2 jam · dihitung saat masuk Code Process",
+		"✔ Tercatat 30 menit dari budget 1 jam",
+		"*Subtask & terkait di luar sprint (1)*",
+		"• *CORE-50* Sub\n   To Do · subtask dari CORE-1",
+	} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("missing %q in:\n%s", want, r.Text)
+		}
 	}
 }
