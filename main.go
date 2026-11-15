@@ -41,6 +41,9 @@ import (
 	"nudge/modules/chat_log/chat_log_handler"
 	"nudge/modules/chat_log/chat_log_repository"
 	"nudge/modules/chat_oauth/chat_oauth_service"
+	"nudge/modules/gemini_client"
+	"nudge/modules/issue_create/issue_create_handler"
+	"nudge/modules/issue_create/issue_create_service"
 	"nudge/modules/issue_session/issue_session_repository"
 	"nudge/modules/issue_session/issue_session_service"
 	"nudge/modules/jira_client/jira_client_service"
@@ -174,6 +177,13 @@ func main() {
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
 		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
 	)
+
+	issueCreateSvc := issue_create_service.New(issue_create_service.Deps{
+		Jira:        jira_client_service.NewIssueCreateClient(&cfg),
+		Credentials: jiraCredentialSvc,
+		Boards:      userDashboardSvc,
+		AI:          gemini_client.New(cfg.GeminiAPIKey, cfg.GeminiModel),
+	})
 
 	// Chat commands are the web dashboard's features (Dashboard, Papan Tiket,
 	// Cuti, Mute) on the same services.
@@ -361,6 +371,7 @@ func main() {
 	chatAppRoutes.AdminChange = admin_dashboard_handler.AdminChangeListener(adminDashboardSvc)
 	MountChatApp(router, &cfg, authSvc, chatAppRoutes)
 	MountBoardScope(router, &cfg, authSvc, board_scope.NewHandler(boardScopeRepo))
+	MountIssueCreate(router, &cfg, authSvc, issue_create_handler.New(issueCreateSvc, cfg.JiraBaseURL))
 	MountChatLog(router, &cfg, authSvc, chat_log_handler.New(chatLogRepo, deliveryRouter, registrationRepo))
 
 	srv := &http.Server{

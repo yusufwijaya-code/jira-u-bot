@@ -1,0 +1,34 @@
+<div class="kb" role="list">
+  @for (col of shown(); track col.status) {
+    <section class="kb-col" role="listitem" [attr.data-kcol]="col.status" [attr.data-tone]="statusTone(col.status)"
+      [class.drop-ok]="state(col.status) === 'ok'" [class.drop-no]="state(col.status) === 'no'" [class.drop-loading]="state(col.status) === 'loading'"
+      (dragover)="onDragOver($event, col.status)" (drop)="onDrop($event, col.status)">
+      <header class="kb-head"><span class="tb-dot"></span><span>{{ col.status }}</span><span class="kb-count">{{ col.cards.length }}</span></header>
+      <div class="kb-cards">
+        @for (card of col.cards; track card.issueKey) {
+          <article class="kb-card" [attr.data-kcard]="card.issueKey" [attr.draggable]="!touch && moving() !== card.issueKey"
+            [class.busy]="moving() === card.issueKey" [class.dragging]="dragging()?.issueKey === card.issueKey"
+            (dragstart)="onDragStart($event, card)" (dragend)="onDragEnd()">
+            <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener" draggable="false">{{ card.issueKey }}</a>
+            <p class="kb-title">{{ card.summary }}</p>
+            <footer class="kb-meta">
+              <span>{{ card.storyPoints ? card.storyPoints + ' SP' : '— SP' }}</span>
+              @if (card.hasBudgetDetail || card.timeRecorded) {
+                <span [class.over]="card.elapsedSeconds > card.budgetSeconds">{{ shortDuration(card.elapsedSeconds) }} / {{ shortDuration(card.budgetSeconds) }}</span>
+              }
+              @if (branchCount()(card.issueKey)) { <span>↳ {{ branchCount()(card.issueKey) }}</span> }
+            </footer>
+            @if (card.budgetSeconds) {
+              <span class="kb-bar" [class.over]="card.elapsedSeconds > card.budgetSeconds"><span [style.width.%]="budgetPercent(card)"></span></span>
+            }
+          </article>
+        } @empty {
+          <p class="kb-empty">{{ col.temp ? 'Lepas di sini' : 'Kosong' }}</p>
+        }
+      </div>
+    </section>
+  }
+</div>
+@if (touch) {
+  <p class="kb-hint">Di layar kecil/sentuh, ubah status dari tampilan Daftar.</p>
+}

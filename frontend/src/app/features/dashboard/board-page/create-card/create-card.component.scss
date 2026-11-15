@@ -1,0 +1,17 @@
+:host { display: block; }
+.cc { display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+:host ::ng-deep {
+  .cc-form { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+  .cc-field { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--text-muted); flex: 1;
+    input, select, textarea { font: inherit; font-size: .88rem; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+    input:focus, select:focus, textarea:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); } }
+  .cc-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .cc-err { color: var(--error); font-size: .78rem; }
+  .cc-warn { margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent); font-size: .82rem; }
+  .cc-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .cc-done { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--success) 10%, transparent); }
+}
+.cc-banner { padding: 12px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--primary) 8%, transparent); font-size: .88rem; }
+.cc-modes { align-self: flex-start; }
+.tb-chips { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; }
+.tb-chip { border: 0; background: none; font: inherit; font-size: .8rem; padding: 5px 12px; border-radius: 999px; color: var(--text-muted); cursor: pointer; &.active { background: var(--primary); color: #fff; } }

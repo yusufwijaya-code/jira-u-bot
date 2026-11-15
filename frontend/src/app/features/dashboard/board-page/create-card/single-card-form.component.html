@@ -1,0 +1,58 @@
+@if ((meta().types ?? []).length === 0) {
+  <p class="tb-hint" data-no-types>Tidak ada tipe card yang bisa kamu buat di project ini.</p>
+} @else {
+<form class="cc-form" (submit)="$event.preventDefault(); submit()">
+  <label class="cc-field"><span>Tipe</span>
+    <select data-type [value]="typeId()" (change)="setType($any($event.target).value)">
+      <option value="">Pilih tipe…</option>
+      @for (t of meta().types ?? []; track t.id) { <option [value]="t.id">{{ t.name }}{{ t.subtask ? ' (subtask)' : '' }}{{ t.supported ? '' : ' — tidak didukung' }}</option> }
+    </select>
+  </label>
+  @if (type(); as t) {
+    @if (!t.supported) { <p class="cc-warn">Tidak didukung: tipe ini punya field wajib yang belum bisa diisi dari Nudge. Buat di Jira.</p> }
+    <label class="cc-field"><span>Judul *</span>
+      <input data-summary maxlength="255" [value]="summary()" (input)="summary.set($any($event.target).value)" />
+      @if (errors()['summary']) { <small class="cc-err">{{ errors()['summary'] }}</small> }
+    </label>
+    <label class="cc-field"><span>Deskripsi</span>
+      <textarea rows="4" [value]="description()" (input)="description.set($any($event.target).value)"></textarea>
+    </label>
+    <div class="cc-row">
+      @if (t.storyPointField) {
+        <label class="cc-field"><span>SP</span>
+          <input type="number" min="0" max="100" step="0.5" [value]="sp() ?? ''" (input)="sp.set($any($event.target).value === '' ? null : +$any($event.target).value)" />
+        </label>
+      }
+      <label class="cc-field"><span>Assignee</span><app-user-picker [boardId]="boardId()" (picked)="assignee.set($event)" /></label>
+      @if (t.subtask || t.parentAllowed) {
+        <label class="cc-field"><span>Parent{{ t.subtask ? ' *' : '' }}</span>
+          <input placeholder="mis. CORE-10923" [value]="parentKey()" (input)="parentKey.set($any($event.target).value.toUpperCase())" />
+        </label>
+      }
+    </div>
+    @for (f of t.fields; track f.id) {
+      <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
+        @switch (f.kind) {
+          @case ('select') {
+            <select [attr.data-field]="f.id" [multiple]="f.multi" (change)="f.multi ? onMulti(f.id, $event) : setValue(f.id, $any($event.target).value)">
+              @if (!f.multi) { <option value="" [selected]="!values()[f.id]">Pilih…</option> }
+              @for (o of f.options ?? []; track o.id) { <option [value]="o.id" [selected]="isSelected(f.id, o.id)">{{ o.label }}</option> }
+            </select>
+          }
+          @case ('number') { <input type="number" [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value === '' ? null : +$any($event.target).value)" /> }
+          @default { <input [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value)" /> }
+        }
+        @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
+      </label>
+    }
+    @if (formError()) { <p class="cc-err" role="alert">{{ formError() }}</p> }
+    <div class="cc-actions">
+      <button type="submit" class="btn btn-primary" data-submit [disabled]="!canSubmit()">{{ saving() ? 'Membuat…' : 'Buat card' }}</button>
+    </div>
+  }
+  @if (lastCreated(); as c) {
+    <div class="cc-done" data-created>✅ <a [href]="c.url" target="_blank" rel="noopener">{{ c.key }}</a> dibuat
+      <button type="button" class="btn btn-soft btn-sm" (click)="again()">Buat lagi</button></div>
+  }
+</form>
+}

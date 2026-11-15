@@ -2,12 +2,18 @@ import { Injectable, signal } from '@angular/core';
 
 export type ToastTone = 'success' | 'error' | 'info';
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   tone: ToastTone;
   title: string;
   message?: string;
   leaving: boolean;
+  action?: ToastAction;
 }
 
 const DEFAULT_DURATION_MS = 4000;
@@ -31,10 +37,19 @@ export class ToastService {
     this.show('info', title, message);
   }
 
-  show(tone: ToastTone, title: string, message?: string, durationMs = DEFAULT_DURATION_MS): void {
+  show(tone: ToastTone, title: string, message?: string, durationMs = DEFAULT_DURATION_MS, action?: ToastAction): void {
     const id = this.nextId++;
-    this.toasts.update((list) => [...list, { id, tone, title, message, leaving: false }]);
+    this.toasts.update((list) => [...list, { id, tone, title, message, leaving: false, action }]);
     setTimeout(() => this.dismiss(id), durationMs);
+  }
+
+  /** Runs a toast's action once and closes it. */
+  runAction(id: number): void {
+    const toast = this.toasts().find((t) => t.id === id);
+    if (!toast?.action || toast.leaving) return;
+    const run = toast.action.run;
+    this.dismiss(id);
+    run();
   }
 
   dismiss(id: number): void {

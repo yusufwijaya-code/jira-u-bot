@@ -14,6 +14,7 @@ import (
 	"nudge/modules/auth/auth_service"
 	"nudge/modules/chat_app_activation"
 	"nudge/modules/board_scope"
+	"nudge/modules/issue_create/issue_create_handler"
 	"nudge/modules/chat_log/chat_log_handler"
 	"nudge/modules/sprint_report"
 	"nudge/modules/sprint_report/sprint_report_handler"
@@ -150,4 +151,11 @@ func MountChatApp(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.Aut
 	admin.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg), auth_middleware.AdminMiddleware(cfg))
 	admin.GET("/users/:userID/chat-app/status", a.Status(routes.AdminTarget))
 	admin.PUT("/users/:userID/settings/chat-sender", a.SetSender(routes.AdminTarget, routes.AdminChange))
+}
+
+// MountIssueCreate mounts "Buat Card" on Papan Tiket (Tech Spec "Papan Tiket Revamp & Buat Card Jira").
+func MountIssueCreate(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.AuthService, h *issue_create_handler.Handler) {
+	api := r.Group(cfg.BasePath + "/api/dashboard")
+	api.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
+	issue_create_handler.Routes(api, h)
 }

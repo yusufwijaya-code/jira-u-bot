@@ -1,0 +1,25 @@
+:host { display: block; }
+.bs { display: flex; flex-direction: column; gap: 14px; }
+.bs-label { font-size: .82rem; font-weight: 600; color: var(--text-muted); }
+.bs-parent { display: flex; flex-direction: column; gap: 6px; }
+.bs-parent-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: .88rem; small { color: var(--text-muted); } button { margin-left: auto; } }
+.bs-parent-pick { position: relative; input { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); } }
+.bs-cands { position: absolute; z-index: 5; left: 0; right: 0; margin: 2px 0 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.08);
+  button { width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; font: inherit; font-size: .84rem; cursor: pointer; border-radius: 6px; &:hover { background: var(--surface-muted, rgba(0,0,0,.05)); } } }
+.bs-grid { display: grid; grid-template-columns: minmax(260px, 2fr) 3fr; gap: 16px; align-items: start; }
+.bs-paste textarea { font-family: ui-monospace, monospace; font-size: .78rem; }
+.bs-paste-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; small { color: var(--text-faint); } }
+.bs-table { width: 100%; border-collapse: collapse; font-size: .84rem;
+  th { text-align: left; font-size: .72rem; text-transform: uppercase; color: var(--text-faint); padding: 6px; }
+  td { padding: 6px; border-top: 1px solid var(--border); vertical-align: top; }
+  tr.done { opacity: .7; } tr.failed td { background: color-mix(in srgb, var(--error) 6%, transparent); } }
+.bs-title { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.bs-sp { width: 64px; font: inherit; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+.bs-dup { display: block; color: var(--warning, #b45309); }
+.bs-state { display: block; &.ok { color: var(--success); } &.err { color: var(--error); } }
+.bs-more { border: 0; background: none; padding: 0; font: inherit; font-size: .74rem; color: var(--primary); cursor: pointer; }
+.bs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; [data-create] { margin-left: auto; } }
+.tb-hint { color: var(--text-faint); }
+.tb-num { text-align: right; }
+.tb-act { border: 0; background: none; cursor: pointer; }
+@media (max-width: 960px) { .bs-grid { grid-template-columns: 1fr; } }

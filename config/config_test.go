@@ -151,3 +151,14 @@ func TestLoadConfig_ChatAppSettings(t *testing.T) {
 		t.Error("GoogleChatAppOneClick = true, want false when GOOGLE_CHAT_APP_ONE_CLICK=false")
 	}
 }
+
+func TestLoadConfig_GeminiDefaults(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "abc")
+	var cfg AppConfig
+	if err := LoadConfig(&cfg); err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.GeminiAPIKey != "abc" || cfg.GeminiModel != "gemini-flash-lite-latest" {
+		t.Fatalf("gemini = %q / %q", cfg.GeminiAPIKey, cfg.GeminiModel)
+	}
+}

@@ -1208,6 +1208,13 @@ table.admin-users {
     background: color-mix(in srgb, var(--tone) 12%, white);
   }
 
+  .toast-action {
+    align-self: flex-start; margin-top: 4px;
+    border: 0; background: none; padding: 0;
+    font: inherit; font-weight: 600; color: var(--primary);
+    cursor: pointer; text-decoration: underline;
+  }
+
   .toast-body {
     display: flex; flex-direction: column;
     flex: 1; min-width: 0;
@@ -2786,6 +2793,7 @@ table.admin-users {
   display: flex;
   flex-direction: column;
 }
+.page:has(.tb-page) { max-width: 1440px; }
 app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 .chat-window {

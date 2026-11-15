@@ -2,14 +2,16 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
+import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
-import { BoardPageComponent, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
+import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
 
 describe('BoardPageComponent', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
     localStorage.removeItem(COLLAPSED_STORAGE_KEY);
+    localStorage.removeItem(BRANCHES_STORAGE_KEY);
     TestBed.configureTestingModule({
       imports: [BoardPageComponent],
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
@@ -219,14 +221,14 @@ describe('BoardPageComponent', () => {
     return fixture;
   }
 
-  it('hangs out-of-sprint subtasks under their parent row with a read-only status', () => {
+  it('hangs out-of-sprint subtasks under their parent row with a movable status', () => {
     const el: HTMLElement = renderWithBranches().nativeElement;
     const branch = el.querySelector('[data-branch="CORE-10924"]') as HTMLElement;
     expect(branch.getAttribute('data-branch-of')).toBe('CORE-10923');
     expect(branch.previousElementSibling?.getAttribute('data-card')).toBe('CORE-10923');
     expect(branch.textContent).toContain('subtask');
     expect(branch.textContent).toContain('30m / 1j');
-    expect(branch.querySelector('[data-status-chip]')).toBeNull();
+    expect(branch.querySelector('[data-status-chip]')).not.toBeNull();
     expect(el.querySelector('[data-branch="CORE-777"]')).toBeNull();
     expect(el.querySelector('.tb-hint')?.textContent).toContain('+ 1 subtask');
     // branches are not counted per status
@@ -296,23 +298,271 @@ describe('BoardPageComponent', () => {
     req.flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [] });
   });
 
-  it('keeps the moving spinner until the reloaded board arrives, then highlights the row', () => {
+  function startMove(fixture: ReturnType<typeof render>) {
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-card="OMS-1"] [data-status-chip]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '21', name: 'Start', toStatus: 'Code Process' }] });
+    fixture.detectChanges();
+    (el.querySelector('[data-transition="21"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+  }
+
+  it('moves the row before Jira answers, then offers Undo', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'show').and.callThrough();
+    const el: HTMLElement = fixture.nativeElement;
+    startMove(fixture);
+    expect(el.querySelector('[data-status="Code Process"] [data-card="OMS-1"]')).not.toBeNull();
+    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).toContain('Memindah');
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({});
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).not.toContain('Memindah');
+    expect(toast.show).toHaveBeenCalledWith('success', 'Status dipindah', 'OMS-1 → Code Process', 6000, jasmine.objectContaining({ label: 'Batalkan' }));
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('puts the row back when Jira rejects the move', () => {
     const fixture = render();
     const el: HTMLElement = fixture.nativeElement;
-    openMenu(fixture).flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [{ id: '11', name: 'Start', toStatus: 'Code Process' }] });
+    startMove(fixture);
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({ error: 'bukan tiket kamu' }, { status: 403, statusText: 'Forbidden' });
     fixture.detectChanges();
-    (el.querySelector('[data-transition="11"]') as HTMLButtonElement).click();
-    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({ status: 'Code Process' });
-    fixture.detectChanges();
-    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).toContain('Memindah');
+    expect(el.querySelector('[data-status="To Do"] [data-card="OMS-1"]')).not.toBeNull();
+  });
 
+  it('undo moves back when the workflow allows it', () => {
+    const fixture = render();
+    const cmp = fixture.componentInstance as unknown as { undo(k: string, s: string): void };
+    cmp.undo('OMS-1', 'To Do');
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '11', name: 'Back', toStatus: 'TO DO' }] });
+    const req = http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition'));
+    expect(req.request.body).toEqual(jasmine.objectContaining({ transitionId: '11' }));
+    req.flush({});
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('negative undo: tells the user when the workflow has no way back', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'error');
+    (fixture.componentInstance as unknown as { undo(k: string, s: string): void }).undo('OMS-1', 'To Do');
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '31', name: 'Ship', toStatus: 'Done' }] });
+    expect(toast.error).toHaveBeenCalledWith('Tidak bisa dibatalkan', jasmine.stringContaining('To Do'));
+  });
+
+  it('undo tells the user when the ticket is no longer on the board', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'error');
+    (fixture.componentInstance as unknown as { undo(k: string, s: string): void }).undo('OMS-1', 'To Do');
+    (fixture.componentInstance as unknown as { columns: { set(v: unknown): void } }).columns.set([]);
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '11', name: 'Back', toStatus: 'To Do' }] });
+    expect(toast.error).toHaveBeenCalledWith('Tidak bisa dibatalkan', 'Tiket tidak lagi tampil di papan.');
+  });
+
+  it('reloads the board once, only after the last in-flight move answers', () => {
+    const fixture = render();
+    const cmp = fixture.componentInstance as unknown as { move(c: unknown, o: unknown): void };
+    const card = (k: string) => ({ issueKey: k, summary: '', status: 'To Do', issueURL: '', boardId: 28 });
+    cmp.move(card('OMS-1'), { id: '21', name: 'Start', toStatus: 'Code Process' });
+    cmp.move(card('OMS-2'), { id: '21', name: 'Start', toStatus: 'Code Process' });
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({});
+    http.expectNone((r) => r.url.endsWith('/api/dashboard/board'));
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-2/transition')).flush({});
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('drops a column made up for an unknown status when the move is rolled back', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    const cmp = fixture.componentInstance as unknown as { move(c: unknown, o: unknown): void };
+    cmp.move({ issueKey: 'OMS-1', summary: '', status: 'To Do', issueURL: '', boardId: 28 }, { id: '99', name: 'Odd', toStatus: 'Weird' });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-status="Weird"]')).not.toBeNull();
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({}, { status: 500, statusText: 'x' });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-status="Weird"]')).toBeNull();
+    expect(el.querySelector('[data-status="To Do"] [data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('shows summary cards for the scope', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-stat="tickets"]')?.textContent).toContain('2');
+    expect(el.querySelector('[data-stat="points"]')?.textContent).toContain('3');
+    expect(el.querySelector('[data-stat="over"]')?.textContent).toContain('1');
+    expect(el.querySelector('[data-stat="done"]')?.textContent).toContain('0%');
+  });
+
+  it('filters to over-budget tickets from the chip and the summary card', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-filter="over"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"]')).toBeNull();
+    expect(el.querySelector('[data-card="OMS-2"]')).not.toBeNull();
+    (el.querySelector('[data-stat="over"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('shows a reset button when the filter leaves nothing', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-search]') as HTMLInputElement).value = 'zzz';
+    el.querySelector('[data-search]')!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (el.querySelector('[data-reset-filter]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('focuses the search on "/" and clears it on Escape', () => {
+    const fixture = render();
+    const input = fixture.nativeElement.querySelector('[data-search]') as HTMLInputElement;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/' }));
+    expect(document.activeElement).toBe(input);
+    input.value = 'oms';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(input.value).toBe('');
+  });
+
+  function renderWithBranch() {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
     http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
-      columns: [{ status: 'Code Process', cards: [{ issueKey: 'OMS-1', summary: 'Lock payments', status: 'Code Process', issueURL: '', boardId: 28, storyPoints: 2 }] }],
+      columns: [{ status: 'Code Process', cards: [
+        { issueKey: 'CORE-1', summary: 'Parent', status: 'Code Process', issueURL: 'https://x/browse/CORE-1', boardId: 26, storyPoints: 5 },
+      ] }],
+      related: [
+        { issueKey: 'CORE-2', summary: 'Child A', status: 'Done', issueURL: 'https://x/browse/CORE-2', boardId: 26, storyPoints: 1, parentKey: 'CORE-1', relation: 'subtask' },
+        { issueKey: 'CORE-3', summary: 'Child B', status: 'Code Process', issueURL: 'https://x/browse/CORE-3', boardId: 26, storyPoints: 1, parentKey: 'CORE-1', relation: 'subtask' },
+      ],
     });
     fixture.detectChanges();
-    const row = el.querySelector('[data-card="OMS-1"]')!;
-    expect(row.classList).toContain('just-moved');
-    expect(row.querySelector('[data-status-chip]')?.textContent).toContain('Code Process');
+    return fixture;
+  }
+
+  it('lets a branch row open the status menu', () => {
+    const fixture = renderWithBranch();
+    const chip = fixture.nativeElement.querySelector('[data-branch="CORE-3"] [data-status-chip]') as HTMLButtonElement;
+    chip.click();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/tickets/CORE-3/transitions')).flush({ transitions: [{ id: '31', name: 'Review', toStatus: 'Code Review' }] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-transition="31"]')).not.toBeNull();
+  });
+
+  it('shows subtask progress on the parent and collapses its branches', () => {
+    const fixture = renderWithBranch();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-branch-progress="CORE-1"]')?.textContent).toContain('1/2');
+    (el.querySelector('[data-branch-toggle="CORE-1"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-branch="CORE-2"]')).toBeNull();
+  });
+
+  it('copies a key and offers + Subtask only on non-branch rows', () => {
+    const fixture = renderWithBranch();
+    const el: HTMLElement = fixture.nativeElement;
+    const clip = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+    spyOnProperty(navigator, 'clipboard').and.returnValue({ writeText: clip } as unknown as Clipboard);
+    (el.querySelector('[data-card="CORE-1"] [data-copy]') as HTMLButtonElement).click();
+    expect(clip).toHaveBeenCalledWith('CORE-1');
+    expect(el.querySelector('[data-branch="CORE-2"] [data-add-subtask]')).toBeNull();
+  });
+
+  it('offers + Subtask on the parent row only and opens the create tab for it', () => {
+    const fixture = renderWithBranch();
+    const cmp = fixture.componentInstance as any;
+    cmp.createCardEnabled = true;
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-branch="CORE-2"] [data-add-subtask]')).toBeNull();
+    const btn = el.querySelector('[data-card="CORE-1"] [data-add-subtask]') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    const spy = spyOn(cmp, 'setTab');
+    btn.click();
+    expect(spy).toHaveBeenCalledWith('create', { mode: 'bulk', parent: 'CORE-1' });
+  });
+
+  it('does not offer + Subtask on a sprint card that is itself a subtask', () => {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    (fixture.componentInstance as any).createCardEnabled = true;
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
+      columns: [{ status: 'Code Process', cards: [
+        { issueKey: 'CORE-1', summary: 'Parent', status: 'Code Process', issueURL: 'https://x/browse/CORE-1', boardId: 26, storyPoints: 5 },
+        { issueKey: 'CORE-9', summary: 'Sub', status: 'Code Process', issueURL: 'https://x/browse/CORE-9', boardId: 26, storyPoints: 1, parentKey: 'CORE-1', relation: 'subtask' },
+      ] }],
+    });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-card="CORE-1"] [data-add-subtask]')).not.toBeNull();
+    expect(el.querySelector('[data-card="CORE-9"] [data-add-subtask]')).toBeNull();
+  });
+
+  it('ignores "/" with Ctrl held or from a select', () => {
+    const fixture = render();
+    const input = fixture.nativeElement.querySelector('[data-search]') as HTMLInputElement;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true }));
+    expect(document.activeElement).not.toBe(input);
+    const sel = document.createElement('select');
+    document.body.appendChild(sel);
+    sel.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement).not.toBe(input);
+    sel.remove();
+  });
+
+  it('the Buat Card tab resets mode and parent, unlike + Subtask', () => {
+    const fixture = renderWithBranch();
+    const cmp = fixture.componentInstance as any;
+    cmp.createCardEnabled = true;
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-card="CORE-1"] [data-add-subtask]') as HTMLButtonElement).click();
+    expect(cmp.createMode()).toBe('bulk');
+    expect(cmp.createParent()).toBe('CORE-1');
+    (fixture.nativeElement.querySelector('[data-tab="create"]') as HTMLButtonElement).click();
+    expect(cmp.createMode()).toBe('single');
+    expect(cmp.createParent()).toBeNull();
+  });
+
+  it('toasts an error when the clipboard is unavailable', () => {
+    const fixture = renderWithBranch();
+    spyOnProperty(navigator, 'clipboard').and.returnValue(undefined as unknown as Clipboard);
+    const toast = spyOn(TestBed.inject(ToastService), 'error');
+    (fixture.nativeElement.querySelector('[data-card="CORE-1"] [data-copy]') as HTMLButtonElement).click();
+    expect(toast).toHaveBeenCalledWith('Gagal menyalin', 'CORE-1');
+  });
+
+  it('shows Sisa and Mulai for an under-budget card with a start time, and skips an unparsable one', () => {
+    const cmp = renderWithBranch().componentInstance as any;
+    const base = { issueKey: 'X-1', hasBudgetDetail: true, elapsedSeconds: 1800, budgetSeconds: 3600 };
+    const tip = cmp.timeTooltip({ ...base, startedAt: '2026-11-15T03:00:00Z' });
+    expect(tip).toContain('Sisa 30m');
+    expect(tip).toContain('Mulai');
+    expect(cmp.timeTooltip({ ...base, startedAt: 'garbage' })).not.toContain('Mulai');
+  });
+
+  it('explains the time bar in a tooltip', () => {
+    const fixture = render();
+    const time = fixture.nativeElement.querySelector('[data-card="OMS-2"] [data-time]') as HTMLElement;
+    expect(time.getAttribute('title')).toContain('Dipakai 1j 15m');
+    expect(time.getAttribute('title')).toContain('Budget 1j');
+    expect(time.getAttribute('title')).toContain('Lewat 15m');
+  });
+  it('switches to the column view and remembers it', () => {
+    localStorage.removeItem('nudge.board.view');
+    const fixture = render();
+    (fixture.nativeElement.querySelector('[data-view="columns"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-board-columns')).not.toBeNull();
+    expect(localStorage.getItem('nudge.board.view')).toBe('columns');
+    localStorage.removeItem('nudge.board.view');
   });
 });
 
@@ -330,5 +580,30 @@ describe('board-page helpers', () => {
     expect(statusTone('CODE REVIEW')).toBe('review');
     expect(statusTone('Code Completed')).toBe('done');
     expect(statusTone('QA')).toBe('other');
+  });
+
+  describe('canLeave (unsent bulk preview guard)', () => {
+    function setup(unsent: boolean) {
+      TestBed.configureTestingModule({ imports: [BoardPageComponent], providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()] });
+      const cmp = TestBed.createComponent(BoardPageComponent).componentInstance as any;
+      cmp.tab.set('create');
+      cmp.createCard = () => ({ hasUnsent: () => unsent });
+      return cmp;
+    }
+
+    it('allows leaving without asking when nothing is unsent', async () => {
+      const cmp = setup(false);
+      const ask = spyOn(TestBed.inject(ConfirmService), 'ask');
+      expect(await cmp.canLeave()).toBeTrue();
+      expect(ask).not.toHaveBeenCalled();
+    });
+
+    it('asks to discard when unsent and keeps the tab when declined', async () => {
+      const cmp = setup(true);
+      const ask = spyOn(TestBed.inject(ConfirmService), 'ask').and.resolveTo(false);
+      await cmp.setTab('board');
+      expect(ask).toHaveBeenCalled();
+      expect(cmp.tab()).toBe('create');
+    });
   });
 });

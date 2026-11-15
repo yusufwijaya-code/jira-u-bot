@@ -1,9 +1,15 @@
-import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { environment } from '../../../../environments/environment';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
+import { ConfirmService } from '../../../core/ui/confirm.service';
 import { NgTemplateOutlet } from '@angular/common';
+import { BoardColumnsComponent } from './board-columns.component';
+import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
+import { CreateCardComponent } from './create-card/create-card.component';
 import { IconComponent } from '../../../shared/ui/icon.component';
 
 interface Column {
@@ -18,28 +24,14 @@ interface MenuState {
   options: TransitionOption[];
 }
 
-/** Colour family of a status dot, from its name (Jira workflows differ per project). */
-export type StatusTone = 'todo' | 'process' | 'review' | 'done' | 'other';
+export { statusTone, shortDuration };
+export type { StatusTone };
+
+export type BoardFilter = 'all' | 'over' | 'nosp';
 
 export const COLLAPSED_STORAGE_KEY = 'nudge.board.collapsed';
-
-export function statusTone(status: string): StatusTone {
-  const s = status.toLowerCase();
-  if (/(complete|done|selesai|closed|resolved)/.test(s)) return 'done';
-  if (/review/.test(s)) return 'review';
-  if (/(process|progress|develop)/.test(s)) return 'process';
-  if (/(to do|todo|backlog|open)/.test(s)) return 'todo';
-  return 'other';
-}
-
-/** 5400 → "1j 30m", 2700 → "45m", 7200 → "2j", 20 → "0m". */
-export function shortDuration(totalSeconds: number): string {
-  const minutes = Math.floor(Math.abs(totalSeconds) / 60);
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}j` : `${h}j ${m}m`;
-}
+export const BRANCHES_STORAGE_KEY = 'nudge.board.branches';
+export const VIEW_STORAGE_KEY = 'nudge.board.view';
 
 /**
  * Papan Tiket (Tech Spec "Papan Tiket & Cuti", US-1): the caller's
@@ -50,22 +42,34 @@ export function shortDuration(totalSeconds: number): string {
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [IconComponent, NgTemplateOutlet],
+  imports: [IconComponent, NgTemplateOutlet, BoardColumnsComponent, CreateCardComponent],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
 })
 export class BoardPageComponent {
   private dashboard = inject(DashboardService);
-  private boardContext = inject(BoardContextService);
+  protected boardContext = inject(BoardContextService);
   private toast = inject(ToastService);
+  private confirm = inject(ConfirmService);
+  private createCard = viewChild(CreateCardComponent);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  protected readonly createCardEnabled = environment.features.createCard;
+  protected tab = signal<'board' | 'create'>(
+    environment.features.createCard && this.route.snapshot.queryParamMap.get('tab') === 'create' ? 'create' : 'board',
+  );
+  /** Buat Card's starting mode/parent: from the URL on entry, then set by addSubtask (the snapshot is stale after navigate). */
+  protected createMode = signal<'single' | 'bulk'>(this.route.snapshot.queryParamMap.get('mode') === 'bulk' ? 'bulk' : 'single');
+  protected createParent = signal<string | null>(this.route.snapshot.queryParamMap.get('parent'));
+  protected filter = signal<BoardFilter>('all');
 
   protected columns = signal<Column[]>([]);
   /**
    * The caller's subtasks / linked items of their sprint tickets that aren't
    * in the sprint themselves (GET /board → related). They hang under their
    * parent's row as branches and aren't counted per status, like on the
-   * dashboard. Their status is read-only: moves are limited to sprint
-   * tickets (Tech Spec "Papan Tiket & Cuti", AC1.6).
+   * dashboard. Their status is movable like a sprint ticket's; the server
+   * enforces ownership of out-of-sprint subtasks.
    */
   protected related = signal<TicketCard[]>([]);
   protected loading = signal(true);
@@ -82,9 +86,21 @@ export class BoardPageComponent {
   private highlightTimer?: ReturnType<typeof setTimeout>;
   protected menu = signal<MenuState | null>(null);
   protected moving = signal<string | null>(null);
+  protected view = signal<'list' | 'columns'>(readView());
+  protected setView(v: 'list' | 'columns'): void {
+    this.view.set(v);
+    try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch { /* visit only */ }
+  }
+  protected branchCount = (key: string): number => (this.branchMap().get(key) ?? []).length;
+  /** Moves sent to Jira and not answered yet; the board only reloads once none is left. */
+  private pendingMoves = 0;
+  /** Columns created on screen by applyLocalMove (status not in the last server load). */
+  private syntheticStatuses = new Set<string>();
   protected query = signal('');
   /** Statuses the user collapsed (true) or expanded (false) themselves. */
-  private collapsedChoice = signal<Record<string, boolean>>(readCollapsed());
+  private collapsedChoice = signal<Record<string, boolean>>(readJson(COLLAPSED_STORAGE_KEY));
+  /** Parents whose branches the user closed (true = closed). Default open. */
+  private branchClosed = signal<Record<string, boolean>>(readJson(BRANCHES_STORAGE_KEY));
 
   protected readonly statusTone = statusTone;
   protected readonly shortDuration = shortDuration;
@@ -113,17 +129,80 @@ export class BoardPageComponent {
    */
   protected visible = computed<Column[]>(() => {
     const q = this.query().trim().toLowerCase();
-    if (!q) return this.columns();
+    const filtering = this.filter() !== 'all';
+    if (!q && !filtering) return this.columns();
     return this.columns()
       .map((c) => ({
         status: c.status,
-        cards: c.cards.filter((card) => matches(card, q) || (this.branchMap().get(card.issueKey) ?? []).some((b) => matches(b, q))),
+        cards: c.cards.filter(
+          (card) =>
+            this.passesFilter(card) &&
+            (!q || matches(card, q) || (this.branchMap().get(card.issueKey) ?? []).some((b) => matches(b, q))),
+        ),
       }))
       .filter((c) => c.cards.length > 0);
   });
 
+  /** Route/tab guard: an unsent bulk preview needs an explicit confirm before it is discarded. */
+  async canLeave(): Promise<boolean> {
+    if (this.tab() !== 'create' || !this.createCard()?.hasUnsent()) return true;
+    return this.confirm.ask({ title: 'Buang preview?', message: 'Preview subtask yang belum dibuat akan hilang.', confirmText: 'Ya, buang', tone: 'danger' });
+  }
+
+  protected async setTab(tab: 'board' | 'create', extra: Record<string, string | null> = {}): Promise<void> {
+    if (tab === 'board' && !(await this.canLeave())) return;
+    this.tab.set(tab);
+    this.router.navigate([], { queryParams: { tab: tab === 'create' ? 'create' : null, ...extra }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  protected stats = computed(() => {
+    const cards = this.columns().flatMap((c) => c.cards);
+    const done = cards.filter((c) => statusTone(c.status) === 'done').length;
+    return {
+      tickets: cards.length,
+      points: Math.round(cards.reduce((n, c) => n + (c.storyPoints || 0), 0) * 10) / 10,
+      over: cards.filter((c) => this.isOverBudget(c)).length,
+      donePercent: cards.length ? Math.round((done / cards.length) * 100) : 0,
+    };
+  });
+
+  protected setFilter(f: BoardFilter): void {
+    this.filter.set(this.filter() === f ? 'all' : f);
+  }
+
+  protected resetFilters(): void {
+    this.filter.set('all');
+    this.query.set('');
+  }
+
+  private passesFilter(card: TicketCard): boolean {
+    switch (this.filter()) {
+      case 'over': return this.isOverBudget(card);
+      case 'nosp': return !card.storyPoints;
+      default: return true;
+    }
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  protected onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.tab() === 'create' && this.createCard()?.hasUnsent()) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected onShortcut(event: KeyboardEvent): void {
+    if (event.key !== '/' || this.tab() !== 'board' || event.ctrlKey || event.metaKey || event.altKey) return;
+    const t = event.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    event.preventDefault();
+    (document.querySelector('[data-search]') as HTMLInputElement | null)?.focus();
+  }
+
   /** The branches under a row; while searching, all of them when the parent matches, else only the matching ones. */
   protected branchesOf(card: TicketCard): TicketCard[] {
+    if (!this.isBranchOpen(card.issueKey)) return [];
     const branches = this.branchMap().get(card.issueKey) ?? [];
     const q = this.query().trim().toLowerCase();
     if (!q || matches(card, q)) return branches;
@@ -139,7 +218,7 @@ export class BoardPageComponent {
     });
   }
 
-  protected load(boardId: number | null = this.boardContext.selectedId(), done?: () => void): void {
+  protected load(boardId: number | null = this.boardContext.selectedId()): void {
     this.loading.set(true);
     this.error.set(null);
     // A newer load (e.g. a quick board switch) wins over an older answer.
@@ -148,13 +227,12 @@ export class BoardPageComponent {
       next: (res) => {
         this.columns.set((res.columns ?? []).map((c) => ({ status: c.status, cards: c.cards ?? [] })));
         this.related.set(res.related ?? []);
+        this.syntheticStatuses.clear();
         this.loaded.set(true);
         this.loading.set(false);
-        done?.();
       },
       error: () => {
         this.loading.set(false);
-        done?.();
         if (this.loaded()) {
           // Keep the tickets already on screen; just say the refresh failed.
           this.toast.error('Gagal memuat ulang tiket', 'Data di layar mungkin belum terbaru, coba lagi.');
@@ -167,7 +245,7 @@ export class BoardPageComponent {
 
   /** Empty sections start collapsed; the user's own choice wins. */
   protected isCollapsed(col: Column): boolean {
-    if (this.query().trim()) return false;
+    if (this.query().trim() || this.filter() !== 'all') return false;
     const choice = this.collapsedChoice()[col.status];
     return choice ?? col.cards.length === 0;
   }
@@ -192,11 +270,57 @@ export class BoardPageComponent {
 
   private saveCollapsed(next: Record<string, boolean>): void {
     this.collapsedChoice.set(next);
-    try {
-      localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      /* storage unavailable — the choice lasts for this visit only */
+    writeJson(COLLAPSED_STORAGE_KEY, next);
+  }
+
+  protected branchProgress(card: TicketCard): { total: number; done: number } {
+    const all = this.branchMap().get(card.issueKey) ?? [];
+    return { total: all.length, done: all.filter((b) => statusTone(b.status) === 'done').length };
+  }
+
+  protected isBranchOpen(key: string): boolean {
+    return !!this.query().trim() || !this.branchClosed()[key];
+  }
+
+  protected toggleBranches(key: string): void {
+    const next = { ...this.branchClosed(), [key]: this.isBranchOpen(key) };
+    this.branchClosed.set(next);
+    writeJson(BRANCHES_STORAGE_KEY, next);
+  }
+
+  protected copyKey(card: TicketCard): void {
+    const clipboard = navigator.clipboard;
+    if (!clipboard) {
+      this.toast.error('Gagal menyalin', card.issueKey);
+      return;
     }
+    clipboard.writeText(card.issueKey).then(
+      () => this.toast.success('Disalin', card.issueKey),
+      () => this.toast.error('Gagal menyalin', card.issueKey),
+    );
+  }
+
+  protected openCreate(): void {
+    this.createMode.set('single');
+    this.createParent.set(null);
+    this.setTab('create', { mode: null, parent: null });
+  }
+
+  protected addSubtask(card: TicketCard): void {
+    this.createMode.set('bulk');
+    this.createParent.set(card.issueKey);
+    this.setTab('create', { mode: 'bulk', parent: card.issueKey });
+  }
+
+  protected timeTooltip(card: TicketCard): string {
+    const parts = [`Dipakai ${shortDuration(card.elapsedSeconds)}`, `Budget ${shortDuration(card.budgetSeconds)}`];
+    const diff = shortDuration(card.budgetSeconds - card.elapsedSeconds);
+    parts.push(this.isOverBudget(card) ? `Lewat ${diff}` : `Sisa ${diff}`);
+    const started = card.startedAt ? new Date(card.startedAt) : null;
+    if (started && !isNaN(started.getTime())) {
+      parts.push(`Mulai ${started.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' })}`);
+    }
+    return parts.join(' · ');
   }
 
   protected jumpTo(col: Column): void {
@@ -230,8 +354,7 @@ export class BoardPageComponent {
 
   /** Share of the budget used, capped at 100 for the bar. */
   protected budgetPercent(card: TicketCard): number {
-    if (!card.budgetSeconds) return 0;
-    return Math.min(100, Math.round((card.elapsedSeconds / card.budgetSeconds) * 100));
+    return budgetPercent(card);
   }
 
   protected toggleMenu(card: TicketCard): void {
@@ -278,21 +401,75 @@ export class BoardPageComponent {
 
   protected move(card: TicketCard, option: TransitionOption): void {
     this.menu.set(null);
+    const from = card.status;
+    this.applyLocalMove(card.issueKey, option.toStatus);
     this.moving.set(card.issueKey);
+    this.pendingMoves++;
     this.dashboard.moveTicket(card.issueKey, option.id).subscribe({
       next: () => {
-        this.toast.success('Status dipindah', `${card.issueKey} → ${option.toStatus}`);
-        // The row keeps its spinner until the refreshed board shows it in its new section.
-        this.load(undefined, () => {
-          this.moving.set(null);
-          this.highlight(card.issueKey);
+        this.pendingMoves--;
+        this.clearMoving(card.issueKey);
+        this.highlight(card.issueKey);
+        this.toast.show('success', 'Status dipindah', `${card.issueKey} → ${option.toStatus}`, 6000, {
+          label: 'Batalkan',
+          run: () => this.undo(card.issueKey, from),
         });
+        // A reload now would overwrite other moves still in flight.
+        if (this.pendingMoves === 0) this.load();
       },
       error: (err) => {
-        this.moving.set(null);
+        this.pendingMoves--;
+        this.applyLocalMove(card.issueKey, from);
+        this.clearMoving(card.issueKey);
         this.toast.error('Gagal memindah status', err?.error?.error ?? 'Coba lagi beberapa saat.');
       },
     });
+  }
+
+  private clearMoving(issueKey: string): void {
+    if (this.moving() === issueKey) this.moving.set(null);
+  }
+
+  /** Moves a card on screen only: sprint cards change section, branches change their status. */
+  protected applyLocalMove(issueKey: string, toStatus: string): void {
+    const cols = this.columns();
+    const card = cols.flatMap((c) => c.cards).find((c) => c.issueKey === issueKey);
+    if (card) {
+      const moved = { ...card, status: toStatus };
+      const without = cols.map((c) => ({ ...c, cards: c.cards.filter((x) => x.issueKey !== issueKey) }));
+      const target = without.find((c) => c.status.toLowerCase() === toStatus.toLowerCase());
+      if (!target) this.syntheticStatuses.add(toStatus.toLowerCase());
+      const placed = target
+        ? without.map((c) => (c === target ? { ...c, cards: [moved, ...c.cards] } : c))
+        : [...without, { status: toStatus, cards: [moved] }];
+      // A column made up by an earlier local move disappears again once it is empty (rollback).
+      this.columns.set(placed.filter((c) => c.cards.length > 0 || !this.syntheticStatuses.has(c.status.toLowerCase())));
+      return;
+    }
+    this.related.update((list) => list.map((b) => (b.issueKey === issueKey ? { ...b, status: toStatus } : b)));
+  }
+
+  protected undo(issueKey: string, fromStatus: string): void {
+    this.dashboard.getTransitions(issueKey).subscribe({
+      next: (res) => {
+        const back = (res.transitions ?? []).find((t) => t.toStatus.toLowerCase() === fromStatus.toLowerCase());
+        if (!back) {
+          this.toast.error('Tidak bisa dibatalkan', `Workflow Jira tidak mengizinkan kembali ke ${fromStatus}.`);
+          return;
+        }
+        const card = this.findCard(issueKey);
+        if (!card) {
+          this.toast.error('Tidak bisa dibatalkan', 'Tiket tidak lagi tampil di papan.');
+          return;
+        }
+        this.move(card, back);
+      },
+      error: () => this.toast.error('Tidak bisa dibatalkan', 'Gagal memuat transisi dari Jira.'),
+    });
+  }
+
+  private findCard(issueKey: string): TicketCard | undefined {
+    return this.columns().flatMap((c) => c.cards).find((c) => c.issueKey === issueKey) ?? this.related().find((b) => b.issueKey === issueKey);
   }
 
   /** Flashes the moved row and brings it into view (its section may have changed). */
@@ -306,6 +483,10 @@ export class BoardPageComponent {
   }
 }
 
+function readView(): 'list' | 'columns' {
+  try { return localStorage.getItem(VIEW_STORAGE_KEY) === 'columns' ? 'columns' : 'list'; } catch { return 'list'; }
+}
+
 function matches(card: TicketCard, q: string): boolean {
   return [card.issueKey, card.summary, card.parentKey ?? '', card.parentSummary ?? ''].some((v) => v.toLowerCase().includes(q));
 }
@@ -314,11 +495,19 @@ function sectionId(status: string): string {
   return 'status-' + status.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
-function readCollapsed(): Record<string, boolean> {
+function readJson(key: string): Record<string, boolean> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY) ?? '{}');
+    const parsed = JSON.parse(localStorage.getItem(key) ?? '{}');
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+function writeJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable — the choice lasts for this visit only */
   }
 }

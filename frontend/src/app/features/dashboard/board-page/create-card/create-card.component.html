@@ -1,0 +1,34 @@
+<section class="cc">
+  @if (statusError()) {
+    <p class="cc-err" data-status-error>Gagal memuat status, coba muat ulang</p>
+  } @else if (status() && !status()!.tokenReady) {
+    <div class="cc-banner" data-token-banner>Untuk membuat card atas nama kamu, isi <strong>token Jira</strong> dulu di <a routerLink="/dashboard/settings">Pengaturan</a>.</div>
+  } @else {
+    @if (!boardId()) {
+      <label class="cc-field" data-board-pick><span>Board</span>
+        <select (change)="localBoard.set(+$any($event.target).value || null)">
+          <option value="">Pilih board…</option>
+          @for (b of boards(); track b.boardId) { <option [value]="b.boardId">{{ b.name }}</option> }
+        </select>
+      </label>
+    }
+    @if (board()) {
+      <div class="tb-chips cc-modes" role="tablist">
+        <button type="button" class="tb-chip" data-mode="single" [class.active]="mode() === 'single'" (click)="setMode('single')">Satu card</button>
+        <button type="button" class="tb-chip" data-mode="bulk" [class.active]="mode() === 'bulk'" (click)="setMode('bulk')">Bulk subtask</button>
+      </div>
+      @if (metaError()) { <p class="cc-err">{{ metaError() }}</p> }
+      @if (meta(); as m) {
+        @if ((m.types ?? []).length === 0) {
+          <p class="tb-hint" data-no-types>Tidak ada tipe card yang bisa kamu buat di project ini.</p>
+        } @else if (mode() === 'single') {
+          <app-single-card-form [boardId]="board()!" [meta]="m" (created)="created.emit()" />
+        } @else {
+          <app-bulk-subtasks [boardId]="board()!" [meta]="m" [aiReady]="!!status()?.aiReady" [initialParent]="initialParent()" (created)="created.emit()" />
+        }
+      } @else if (!metaError()) {
+        <p class="tb-hint"><span class="tb-spin" aria-hidden="true"></span> Memuat tipe card dari Jira…</p>
+      }
+    }
+  }
+</section>
