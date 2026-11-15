@@ -94,6 +94,10 @@ export class BoardPageComponent {
   private highlightTimer?: ReturnType<typeof setTimeout>;
   protected menu = signal<MenuState | null>(null);
   protected moving = signal<string | null>(null);
+  /** Moves sent to Jira and not answered yet; the board only reloads once none is left. */
+  private pendingMoves = 0;
+  /** Columns created on screen by applyLocalMove (status not in the last server load). */
+  private syntheticStatuses = new Set<string>();
   protected query = signal('');
   /** Statuses the user collapsed (true) or expanded (false) themselves. */
   private collapsedChoice = signal<Record<string, boolean>>(readJson(COLLAPSED_STORAGE_KEY));
@@ -210,6 +214,7 @@ export class BoardPageComponent {
       next: (res) => {
         this.columns.set((res.columns ?? []).map((c) => ({ status: c.status, cards: c.cards ?? [] })));
         this.related.set(res.related ?? []);
+        this.syntheticStatuses.clear();
         this.loaded.set(true);
         this.loading.set(false);
       },
@@ -379,22 +384,30 @@ export class BoardPageComponent {
     const from = card.status;
     this.applyLocalMove(card.issueKey, option.toStatus);
     this.moving.set(card.issueKey);
+    this.pendingMoves++;
     this.dashboard.moveTicket(card.issueKey, option.id).subscribe({
       next: () => {
-        this.moving.set(null);
+        this.pendingMoves--;
+        this.clearMoving(card.issueKey);
         this.highlight(card.issueKey);
         this.toast.show('success', 'Status dipindah', `${card.issueKey} → ${option.toStatus}`, 6000, {
           label: 'Batalkan',
           run: () => this.undo(card.issueKey, from),
         });
-        this.load();
+        // A reload now would overwrite other moves still in flight.
+        if (this.pendingMoves === 0) this.load();
       },
       error: (err) => {
+        this.pendingMoves--;
         this.applyLocalMove(card.issueKey, from);
-        this.moving.set(null);
+        this.clearMoving(card.issueKey);
         this.toast.error('Gagal memindah status', err?.error?.error ?? 'Coba lagi beberapa saat.');
       },
     });
+  }
+
+  private clearMoving(issueKey: string): void {
+    if (this.moving() === issueKey) this.moving.set(null);
   }
 
   /** Moves a card on screen only: sprint cards change section, branches change their status. */
@@ -405,11 +418,12 @@ export class BoardPageComponent {
       const moved = { ...card, status: toStatus };
       const without = cols.map((c) => ({ ...c, cards: c.cards.filter((x) => x.issueKey !== issueKey) }));
       const target = without.find((c) => c.status.toLowerCase() === toStatus.toLowerCase());
-      this.columns.set(
-        target
-          ? without.map((c) => (c === target ? { ...c, cards: [moved, ...c.cards] } : c))
-          : [...without, { status: toStatus, cards: [moved] }],
-      );
+      if (!target) this.syntheticStatuses.add(toStatus.toLowerCase());
+      const placed = target
+        ? without.map((c) => (c === target ? { ...c, cards: [moved, ...c.cards] } : c))
+        : [...without, { status: toStatus, cards: [moved] }];
+      // A column made up by an earlier local move disappears again once it is empty (rollback).
+      this.columns.set(placed.filter((c) => c.cards.length > 0 || !this.syntheticStatuses.has(c.status.toLowerCase())));
       return;
     }
     this.related.update((list) => list.map((b) => (b.issueKey === issueKey ? { ...b, status: toStatus } : b)));
@@ -424,7 +438,11 @@ export class BoardPageComponent {
           return;
         }
         const card = this.findCard(issueKey);
-        if (card) this.move(card, back);
+        if (!card) {
+          this.toast.error('Tidak bisa dibatalkan', 'Tiket tidak lagi tampil di papan.');
+          return;
+        }
+        this.move(card, back);
       },
       error: () => this.toast.error('Tidak bisa dibatalkan', 'Gagal memuat transisi dari Jira.'),
     });

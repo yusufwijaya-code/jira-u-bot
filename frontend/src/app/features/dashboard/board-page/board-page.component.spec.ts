@@ -342,6 +342,50 @@ describe('BoardPageComponent', () => {
     http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
   });
 
+  it('negative undo: tells the user when the workflow has no way back', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'error');
+    (fixture.componentInstance as unknown as { undo(k: string, s: string): void }).undo('OMS-1', 'To Do');
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '31', name: 'Ship', toStatus: 'Done' }] });
+    expect(toast.error).toHaveBeenCalledWith('Tidak bisa dibatalkan', jasmine.stringContaining('To Do'));
+  });
+
+  it('undo tells the user when the ticket is no longer on the board', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'error');
+    (fixture.componentInstance as unknown as { undo(k: string, s: string): void }).undo('OMS-1', 'To Do');
+    (fixture.componentInstance as unknown as { columns: { set(v: unknown): void } }).columns.set([]);
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '11', name: 'Back', toStatus: 'To Do' }] });
+    expect(toast.error).toHaveBeenCalledWith('Tidak bisa dibatalkan', 'Tiket tidak lagi tampil di papan.');
+  });
+
+  it('reloads the board once, only after the last in-flight move answers', () => {
+    const fixture = render();
+    const cmp = fixture.componentInstance as unknown as { move(c: unknown, o: unknown): void };
+    const card = (k: string) => ({ issueKey: k, summary: '', status: 'To Do', issueURL: '', boardId: 28 });
+    cmp.move(card('OMS-1'), { id: '21', name: 'Start', toStatus: 'Code Process' });
+    cmp.move(card('OMS-2'), { id: '21', name: 'Start', toStatus: 'Code Process' });
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({});
+    http.expectNone((r) => r.url.endsWith('/api/dashboard/board'));
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-2/transition')).flush({});
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('drops a column made up for an unknown status when the move is rolled back', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    const cmp = fixture.componentInstance as unknown as { move(c: unknown, o: unknown): void };
+    cmp.move({ issueKey: 'OMS-1', summary: '', status: 'To Do', issueURL: '', boardId: 28 }, { id: '99', name: 'Odd', toStatus: 'Weird' });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-status="Weird"]')).not.toBeNull();
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({}, { status: 500, statusText: 'x' });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-status="Weird"]')).toBeNull();
+    expect(el.querySelector('[data-status="To Do"] [data-card="OMS-1"]')).not.toBeNull();
+  });
+
   it('shows summary cards for the scope', () => {
     const fixture = render();
     const el: HTMLElement = fixture.nativeElement;
