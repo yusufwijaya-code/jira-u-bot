@@ -30,7 +30,7 @@ type UserSettingReader interface {
 
 type reminderEngineServiceImpl struct {
 	jiraBaseURL      string
-	holidayCalendar  business_hours_dto.HolidayCalendar
+	holidayCalendar  business_hours_dto.CalendarSource
 	businessHours    business_hours_service.BusinessHoursService
 	reminderLog      reminder_log_service.ReminderLogService
 	issueSession     issue_session_service.IssueSessionService
@@ -46,7 +46,7 @@ type reminderEngineServiceImpl struct {
 // fixed behavior).
 func NewReminderEngineService(
 	jiraBaseURL string,
-	holidayCalendar business_hours_dto.HolidayCalendar,
+	holidayCalendar business_hours_dto.CalendarSource,
 	businessHours business_hours_service.BusinessHoursService,
 	reminderLog reminder_log_service.ReminderLogService,
 	issueSession issue_session_service.IssueSessionService,
@@ -155,7 +155,10 @@ func codeProcessStartedAt(t *time.Time) time.Time {
 }
 
 func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error {
-	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, e.businessHours, e.holidayCalendar)
+	// The assignee's own calendar: national holidays + their leave days
+	// (Tech Spec "Papan Tiket & Cuti", AC3.2/AC3.3).
+	cal := e.holidayCalendar.ForEmail(ctx, session.AssigneeEmail)
+	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, e.businessHours, cal)
 
 	budgetSeconds := int64(session.StoryPoints * 3600)
 	assigneeName := e.resolveAssigneeDisplayName(ctx, issue.Fields.Assignee)
@@ -163,9 +166,9 @@ func (e *reminderEngineServiceImpl) EvaluateAndSend(ctx context.Context, issue j
 	setting := e.settingsFor(ctx, session.AssigneeEmail, boardOf(session))
 
 	if elapsedSeconds > budgetSeconds {
-		return e.sendOverageIfDue(ctx, issue, session, setting, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
+		return e.sendOverageIfDue(ctx, issue, session, setting, cal, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 	}
-	return e.sendTierIfDue(ctx, issue, session, setting, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
+	return e.sendTierIfDue(ctx, issue, session, setting, cal, elapsedSeconds, budgetSeconds, assigneeName, issueURL)
 }
 
 // resolveAssigneeDisplayName implements spec AC3.3: an unregistered assignee
@@ -210,7 +213,7 @@ func (e *reminderEngineServiceImpl) logAll(ctx context.Context, issueKey string,
 }
 
 // sendTierIfDue handles the pre-budget tiers (AC1.1–AC1.3, AC4.1).
-func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, setting user_setting_dto.UserSetting, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, setting user_setting_dto.UserSetting, cal business_hours_dto.HolidayCalendar, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
 	// Elapsed itself freezes outside business hours (it's computed via
 	// business-hours-aware ElapsedBusinessSeconds), but which POLL CYCLE
 	// first notices a tier has been crossed is not — if that happens to
@@ -218,7 +221,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 	// resuming later), the tier would otherwise fire immediately regardless
 	// of the clock. No state is touched before this point, so the next
 	// in-hours cycle re-evaluates normally.
-	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
+	if !e.businessHours.IsWithinBusinessHours(time.Now(), cal) {
 		return nil
 	}
 
@@ -247,7 +250,7 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 	target := due[len(due)-1]
 	stale := due[:len(due)-1]
 
-	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
+	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, cal)
 	msg := google_chat_notifier_dto.ReminderMessage{
 		IssueKey:             issue.Key,
 		IssueURL:             issueURL,
@@ -279,12 +282,12 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 // sendOverageIfDue handles everything past the budget (AC2.1–AC2.4, AC4.1,
 // AC4.2): the one-off "budget habis" notice (T+0), the user's post-budget
 // tiers ("+15m"), then the repeat interval (or silence when it's off).
-func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, setting user_setting_dto.UserSetting, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
+func (e *reminderEngineServiceImpl) sendOverageIfDue(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession, setting user_setting_dto.UserSetting, cal business_hours_dto.HolidayCalendar, elapsedSeconds, budgetSeconds int64, assigneeName, issueURL string) error {
 	// The poller runs every 10s around the clock, so without this gate an
 	// overaged ticket would keep re-sending all night/weekend/holiday too.
 	// Skipping here (instead of touching LastOverageReminderDate) leaves
 	// "due" exactly as-is, so the next in-hours cycle sends immediately.
-	if !e.businessHours.IsWithinBusinessHours(time.Now(), e.holidayCalendar) {
+	if !e.businessHours.IsWithinBusinessHours(time.Now(), cal) {
 		return nil
 	}
 
@@ -389,7 +392,7 @@ func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context,
 	}
 
 	remaining := budgetSeconds - elapsedSeconds
-	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar)
+	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar.ForEmail(ctx, assigneeEmail))
 
 	assigneeName := assigneeEmail
 	if user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail); err == nil && found {

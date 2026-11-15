@@ -26,8 +26,12 @@ type UserDashboardHandler interface {
 	GetBoard(c *gin.Context)
 	GetTeam(c *gin.Context)
 	GetOverdue(c *gin.Context)
-	// TransitionTicket moves one of the caller's own tickets via the same
-	// path as the bot's /n-geser (which enforces ownership).
+	// GetTransitions lists the moves the ticket's Jira workflow allows now
+	// (Tech Spec "Papan Tiket & Cuti"); own active-sprint tickets only.
+	GetTransitions(c *gin.Context)
+	// TransitionTicket moves one of the caller's own tickets: by workflow
+	// transition id (Papan Tiket), or by the legacy target slug through the
+	// same path as the bot's /n-geser.
 	TransitionTicket(c *gin.Context)
 	SaveCredential(c *gin.Context)
 	DeleteCredential(c *gin.Context)

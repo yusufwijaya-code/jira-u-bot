@@ -80,6 +80,15 @@ func (f *fakeUsers) FindAll(ctx context.Context) ([]registration_dto.User, error
 type fakeSessions struct {
 	existing map[string]bool
 	inserted map[string]issue_session_dto.IssueSession
+	updated  map[string]int64
+}
+
+func (f *fakeSessions) UpdateAccumulatedSeconds(ctx context.Context, issueKey string, seconds int64) error {
+	if f.updated == nil {
+		f.updated = map[string]int64{}
+	}
+	f.updated[issueKey] = seconds
+	return nil
 }
 
 func (f *fakeSessions) SessionExists(ctx context.Context, issueKey string) (bool, error) {
@@ -186,5 +195,69 @@ func TestNextDailyRun_Is0700WIB(t *testing.T) {
 		if got := nextDailyRun(now).Format(time.RFC3339); got != want {
 			t.Errorf("nextDailyRun(%s) = %s, want %s", in, got, want)
 		}
+	}
+}
+
+// Tech Spec "Papan Tiket & Cuti", AC4.2/AC4.6: leave recorded on a day the
+// ticket was already worked removes that day from the stored time.
+func TestRecalculateForEmail_ExcludesLeaveDayFromStoredTime(t *testing.T) {
+	jira := &fakeJira{
+		sprint: []jira_client_dto.Issue{
+			ticket("CORE-10923", "Code Completed", activeSprint, sp(16), "acc-1"),
+			ticket("CORE-11003", "Done", activeSprint, sp(1), "acc-1"), // no session: left to the backfill
+			ticket("CORE-11004", "Done", closedSprint, sp(1), "acc-1"), // not in an active sprint (AC4.3)
+		},
+		changelogs: map[string][]jira_client_dto.ChangelogEntry{
+			"CORE-10923": cpThenReview(),
+			"CORE-11003": cpThenReview(),
+			"CORE-11004": cpThenReview(),
+		},
+	}
+	sessions := &fakeSessions{existing: map[string]bool{"CORE-10923": true, "CORE-11004": true}}
+	// Leave on Mon 9 Nov: only Tue 08:30–10:30 (2h) is left of the 10h.
+	leave := business_hours_dto.HolidayCalendar{Holidays: map[string]bool{"2026-11-09": true}}
+	svc := NewSprintBackfillService(jira, &fakeUsers{users: []registration_dto.User{yusuf}}, nil, sessions,
+		business_hours_service.NewBusinessHoursService(), leave)
+
+	n, err := svc.RecalculateForEmail(context.Background(), "yusuf@esb.co.id")
+	if err != nil || n != 1 {
+		t.Fatalf("RecalculateForEmail = %d, %v; want 1", n, err)
+	}
+	if got := sessions.updated["CORE-10923"]; got != 2*3600 {
+		t.Errorf("CORE-10923 accumulated = %d, want %d", got, 2*3600)
+	}
+	if _, ok := sessions.updated["CORE-11003"]; ok {
+		t.Error("a ticket without a session must not be written by the recalculation")
+	}
+	if _, ok := sessions.updated["CORE-11004"]; ok {
+		t.Error("a ticket outside the active sprint must not be touched")
+	}
+	if len(sessions.inserted) != 0 {
+		t.Errorf("recalculation must never insert sessions, got %v", sessions.inserted)
+	}
+}
+
+// The open run of a ticket still in a tracked status stays with the poller:
+// only finished runs are written.
+func TestRecalculateForEmail_SkipsTheRunningPeriod(t *testing.T) {
+	h := func(at, from, to string) jira_client_dto.ChangelogEntry {
+		return jira_client_dto.ChangelogEntry{Created: at, Items: []jira_client_dto.ChangelogEntryItem{{Field: "status", FromString: from, ToString: to}}}
+	}
+	jira := &fakeJira{
+		sprint: []jira_client_dto.Issue{ticket("OMS-1", "Code Process", activeSprint, sp(8), "acc-1")},
+		changelogs: map[string][]jira_client_dto.ChangelogEntry{"OMS-1": {
+			h("2026-11-09T08:30:00.000+0700", "To Do", "Code Process"),
+			h("2026-11-09T17:30:00.000+0700", "Code Process", "To Do"),
+			h("2026-11-10T08:30:00.000+0700", "To Do", "Code Process"),
+		}},
+	}
+	sessions := &fakeSessions{existing: map[string]bool{"OMS-1": true}}
+	svc := newService(jira, &fakeUsers{users: []registration_dto.User{yusuf}}, sessions)
+
+	if _, err := svc.RecalculateForEmail(context.Background(), "yusuf@esb.co.id"); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessions.updated["OMS-1"]; got != 8*3600 {
+		t.Errorf("OMS-1 accumulated = %d, want only the finished Monday run (%d)", got, 8*3600)
 	}
 }

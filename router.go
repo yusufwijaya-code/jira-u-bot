@@ -17,6 +17,8 @@ import (
 	"nudge/modules/user_avatar/user_avatar_handler"
 	"nudge/modules/user_dashboard"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
+	"nudge/modules/user_leave"
+	"nudge/modules/user_leave/user_leave_handler"
 )
 
 // SetupRouter mounts every route under cfg.BasePath — labcup.tech hosts
@@ -33,6 +35,7 @@ func SetupRouter(
 	sprintReportHandler sprint_report_handler.SprintReportHandler,
 	adminUserSettings *user_dashboard_handler.SettingsHandler,
 	userAvatars *user_avatar_handler.UserAvatarHandler,
+	userLeaves *user_leave_handler.UserLeaveHandler,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -59,6 +62,8 @@ func SetupRouter(
 	dashboardAPI.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
 	user_dashboard.Router(dashboardAPI, userDashboardHandler)
 	sprint_report.Router(dashboardAPI, sprintReportHandler)
+	// Tech Spec "Papan Tiket & Cuti": the session user's leave days.
+	user_leave.Router(dashboardAPI, userLeaves)
 	// Jira profile pictures (Tech Spec "Admin Panel Revamp").
 	dashboardAPI.GET("/me/avatar", userAvatars.Mine)
 

@@ -26,7 +26,7 @@ type pollerServiceImpl struct {
 	businessHours    business_hours_service.BusinessHoursService
 	reminderEngine   reminder_engine_service.ReminderEngineService
 	registrationRepo registration_repository.RegistrationRepository
-	holidayCalendar  business_hours_dto.HolidayCalendar
+	holidayCalendar  business_hours_dto.CalendarSource
 	// boards caches the Jira Agile board of each ticket's active sprint;
 	// optional (nil = board names are never fetched).
 	boards boardRegistry
@@ -43,7 +43,7 @@ func NewPollerService(
 	businessHours business_hours_service.BusinessHoursService,
 	reminderEngine reminder_engine_service.ReminderEngineService,
 	registrationRepo registration_repository.RegistrationRepository,
-	holidayCalendar business_hours_dto.HolidayCalendar,
+	holidayCalendar business_hours_dto.CalendarSource,
 	boards boardRegistry,
 ) PollerService {
 	return &pollerServiceImpl{
@@ -189,7 +189,7 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		}
 		additionalSeconds := int64(0)
 		if session.CurrentSessionStartedDate != nil {
-			additionalSeconds = p.businessHours.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), p.holidayCalendar)
+			additionalSeconds = p.businessHours.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), p.holidayCalendar.ForEmail(ctx, session.AssigneeEmail))
 		}
 		totalElapsed := session.AccumulatedSeconds + additionalSeconds
 		budgetSeconds := int64(session.StoryPoints * 3600)

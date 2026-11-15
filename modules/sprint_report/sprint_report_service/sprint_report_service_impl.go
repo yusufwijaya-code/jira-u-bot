@@ -13,13 +13,13 @@ import (
 type sprintReportServiceImpl struct {
 	issueSessionRepo issue_session_repository.IssueSessionRepository
 	businessHours    business_hours_service.BusinessHoursService
-	holidayCalendar  business_hours_dto.HolidayCalendar
+	holidayCalendar  business_hours_dto.CalendarSource
 }
 
 func NewSprintReportService(
 	issueSessionRepo issue_session_repository.IssueSessionRepository,
 	businessHours business_hours_service.BusinessHoursService,
-	holidayCalendar business_hours_dto.HolidayCalendar,
+	holidayCalendar business_hours_dto.CalendarSource,
 ) SprintReportService {
 	return &sprintReportServiceImpl{
 		issueSessionRepo: issueSessionRepo,
@@ -73,7 +73,7 @@ func (s *sprintReportServiceImpl) GenerateReport(ctx context.Context, email stri
 		// AC7.5: live elapsed via CalculateElapsedSeconds, not raw
 		// accumulatedSeconds — a still-active session's actual time stays
 		// accurate as of the moment the report is generated.
-		actualHours := float64(issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)) / 3600.0
+		actualHours := float64(issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail))) / 3600.0
 
 		row := sprint_report_dto.Row{
 			SprintName:     session.SprintName,

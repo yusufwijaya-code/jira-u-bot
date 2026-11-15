@@ -27,4 +27,13 @@ type UserDashboardService interface {
 	// GetOverdueView returns email's own active tickets whose elapsed
 	// time has passed their budget (spec AC3.4).
 	GetOverdueView(ctx context.Context, email string) ([]user_dashboard_dto.OverdueItem, error)
+	// ListTransitions returns the moves issueKey's Jira workflow allows from
+	// its current status — CORE and OMS differ, so the list always comes
+	// from Jira (Tech Spec "Papan Tiket & Cuti", AC1.3). ErrNotOwnTicket
+	// unless issueKey is one of email's active-sprint tickets.
+	ListTransitions(ctx context.Context, email, issueKey string) (user_dashboard_dto.TicketTransitions, error)
+	// Transition executes transitionID on issueKey as email and returns the
+	// new status; ErrTransitionUnavailable when the workflow no longer
+	// offers it, ErrNotOwnTicket as in ListTransitions.
+	Transition(ctx context.Context, email, issueKey, transitionID string) (newStatus string, err error)
 }

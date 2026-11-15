@@ -1,0 +1,77 @@
+@if (loading()) {
+  <div class="empty-inline"><span>Memuat tiket…</span></div>
+} @else if (error()) {
+  <div class="empty-inline">
+    <span>{{ error() }}</span>
+    <button type="button" class="btn btn-soft btn-sm" (click)="load()">Coba lagi</button>
+  </div>
+} @else if (columns().length === 0) {
+  <div class="empty-inline"><span>Belum ada tiket kamu di sprint aktif.</span></div>
+} @else {
+  @if (menu()) {
+    <div class="status-backdrop" (click)="closeMenu()"></div>
+  }
+  <p class="kanban-hint">Klik status di card untuk memindahkan tiket. Pilihan mengikuti workflow Jira tiket itu.</p>
+  <div class="kanban">
+    @for (col of columns(); track col.status) {
+      <section class="kanban-col" data-column>
+        <header class="kanban-col-head">
+          <span>{{ col.status }}</span>
+          <span class="sub-count">{{ col.cards.length }}</span>
+        </header>
+        @for (card of col.cards; track card.issueKey) {
+          <article class="kanban-card" [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey">
+            <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
+            <p class="kanban-summary">{{ card.summary }}</p>
+            @if (card.parentKey) {
+              <p class="kanban-parent">↳ {{ card.parentKey }} · {{ card.parentSummary }}</p>
+            }
+            <div class="kanban-foot">
+              @if (card.storyPoints) {
+                <span class="kanban-sp">{{ card.storyPoints }} SP</span>
+              }
+              <div class="status-menu">
+                <button
+                  type="button"
+                  class="status-chip status-trigger"
+                  data-status-chip
+                  aria-haspopup="menu"
+                  [attr.aria-expanded]="menu()?.key === card.issueKey"
+                  [disabled]="moving() === card.issueKey"
+                  (click)="toggleMenu(card)"
+                >
+                  @if (moving() === card.issueKey) {
+                    Memindah…
+                  } @else {
+                    {{ card.status }}
+                  }
+                  <app-icon name="chevron-down" [size]="12" />
+                </button>
+                @if (menu()?.key === card.issueKey) {
+                  <div class="status-dropdown" role="menu">
+                    @if (menu()!.loading) {
+                      <span class="status-dropdown-note">Memuat transisi…</span>
+                    } @else if (menu()!.error) {
+                      <span class="status-dropdown-note">{{ menu()!.error }}</span>
+                    } @else if (menu()!.options.length === 0) {
+                      <span class="status-dropdown-note">Tidak ada transisi</span>
+                    } @else {
+                      @for (opt of menu()!.options; track opt.id) {
+                        <button type="button" role="menuitem" [attr.data-transition]="opt.id" (click)="move(card, opt)">
+                          <span class="status-dropdown-name">{{ optionLabel(opt) }}</span>
+                          <span class="status-chip">→ {{ opt.toStatus }}</span>
+                        </button>
+                      }
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+          </article>
+        } @empty {
+          <p class="kanban-empty">Kosong</p>
+        }
+      </section>
+    }
+  </div>
+}

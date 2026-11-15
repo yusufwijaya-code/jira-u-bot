@@ -66,6 +66,19 @@ export interface SprintReportResponse {
 
 export type TransitionTarget = 'todo' | 'code-review';
 
+/** One move the ticket's Jira workflow allows from its current status. */
+export interface TransitionOption {
+  id: string;
+  name: string;
+  toStatus: string;
+}
+
+export interface TicketTransitions {
+  issueKey: string;
+  currentStatus: string;
+  transitions: TransitionOption[];
+}
+
 /** Read-only views of the caller's own tickets — every endpoint is scoped to the session server-side. */
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
@@ -92,6 +105,19 @@ export class DashboardService {
    */
   backfillSprint(): Observable<{ added: number }> {
     return this.http.post<{ added: number }>(`${this.base}/report/backfill`, {});
+  }
+
+  /** Moves the ticket's Jira workflow allows right now — CORE and OMS differ (Papan Tiket). */
+  getTransitions(issueKey: string): Observable<TicketTransitions> {
+    return this.http.get<TicketTransitions>(`${this.base}/tickets/${encodeURIComponent(issueKey)}/transitions`);
+  }
+
+  /** Runs one of getTransitions' moves; returns the new status. */
+  moveTicket(issueKey: string, transitionId: string): Observable<{ message: string; status: string }> {
+    return this.http.post<{ message: string; status: string }>(
+      `${this.base}/tickets/${encodeURIComponent(issueKey)}/transition`,
+      { transitionId },
+    );
   }
 
   transitionTicket(issueKey: string, target: TransitionTarget): Observable<{ message: string }> {

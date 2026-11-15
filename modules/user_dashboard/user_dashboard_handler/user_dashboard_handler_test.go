@@ -18,6 +18,7 @@ import (
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/jira_credential/jira_credential_service"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
+	"nudge/modules/user_dashboard/user_dashboard_service"
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
@@ -38,6 +39,25 @@ type fakeUserDashboardService struct {
 
 	boards      []user_dashboard_dto.BoardSummary
 	boardsEmail string
+
+	// Tech Spec "Papan Tiket & Cuti": ListTransitions / Transition.
+	transitions        user_dashboard_dto.TicketTransitions
+	transitionsErr     error
+	transitionStatus   string
+	transitionErr      error
+	transitionEmail    string
+	transitionKey      string
+	transitionIDCalled string
+}
+
+func (f *fakeUserDashboardService) ListTransitions(ctx context.Context, email, issueKey string) (user_dashboard_dto.TicketTransitions, error) {
+	f.transitionEmail, f.transitionKey = email, issueKey
+	return f.transitions, f.transitionsErr
+}
+
+func (f *fakeUserDashboardService) Transition(ctx context.Context, email, issueKey, transitionID string) (string, error) {
+	f.transitionEmail, f.transitionKey, f.transitionIDCalled = email, issueKey, transitionID
+	return f.transitionStatus, f.transitionErr
 }
 
 func (f *fakeUserDashboardService) GetMyBoard(ctx context.Context, email string, boardID int64) (user_dashboard_dto.Board, error) {
@@ -785,5 +805,83 @@ func TestBoardAvatar(t *testing.T) {
 	handler.BoardAvatar(c)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("bad id: status = %d, want 400", w.Code)
+	}
+}
+
+// --- Tech Spec "Papan Tiket & Cuti" (US-1) ---
+
+func TestTransitionTicket_WithTransitionIDUsesWorkflowService(t *testing.T) {
+	svc := &fakeUserDashboardService{transitionStatus: "Code Process"}
+	chat := &fakeChatInteractiveForHandler{}
+	handler := NewUserDashboardHandler(svc, chat, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+
+	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"transitionId":"11"}`)
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.TransitionTicket(c)
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"Code Process"`) {
+		t.Fatalf("got %d %s", w.Code, w.Body.String())
+	}
+	if svc.transitionEmail != "dev@esb.co.id" || svc.transitionKey != "OMS-1" || svc.transitionIDCalled != "11" {
+		t.Errorf("service got %q %q %q", svc.transitionEmail, svc.transitionKey, svc.transitionIDCalled)
+	}
+	if chat.lastCommand != "" {
+		t.Errorf("a transitionId request must not go through RouteCommand, got %q", chat.lastCommand)
+	}
+}
+
+func TestTransitionTicket_MapsErrors(t *testing.T) {
+	cases := []struct {
+		err  error
+		want int
+	}{
+		{user_dashboard_service.ErrNotOwnTicket, http.StatusForbidden},
+		{user_dashboard_service.ErrTransitionUnavailable, http.StatusUnprocessableEntity},
+		{errors.New("jira down"), http.StatusBadGateway},
+	}
+	for _, tc := range cases {
+		svc := &fakeUserDashboardService{transitionErr: tc.err}
+		handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+		w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"transitionId":"11"}`)
+		c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+		handler.TransitionTicket(c)
+		if w.Code != tc.want {
+			t.Errorf("%v → %d, want %d", tc.err, w.Code, tc.want)
+		}
+	}
+}
+
+func TestTransitionTicket_EmptyBodyIs400(t *testing.T) {
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{}`)
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.TransitionTicket(c)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestGetTransitions_ReturnsListAndMapsErrors(t *testing.T) {
+	svc := &fakeUserDashboardService{transitions: user_dashboard_dto.TicketTransitions{
+		IssueKey: "OMS-1", CurrentStatus: "To Do",
+		Transitions: []user_dashboard_dto.TransitionOption{{ID: "11", Name: "Start Development", ToStatus: "Code Process"}},
+	}}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+	w, c := newTestContextWithUser("GET", "/api/dashboard/tickets/OMS-1/transitions?email=victim@esb.co.id", "")
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.GetTransitions(c)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"toStatus":"Code Process"`) {
+		t.Fatalf("got %d %s", w.Code, w.Body.String())
+	}
+	if svc.transitionEmail != "dev@esb.co.id" {
+		t.Errorf("email = %q, want the session user", svc.transitionEmail)
+	}
+
+	svc.transitionsErr = user_dashboard_service.ErrNotOwnTicket
+	w, c = newTestContextWithUser("GET", "/api/dashboard/tickets/OMS-2/transitions", "")
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-2"}}
+	handler.GetTransitions(c)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("not own ticket → %d, want 403", w.Code)
 	}
 }

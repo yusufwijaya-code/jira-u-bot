@@ -93,3 +93,18 @@ type OverdueItem struct {
 	Card
 	AssigneeEmail string `json:"assigneeEmail"`
 }
+
+// TransitionOption is one move the ticket's Jira workflow allows from its
+// current status (Tech Spec "Papan Tiket & Cuti", AC1.3).
+type TransitionOption struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	ToStatus string `json:"toStatus"`
+}
+
+// TicketTransitions answers GET /tickets/:issueKey/transitions.
+type TicketTransitions struct {
+	IssueKey      string             `json:"issueKey"`
+	CurrentStatus string             `json:"currentStatus"`
+	Transitions   []TransitionOption `json:"transitions"`
+}

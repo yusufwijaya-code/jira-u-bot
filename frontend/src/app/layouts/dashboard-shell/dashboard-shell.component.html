@@ -18,6 +18,14 @@
         <app-icon name="home" />
         <span>Dashboard</span>
       </a>
+      <a class="nav-item" routerLink="/dashboard/board" queryParamsHandling="preserve" routerLinkActive="active" (click)="closeSidebar()">
+        <app-icon name="kanban" />
+        <span>Papan Tiket</span>
+      </a>
+      <a class="nav-item" routerLink="/dashboard/leave" queryParamsHandling="preserve" routerLinkActive="active" (click)="closeSidebar()">
+        <app-icon name="calendar" />
+        <span>Cuti</span>
+      </a>
       <a class="nav-item" routerLink="/dashboard/settings" queryParamsHandling="preserve" routerLinkActive="active" (click)="closeSidebar()">
         <app-icon name="settings" />
         <span>Pengaturan</span>

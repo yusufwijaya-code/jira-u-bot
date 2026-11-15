@@ -1,0 +1,73 @@
+<div class="leave-page">
+  <section class="card" data-card="leave-form">
+    <header class="card-header">
+      <span class="card-icon"><app-icon name="calendar" [size]="20" /></span>
+      <div>
+        <h2>Tambah cuti</h2>
+        <p>Hari cuti tidak dihitung ke waktu tiket dan Nudge tidak mengirim pengingat di hari itu.</p>
+      </div>
+    </header>
+    <div class="leave-form">
+      <label>
+        <span>Dari</span>
+        <input type="date" data-from [value]="from()" (input)="from.set($any($event.target).value)" />
+      </label>
+      <label>
+        <span>Sampai</span>
+        <input type="date" data-to [value]="to()" [min]="from()" (input)="to.set($any($event.target).value)" />
+      </label>
+      <label class="leave-note">
+        <span>Catatan</span>
+        <input type="text" maxlength="200" placeholder="Opsional" [value]="note()" (input)="note.set($any($event.target).value)" />
+      </label>
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-submit
+        [class.loading]="saving()"
+        [disabled]="!valid() || saving()"
+        (click)="submit()"
+      >
+        <span class="spinner" aria-hidden="true"></span>
+        <span class="btn-label">Simpan</span>
+      </button>
+    </div>
+    <p class="leave-hint">
+      Kosongkan "Sampai" untuk cuti satu hari. Akhir pekan dan libur nasional otomatis dilewati. Cuti di tanggal yang sudah lewat
+      ikut menghitung ulang waktu tiket sprint aktif kamu.
+    </p>
+  </section>
+
+  <section class="card" data-card="leave-list">
+    <header class="card-header">
+      <div>
+        <h2>Cuti saya</h2>
+        <p>{{ leaves().length }} hari</p>
+      </div>
+    </header>
+    @if (loading()) {
+      <div class="empty-inline"><span>Memuat…</span></div>
+    } @else {
+      <ul class="leave-list">
+        @for (leave of leaves(); track leave.date) {
+          <li [attr.data-leave]="leave.date" [class.past]="leave.date < today">
+            <span class="leave-date">{{ label(leave.date) }}</span>
+            <span class="leave-note-text">{{ leave.note || '–' }}</span>
+            @if (confirming() === leave.date) {
+              <span class="leave-actions">
+                <button type="button" class="btn btn-sm btn-danger" data-confirm (click)="remove(leave.date)">Hapus</button>
+                <button type="button" class="btn btn-sm btn-ghost" (click)="confirming.set(null)">Batal</button>
+              </span>
+            } @else {
+              <button type="button" class="icon-btn" data-delete aria-label="Hapus cuti" title="Hapus cuti" (click)="confirming.set(leave.date)">
+                <app-icon name="trash" [size]="16" />
+              </button>
+            }
+          </li>
+        } @empty {
+          <li class="leave-empty">Belum ada cuti.</li>
+        }
+      </ul>
+    }
+  </section>
+</div>

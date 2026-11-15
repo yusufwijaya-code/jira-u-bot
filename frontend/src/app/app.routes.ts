@@ -20,6 +20,19 @@ export const routes: Routes = [
         title: 'Dashboard · Nudge',
         data: { heading: 'Dashboard', subheading: 'Ringkasan tiket dan budget waktu kamu' },
       },
+      // Tech Spec "Papan Tiket & Cuti".
+      {
+        path: 'board',
+        loadComponent: () => import('./features/dashboard/board-page/board-page.component').then((m) => m.BoardPageComponent),
+        title: 'Papan Tiket · Nudge',
+        data: { heading: 'Papan Tiket', subheading: 'Pindahkan status tiket sprint aktif kamu sesuai workflow Jira' },
+      },
+      {
+        path: 'leave',
+        loadComponent: () => import('./features/dashboard/leave/leave.component').then((m) => m.LeaveComponent),
+        title: 'Cuti · Nudge',
+        data: { heading: 'Cuti', subheading: 'Hari cuti tidak dihitung ke waktu tiket' },
+      },
       {
         path: 'settings',
         component: SettingsComponent,

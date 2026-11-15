@@ -50,7 +50,7 @@ type chatInteractiveServiceImpl struct {
 	registrationRepo registration_repository.RegistrationRepository
 	issueSessionRepo issue_session_repository.IssueSessionRepository
 	businessHours    business_hours_service.BusinessHoursService
-	holidayCalendar  business_hours_dto.HolidayCalendar
+	holidayCalendar  business_hours_dto.CalendarSource
 	jiraClient       jira_client_service.JiraClientService
 	jiraCredential   jira_credential_service.JiraCredentialService
 }
@@ -59,7 +59,7 @@ func NewChatInteractiveService(
 	registrationRepo registration_repository.RegistrationRepository,
 	issueSessionRepo issue_session_repository.IssueSessionRepository,
 	businessHours business_hours_service.BusinessHoursService,
-	holidayCalendar business_hours_dto.HolidayCalendar,
+	holidayCalendar business_hours_dto.CalendarSource,
 	jiraClient jira_client_service.JiraClientService,
 	jiraCredential jira_credential_service.JiraCredentialService,
 ) ChatInteractiveService {
@@ -175,7 +175,7 @@ func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email 
 		if i > 0 {
 			lines = append(lines, "") // blank line between cards so they don't visually blend together
 		}
-		lines = append(lines, s.formatTicketLine(session))
+		lines = append(lines, s.formatTicketLine(ctx, session))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -191,16 +191,17 @@ func (s *chatInteractiveServiceImpl) handleBudget(ctx context.Context, issueKey 
 		return fmt.Sprintf("Tiket %s tidak ditemukan atau belum/tidak lagi di-track 🤔", issueKey)
 	}
 
-	return "📊 " + s.formatTicketLine(*session)
+	return "📊 " + s.formatTicketLine(ctx, *session)
 }
 
 // formatTicketLine renders one ticket's SP/elapsed/remaining in the same
 // bold-label style as reminder messages.
-func (s *chatInteractiveServiceImpl) formatTicketLine(session issue_session_dto.IssueSession) string {
+func (s *chatInteractiveServiceImpl) formatTicketLine(ctx context.Context, session issue_session_dto.IssueSession) string {
+	cal := s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail)
 	budgetSeconds := int64(session.StoryPoints * 3600)
-	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
+	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, cal)
 	remainingSeconds := budgetSeconds - elapsedSeconds
-	deadline := s.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remainingSeconds, s.holidayCalendar)
+	deadline := s.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remainingSeconds, cal)
 
 	return fmt.Sprintf(
 		"*%s* — %s\n*Story Point:* %.1f SP (budget %.1f jam)\n*Waktu berjalan:* %.1f jam\n*Sisa waktu:* %s\n*Harus Selesai Pass:* %s",
@@ -221,7 +222,7 @@ func (s *chatInteractiveServiceImpl) handleOverdue(ctx context.Context) string {
 	var overdue []issue_session_dto.IssueSession
 	for _, session := range sessions {
 		budgetSeconds := int64(session.StoryPoints * 3600)
-		elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
+		elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail))
 		if elapsedSeconds > budgetSeconds {
 			overdue = append(overdue, session)
 		}

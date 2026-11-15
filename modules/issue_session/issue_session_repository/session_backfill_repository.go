@@ -16,10 +16,17 @@ type SessionBackfillRepository interface {
 	// InsertClosedSession stores a closed (flagActive = 0) session; an
 	// existing row for the same issue is never touched (added = false).
 	InsertClosedSession(ctx context.Context, s issue_session_dto.IssueSession) (added bool, err error)
+	// UpdateAccumulatedSeconds rewrites the time of past runs after a leave
+	// change (Tech Spec "Papan Tiket & Cuti", AC4.2); the running period and
+	// flagActive are left as they are.
+	UpdateAccumulatedSeconds(ctx context.Context, issueKey string, seconds int64) error
 }
 
 // BackfillCreatedBy marks sessions written by the backfill.
 const BackfillCreatedBy = "backfill"
+
+// LeaveRecalcEditedBy marks sessions rewritten by the leave recalculation.
+const LeaveRecalcEditedBy = "leave-recalc"
 
 type sessionBackfillRepositoryImpl struct{ db *sql.DB }
 
@@ -58,4 +65,12 @@ func (r *sessionBackfillRepositoryImpl) InsertClosedSession(ctx context.Context,
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
+}
+
+func (r *sessionBackfillRepositoryImpl) UpdateAccumulatedSeconds(ctx context.Context, issueKey string, seconds int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE tr_issuesession
+		SET accumulatedSeconds = ?, editedBy = ?, editedDate = CURRENT_TIMESTAMP
+		WHERE issueKey = ?`, seconds, LeaveRecalcEditedBy, issueKey)
+	return err
 }

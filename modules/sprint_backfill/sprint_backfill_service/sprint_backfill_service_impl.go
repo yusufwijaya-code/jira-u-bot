@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"nudge/modules/business_hours/business_hours_dto"
@@ -40,8 +41,10 @@ type sprintBackfillServiceImpl struct {
 	credentials   credentialResolver
 	sessions      issue_session_repository.SessionBackfillRepository
 	businessHours business_hours_service.BusinessHoursService
-	calendar      business_hours_dto.HolidayCalendar
+	calendar      business_hours_dto.CalendarSource
 	now           func() time.Time
+	// recalcLocks keeps one recalculation per user at a time.
+	recalcLocks sync.Map
 }
 
 func NewSprintBackfillService(
@@ -50,7 +53,7 @@ func NewSprintBackfillService(
 	credentials credentialResolver,
 	sessions issue_session_repository.SessionBackfillRepository,
 	businessHours business_hours_service.BusinessHoursService,
-	calendar business_hours_dto.HolidayCalendar,
+	calendar business_hours_dto.CalendarSource,
 ) SprintBackfillService {
 	return &sprintBackfillServiceImpl{
 		jira: jira, users: users, credentials: credentials, sessions: sessions,
@@ -59,12 +62,19 @@ func NewSprintBackfillService(
 }
 
 func (s *sprintBackfillServiceImpl) RunForEmail(ctx context.Context, email string) (int, error) {
-	user, found, err := s.users.FindUserByEmail(ctx, email)
-	if err != nil {
+	user, cred, err := s.userAndCredential(ctx, email)
+	if err != nil || user == nil {
 		return 0, err
 	}
-	if !found || user == nil {
-		return 0, nil
+	return s.runForUser(ctx, *user, cred)
+}
+
+// userAndCredential resolves a registered user (nil when unknown) and the
+// Jira credential to act with (the bot's when theirs fails).
+func (s *sprintBackfillServiceImpl) userAndCredential(ctx context.Context, email string) (*registration_dto.User, *jira_client_dto.Credential, error) {
+	user, found, err := s.users.FindUserByEmail(ctx, email)
+	if err != nil || !found || user == nil {
+		return nil, nil, err
 	}
 	var cred *jira_client_dto.Credential
 	if s.credentials != nil {
@@ -74,7 +84,7 @@ func (s *sprintBackfillServiceImpl) RunForEmail(ctx context.Context, email strin
 			log.Printf("sprint_backfill: credential of %s failed, using the bot's: %v", email, err)
 		}
 	}
-	return s.runForUser(ctx, *user, cred)
+	return user, cred, nil
 }
 
 func (s *sprintBackfillServiceImpl) RunAll(ctx context.Context) int {
@@ -105,9 +115,30 @@ func (s *sprintBackfillServiceImpl) RunAll(ctx context.Context) int {
 // runForUser covers the user's active-sprint tickets plus their own
 // subtasks/linked items that are in an active sprint too (AC3.1).
 func (s *sprintBackfillServiceImpl) runForUser(ctx context.Context, user registration_dto.User, cred *jira_client_dto.Credential) (int, error) {
+	issues, err := s.userIssues(ctx, user, cred)
+	if err != nil {
+		return 0, err
+	}
+	added := 0
+	for _, issue := range issues {
+		ok, err := s.backfillIssue(ctx, user, cred, issue)
+		if err != nil {
+			log.Printf("sprint_backfill: %s skipped: %v", issue.Key, err)
+			continue
+		}
+		if ok {
+			added++
+		}
+	}
+	return added, nil
+}
+
+// userIssues = the user's active-sprint tickets plus their own subtasks /
+// linked items (the related ones are filtered per ticket by the callers).
+func (s *sprintBackfillServiceImpl) userIssues(ctx context.Context, user registration_dto.User, cred *jira_client_dto.Credential) ([]jira_client_dto.Issue, error) {
 	issues, err := s.jira.SearchActiveSprintIssuesByAssignee(ctx, cred, user.JiraAccountID)
 	if err != nil {
-		return 0, fmt.Errorf("active sprint search: %w", err)
+		return nil, fmt.Errorf("active sprint search: %w", err)
 	}
 
 	seen := make(map[string]bool, len(issues))
@@ -131,19 +162,54 @@ func (s *sprintBackfillServiceImpl) runForUser(ctx context.Context, user registr
 			issues = append(issues, related...)
 		}
 	}
+	return issues, nil
+}
 
-	added := 0
+func (s *sprintBackfillServiceImpl) RecalculateForEmail(ctx context.Context, email string) (int, error) {
+	lock, _ := s.recalcLocks.LoadOrStore(email, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+
+	user, cred, err := s.userAndCredential(ctx, email)
+	if err != nil || user == nil {
+		return 0, err
+	}
+	issues, err := s.userIssues(ctx, *user, cred)
+	if err != nil {
+		return 0, err
+	}
+	cal := s.calendar.ForEmail(ctx, email)
+	elapsed := func(start, end time.Time) int64 { return s.businessHours.ElapsedBusinessSeconds(start, end, cal) }
+
+	updated := 0
 	for _, issue := range issues {
-		ok, err := s.backfillIssue(ctx, user, cred, issue)
-		if err != nil {
-			log.Printf("sprint_backfill: %s skipped: %v", issue.Key, err)
+		if _, inSprint := issue.Fields.ActiveSprint(); !inSprint {
+			continue // AC4.3: sessions outside the active sprint stay as they are
+		}
+		if a := issue.Fields.Assignee; a != nil && a.AccountID != "" && a.AccountID != user.JiraAccountID {
 			continue
 		}
-		if ok {
-			added++
+		exists, err := s.sessions.SessionExists(ctx, issue.Key)
+		if err != nil || !exists {
+			continue // no session yet: the backfill's job, not ours
 		}
+		histories, err := s.jira.GetChangelog(ctx, cred, issue.Key)
+		if err != nil {
+			log.Printf("sprint_backfill: recalculating %s skipped: %v", issue.Key, err)
+			continue
+		}
+		seconds, found := jira_client_dto.TrackedSeconds(histories, jira_client_dto.RuleForIssue(issue.Key), elapsed)
+		if !found {
+			continue
+		}
+		if err := s.sessions.UpdateAccumulatedSeconds(ctx, issue.Key, seconds); err != nil {
+			log.Printf("sprint_backfill: recalculating %s failed: %v", issue.Key, err)
+			continue
+		}
+		updated++
 	}
-	return added, nil
+	return updated, nil
 }
 
 // backfillIssue applies AC3.2–AC3.5 to one ticket.
@@ -172,8 +238,9 @@ func (s *sprintBackfillServiceImpl) backfillIssue(ctx context.Context, user regi
 	if err != nil {
 		return false, err
 	}
+	cal := s.calendar.ForEmail(ctx, user.Email)
 	seconds, found := jira_client_dto.TrackedSeconds(histories, rule, func(start, end time.Time) int64 {
-		return s.businessHours.ElapsedBusinessSeconds(start, end, s.calendar)
+		return s.businessHours.ElapsedBusinessSeconds(start, end, cal)
 	})
 	if !found {
 		return false, nil

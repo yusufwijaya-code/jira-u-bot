@@ -64,6 +64,9 @@ var addUserPictureSQL string
 //go:embed 0014_user_notification_switch.sql
 var userNotificationSwitchSQL string
 
+//go:embed 0015_add_user_leave.sql
+var addUserLeaveSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -138,7 +141,12 @@ func apply(db *sql.DB) error {
 	}
 	// Tech Spec "Notification On-Off Consent": both columns are added by
 	// one ALTER, so a duplicate-column error means the step already ran.
-	return addColumnIfNotExists(db, userNotificationSwitchSQL)
+	if err := addColumnIfNotExists(db, userNotificationSwitchSQL); err != nil {
+		return err
+	}
+	// Tech Spec "Papan Tiket & Cuti" — CREATE TABLE IF NOT EXISTS.
+	_, err := db.Exec(addUserLeaveSQL)
+	return err
 }
 
 // applyPerBoardSettings (Tech Spec "Per-Board Settings & Active Sprint

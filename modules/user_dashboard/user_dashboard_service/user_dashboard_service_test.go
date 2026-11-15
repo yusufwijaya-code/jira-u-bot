@@ -30,6 +30,10 @@ type fakeJiraClientForDashboard struct {
 	related          []jira_client_dto.Issue
 	relatedErr       error
 	relatedKeysAsked []string
+	// transitions backs GetTransitionsAs; transitioned records
+	// TransitionIssueAs as "KEY:ID".
+	transitions  []jira_client_dto.Transition
+	transitioned string
 }
 
 func (f *fakeJiraClientForDashboard) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -61,9 +65,10 @@ func (f *fakeJiraClientForDashboard) SearchAllIssuesByAssignee(ctx context.Conte
 	return f.issues, f.searchErr
 }
 func (f *fakeJiraClientForDashboard) GetTransitionsAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.Transition, error) {
-	return nil, nil
+	return f.transitions, nil
 }
 func (f *fakeJiraClientForDashboard) TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error {
+	f.transitioned = issueKey + ":" + transitionID
 	return nil
 }
 
@@ -688,5 +693,60 @@ func TestGetMyBoard_NoRelationsSkipsTheLookup(t *testing.T) {
 	}
 	if jiraClient.relatedKeysAsked != nil {
 		t.Errorf("keys asked = %v, want no lookup when no ticket has relations", jiraClient.relatedKeysAsked)
+	}
+}
+
+// --- Tech Spec "Papan Tiket & Cuti" (US-1) ---
+
+func newTransitionFixture() (UserDashboardService, *fakeJiraClientForDashboard) {
+	jira := &fakeJiraClientForDashboard{
+		issues: []jira_client_dto.Issue{{Key: "OMS-1", Fields: jira_client_dto.IssueFields{
+			Summary: "Lock payments", Status: jira_client_dto.Status{Name: "To Do"},
+		}}},
+		transitions: []jira_client_dto.Transition{{ID: "11", Name: "Start Development", To: jira_client_dto.Status{Name: "Code Process"}}},
+	}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {Email: "dev@esb.co.id", JiraAccountID: "acc-dev"},
+	}}
+	return newTestService(jira, &fakeJiraCredentialForDashboard{}, regRepo, &fakeIssueSessionRepoForDashboard{}), jira
+}
+
+func TestListTransitions_ReturnsJiraWorkflowOptionsForOwnSprintTicket(t *testing.T) {
+	svc, _ := newTransitionFixture()
+	got, err := svc.ListTransitions(context.Background(), "dev@esb.co.id", "OMS-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := user_dashboard_dto.TransitionOption{ID: "11", Name: "Start Development", ToStatus: "Code Process"}
+	if got.IssueKey != "OMS-1" || got.CurrentStatus != "To Do" || len(got.Transitions) != 1 || got.Transitions[0] != want {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestListTransitions_RejectsTicketOutsideOwnActiveSprint(t *testing.T) {
+	svc, _ := newTransitionFixture()
+	if _, err := svc.ListTransitions(context.Background(), "dev@esb.co.id", "OMS-999"); !errors.Is(err, ErrNotOwnTicket) {
+		t.Fatalf("err = %v, want ErrNotOwnTicket", err)
+	}
+	if _, err := svc.ListTransitions(context.Background(), "stranger@esb.co.id", "OMS-1"); !errors.Is(err, ErrNotOwnTicket) {
+		t.Fatalf("unregistered user: err = %v, want ErrNotOwnTicket", err)
+	}
+}
+
+func TestTransition_RejectsIDNotOfferedNow(t *testing.T) {
+	svc, jira := newTransitionFixture()
+	if _, err := svc.Transition(context.Background(), "dev@esb.co.id", "OMS-1", "31"); !errors.Is(err, ErrTransitionUnavailable) {
+		t.Fatalf("err = %v, want ErrTransitionUnavailable", err)
+	}
+	if jira.transitioned != "" {
+		t.Fatalf("nothing may be sent to Jira, got %q", jira.transitioned)
+	}
+}
+
+func TestTransition_ExecutesAndReturnsNewStatus(t *testing.T) {
+	svc, jira := newTransitionFixture()
+	status, err := svc.Transition(context.Background(), "dev@esb.co.id", "OMS-1", "11")
+	if err != nil || status != "Code Process" || jira.transitioned != "OMS-1:11" {
+		t.Fatalf("status=%q err=%v transitioned=%q", status, err, jira.transitioned)
 	}
 }

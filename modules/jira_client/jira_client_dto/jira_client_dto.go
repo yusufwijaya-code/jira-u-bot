@@ -198,8 +198,9 @@ type UserSearchResult struct {
 // "CODE REVIEW"), so callers must match To.Name case-insensitively rather
 // than assuming a transition exists or hardcoding its ID.
 type Transition struct {
-	ID string `json:"id"`
-	To Status `json:"to"`
+	ID   string `json:"id"`
+	Name string `json:"name"` // workflow wording, e.g. "Start Development"
+	To   Status `json:"to"`
 }
 
 type TransitionsResponse struct {

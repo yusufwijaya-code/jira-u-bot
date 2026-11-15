@@ -48,6 +48,9 @@ import (
 	"nudge/modules/user_avatar/user_avatar_service"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
 	"nudge/modules/user_dashboard/user_dashboard_service"
+	"nudge/modules/user_leave/user_leave_handler"
+	"nudge/modules/user_leave/user_leave_repository"
+	"nudge/modules/user_leave/user_leave_service"
 	"nudge/modules/user_setting/user_setting_repository"
 	"nudge/modules/user_setting/user_setting_service"
 
@@ -117,6 +120,20 @@ func main() {
 		log.Fatalf("failed to load holiday calendar from %s: %v", cfg.HolidayCalendarPath, err)
 	}
 
+	// Tech Spec "Papan Tiket & Cuti": every time calculation uses the
+	// assignee's own calendar (national holidays + their leave days). A
+	// change to a past leave day rebuilds that user's tracked time from
+	// Jira; recalcLeave is set once sprintBackfillSvc exists below.
+	var recalcLeave func(email string)
+	userLeaveSvc := user_leave_service.NewUserLeaveService(
+		user_leave_repository.NewUserLeaveRepository(db), holidayCalendar,
+		func(email string) {
+			if recalcLeave != nil {
+				recalcLeave(email)
+			}
+		},
+	)
+
 	issueSessionRepo := issue_session_repository.NewIssueSessionRepository(db)
 	issueSessionSvc := issue_session_service.NewIssueSessionService(issueSessionRepo)
 
@@ -136,7 +153,7 @@ func main() {
 	jiraCredentialRepo := jira_credential_repository.NewJiraCredentialRepository(db)
 	jiraCredentialSvc := jira_credential_service.NewJiraCredentialService(&cfg, jiraCredentialRepo, registrationRepo)
 
-	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, jiraClientSvc, jiraCredentialSvc)
+	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, jiraClientSvc, jiraCredentialSvc)
 
 	notifierSvc := google_chat_notifier_service.NewGoogleChatNotifierService(&cfg)
 
@@ -159,12 +176,12 @@ func main() {
 	}
 
 	reminderEngineSvc := reminder_engine_service.NewReminderEngineService(
-		cfg.JiraBaseURL, holidayCalendar, businessHoursSvc, reminderLogSvc,
+		cfg.JiraBaseURL, userLeaveSvc, businessHoursSvc, reminderLogSvc,
 		issueSessionSvc, registrationRepo, notifierSvc, dmNotifierSvc, cfg.JiraEmail, userSettingSvc,
 	)
 
 	pollerSvc := poller_service.NewPollerService(
-		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, registrationRepo, holidayCalendar, boardSvc,
+		jiraClientSvc, issueSessionSvc, businessHoursSvc, reminderEngineSvc, registrationRepo, userLeaveSvc, boardSvc,
 	)
 
 	// Tech Spec "Active Sprint Tracking & Changelog Backfill": rebuild the
@@ -172,8 +189,16 @@ func main() {
 	// every day at 07:00 WIB, plus the Sprint card's button.
 	sprintBackfillSvc := sprint_backfill_service.NewSprintBackfillService(
 		jiraAgileClient, registrationRepo, jiraCredentialSvc,
-		issue_session_repository.NewSessionBackfillRepository(db), businessHoursSvc, holidayCalendar,
+		issue_session_repository.NewSessionBackfillRepository(db), businessHoursSvc, userLeaveSvc,
 	)
+	recalcLeave = func(email string) {
+		n, err := sprintBackfillSvc.RecalculateForEmail(context.Background(), email)
+		if err != nil {
+			log.Printf("main: leave recalculation of %s failed: %v", email, err)
+			return
+		}
+		log.Printf("main: leave recalculation of %s rewrote %d session(s)", email, n)
+	}
 
 	shutdownMgr := shutdown.NewManager()
 	shutdownMgr.AddWorker()
@@ -212,11 +237,11 @@ func main() {
 	))
 
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
-		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, holidayCalendar, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
+		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
 	)
 	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc)
 
-	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, holidayCalendar)
+	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, userLeaveSvc)
 	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc, sprint_report_handler.WithBackfiller(sprintBackfillSvc))
 
 	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(
@@ -234,7 +259,7 @@ func main() {
 
 	userAvatarHandler := user_avatar_handler.NewUserAvatarHandler(userAvatarSvc)
 
-	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings, userAvatarHandler)
+	router := SetupRouter(&cfg, authSvc, authHandler, userDashboardHandler, adminDashboardHandler, sprintReportHandler, adminUserSettings, userAvatarHandler, user_leave_handler.NewUserLeaveHandler(userLeaveSvc))
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

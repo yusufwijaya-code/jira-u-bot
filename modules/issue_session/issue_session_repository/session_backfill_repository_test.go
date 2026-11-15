@@ -51,3 +51,30 @@ func TestSessionBackfill_InsertsClosedSessionOnceAndNeverOverwrites(t *testing.T
 		t.Errorf("accumulatedSeconds = %d after a second insert, want the original kept", acc)
 	}
 }
+
+func TestSessionBackfill_UpdateAccumulatedSecondsKeepsActiveState(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	repo := NewSessionBackfillRepository(db)
+	ctx := context.Background()
+	const key = "CORE-990002"
+	db.Exec(`DELETE FROM tr_issuesession WHERE issueKey = ?`, key)
+	t.Cleanup(func() { db.Exec(`DELETE FROM tr_issuesession WHERE issueKey = ?`, key) })
+	if _, err := db.Exec(`INSERT INTO tr_issuesession (issueKey, projectKey, storyPoints, accumulatedSeconds, currentSessionStartedDate, flagActive, assigneeEmail, createdBy, createdDate)
+		VALUES (?, 'CORE', 2, 50000, '2026-11-20 08:30:00', 1, 'dev@esb.co.id', 'poller', CURRENT_TIMESTAMP)`, key); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.UpdateAccumulatedSeconds(ctx, key, 21600); err != nil {
+		t.Fatal(err)
+	}
+	var acc int64
+	var active, startedNull bool
+	var editedBy string
+	if err := db.QueryRow(`SELECT accumulatedSeconds, flagActive, currentSessionStartedDate IS NULL, editedBy FROM tr_issuesession WHERE issueKey = ?`, key).
+		Scan(&acc, &active, &startedNull, &editedBy); err != nil {
+		t.Fatal(err)
+	}
+	if acc != 21600 || !active || startedNull || editedBy != LeaveRecalcEditedBy {
+		t.Fatalf("got acc=%d active=%v startedNull=%v editedBy=%q", acc, active, startedNull, editedBy)
+	}
+}

@@ -290,6 +290,55 @@ func TestEvaluateAndSend_TierSkipsSendOutsideBusinessHours(t *testing.T) {
 	}
 }
 
+// leaveCalendar marks today as a holiday for one email only (Tech Spec
+// "Papan Tiket & Cuti", AC3.3).
+type leaveCalendar struct{ email string }
+
+func (l leaveCalendar) ForEmail(_ context.Context, email string) business_hours_dto.HolidayCalendar {
+	if email != l.email {
+		return business_hours_dto.HolidayCalendar{}
+	}
+	return business_hours_dto.HolidayCalendar{Holidays: map[string]bool{time.Now().Format("2006-01-02"): true}}
+}
+
+// leaveAwareGate is open all day except on a day the calendar marks as a
+// holiday — isolates the leave check from the wall-clock time.
+type leaveAwareGate struct {
+	business_hours_service.BusinessHoursService
+}
+
+func (leaveAwareGate) IsWithinBusinessHours(t time.Time, cal business_hours_dto.HolidayCalendar) bool {
+	return !cal.IsHoliday(t)
+}
+
+func TestEvaluateAndSend_NoReminderOnAssigneeLeaveDay(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	notifier := &fakeGoogleChatNotifierService{}
+	registrationRepo := &fakeRegistrationRepository{users: map[string]registration_dto.User{}}
+	engine := NewReminderEngineService(
+		"https://esb-id.atlassian.net", leaveCalendar{email: "anwar@esb.co.id"},
+		leaveAwareGate{business_hours_service.NewBusinessHoursService()},
+		reminderLog, &fakeIssueSessionService{}, registrationRepo, notifier, nil, "",
+		nil,
+	)
+
+	onLeave := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 9100, AssigneeEmail: "anwar@esb.co.id"}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("anwar@esb.co.id", "Anwar"), onLeave); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.sentMessages) != 0 {
+		t.Fatalf("sent %d reminder(s) to a user on leave, want 0", len(notifier.sentMessages))
+	}
+
+	working := issue_session_dto.IssueSession{IssueKey: "OMS-2", StoryPoints: 3, AccumulatedSeconds: 9100, AssigneeEmail: "budi@esb.co.id"}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("budi@esb.co.id", "Budi"), working); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.sentMessages) != 1 {
+		t.Fatalf("sent %d reminder(s) to a working user, want 1", len(notifier.sentMessages))
+	}
+}
+
 func TestEvaluateAndSend_DoesNotResendAlreadyLoggedTier(t *testing.T) {
 	reminderLog := newFakeReminderLogService()
 	reminderLog.sentTiers["OMS-1|2h"] = true

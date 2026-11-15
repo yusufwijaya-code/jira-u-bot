@@ -17,4 +17,10 @@ type SprintBackfillService interface {
 	// RunDaily runs RunAll once now and then every day at 07:00 WIB until
 	// ctx is cancelled.
 	RunDaily(ctx context.Context)
+	// RecalculateForEmail rewrites accumulatedSeconds of email's existing
+	// active-sprint sessions from Jira's changelog with their current
+	// calendar (holidays + leave) — Tech Spec "Papan Tiket & Cuti", AC4.2.
+	// Only finished runs are counted; the running period stays with the
+	// poller. Returns how many sessions were rewritten.
+	RecalculateForEmail(ctx context.Context, email string) (updated int, err error)
 }

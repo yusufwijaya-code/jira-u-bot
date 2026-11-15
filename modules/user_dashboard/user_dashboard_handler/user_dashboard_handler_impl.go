@@ -217,14 +217,49 @@ func (h *userDashboardHandlerImpl) GetOverdue(c *gin.Context) {
 }
 
 type transitionRequest struct {
-	Target string `json:"target"`
+	Target       string `json:"target"`
+	TransitionID string `json:"transitionId"`
+}
+
+// transitionError maps a transition failure to its status and message.
+func transitionError(err error) (int, string) {
+	switch {
+	case errors.Is(err, user_dashboard_service.ErrNotOwnTicket):
+		return http.StatusForbidden, "Tiket ini bukan tiket kamu di sprint aktif."
+	case errors.Is(err, user_dashboard_service.ErrTransitionUnavailable):
+		return http.StatusUnprocessableEntity, "Transisi tidak tersedia untuk status sekarang."
+	default:
+		return http.StatusBadGateway, "Jira sedang tidak bisa dihubungi, coba lagi."
+	}
+}
+
+func (h *userDashboardHandlerImpl) GetTransitions(c *gin.Context) {
+	res, err := h.dashboardSvc.ListTransitions(c.Request.Context(), currentUser(c).Email, c.Param("issueKey"))
+	if err != nil {
+		code, msg := transitionError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	c.JSON(http.StatusOK, res)
 }
 
 func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
 	issueKey := c.Param("issueKey")
 	var req transitionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || (req.TransitionID == "" && req.Target == "") {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	// Papan Tiket: any move the ticket's Jira workflow offers.
+	if req.TransitionID != "" {
+		status, err := h.dashboardSvc.Transition(c.Request.Context(), currentUser(c).Email, issueKey, req.TransitionID)
+		if err != nil {
+			code, msg := transitionError(err)
+			c.JSON(code, gin.H{"error": msg})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": issueKey + " dipindah ke " + status + ".", "status": status})
 		return
 	}
 

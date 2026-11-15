@@ -2,6 +2,7 @@ package user_dashboard_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -28,7 +29,7 @@ type userDashboardServiceImpl struct {
 	registrationRepo registration_repository.RegistrationRepository
 	issueSessionRepo issue_session_repository.IssueSessionRepository
 	businessHours    business_hours_service.BusinessHoursService
-	holidayCalendar  business_hours_dto.HolidayCalendar
+	holidayCalendar  business_hours_dto.CalendarSource
 	jiraBaseURL      string
 	agile            activeSprintSearcher
 	boards           boardDirectory
@@ -53,7 +54,7 @@ func NewUserDashboardService(
 	registrationRepo registration_repository.RegistrationRepository,
 	issueSessionRepo issue_session_repository.IssueSessionRepository,
 	businessHours business_hours_service.BusinessHoursService,
-	holidayCalendar business_hours_dto.HolidayCalendar,
+	holidayCalendar business_hours_dto.CalendarSource,
 	jiraBaseURL string,
 	agile activeSprintSearcher,
 	boards boardDirectory,
@@ -307,15 +308,16 @@ func (s *userDashboardServiceImpl) buildCard(ctx context.Context, issue jira_cli
 		return card
 	}
 
-	s.attachBudgetDetail(&card, *session)
+	s.attachBudgetDetail(ctx, &card, *session)
 	return card
 }
 
-func (s *userDashboardServiceImpl) attachBudgetDetail(card *user_dashboard_dto.Card, session issue_session_dto.IssueSession) {
+func (s *userDashboardServiceImpl) attachBudgetDetail(ctx context.Context, card *user_dashboard_dto.Card, session issue_session_dto.IssueSession) {
+	cal := s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail)
 	budgetSeconds := int64(session.StoryPoints * 3600)
-	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
+	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, cal)
 	remainingSeconds := budgetSeconds - elapsedSeconds
-	deadline := s.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remainingSeconds, s.holidayCalendar)
+	deadline := s.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remainingSeconds, cal)
 
 	card.HasBudgetDetail = true
 	card.StoryPoints = session.StoryPoints
@@ -348,7 +350,7 @@ func (s *userDashboardServiceImpl) GetTeamView(ctx context.Context, email string
 	}
 	group := user_dashboard_dto.TeamGroup{AssigneeEmail: email}
 	for _, session := range sessions {
-		group.Cards = append(group.Cards, s.cardFromSession(session))
+		group.Cards = append(group.Cards, s.cardFromSession(ctx, session))
 	}
 	view.Groups = append(view.Groups, group)
 	return view, nil
@@ -365,12 +367,12 @@ func (s *userDashboardServiceImpl) GetOverdueView(ctx context.Context, email str
 	var overdue []user_dashboard_dto.OverdueItem
 	for _, session := range sessions {
 		budgetSeconds := int64(session.StoryPoints * 3600)
-		elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar)
+		elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail))
 		if elapsedSeconds <= budgetSeconds {
 			continue
 		}
 		overdue = append(overdue, user_dashboard_dto.OverdueItem{
-			Card:          s.cardFromSession(session),
+			Card:          s.cardFromSession(ctx, session),
 			AssigneeEmail: session.AssigneeEmail,
 		})
 	}
@@ -380,12 +382,77 @@ func (s *userDashboardServiceImpl) GetOverdueView(ctx context.Context, email str
 // cardFromSession builds a Card straight from a tracked session (Team and
 // Overdue views only ever show tickets that already have one, unlike
 // buildCard for My Board which starts from a live Jira issue).
-func (s *userDashboardServiceImpl) cardFromSession(session issue_session_dto.IssueSession) user_dashboard_dto.Card {
+func (s *userDashboardServiceImpl) cardFromSession(ctx context.Context, session issue_session_dto.IssueSession) user_dashboard_dto.Card {
 	card := user_dashboard_dto.Card{
 		IssueKey: session.IssueKey,
 		Summary:  session.IssueSummary,
 		Status:   jira_client_dto.StatusCodeProcess,
 	}
-	s.attachBudgetDetail(&card, session)
+	s.attachBudgetDetail(ctx, &card, session)
 	return card
+}
+
+var (
+	// ErrNotOwnTicket: the ticket isn't one of the caller's active-sprint
+	// tickets (Tech Spec "Papan Tiket & Cuti", AC1.6).
+	ErrNotOwnTicket = errors.New("user_dashboard: not the caller's active-sprint ticket")
+	// ErrTransitionUnavailable: the transition isn't offered by the
+	// ticket's workflow from its current status.
+	ErrTransitionUnavailable = errors.New("user_dashboard: transition not available from the current status")
+)
+
+// ownSprintTicket finds issueKey among email's active-sprint tickets
+// (subtasks inherit their parent's sprint, so they're included).
+func (s *userDashboardServiceImpl) ownSprintTicket(ctx context.Context, email, issueKey string) (jira_client_dto.Issue, *jira_client_dto.Credential, error) {
+	q, err := s.activeSprintIssues(ctx, email)
+	if err != nil {
+		return jira_client_dto.Issue{}, nil, err
+	}
+	for _, issue := range q.issues {
+		if strings.EqualFold(issue.Key, issueKey) {
+			return issue, q.cred, nil
+		}
+	}
+	return jira_client_dto.Issue{}, nil, ErrNotOwnTicket
+}
+
+func (s *userDashboardServiceImpl) ListTransitions(ctx context.Context, email, issueKey string) (user_dashboard_dto.TicketTransitions, error) {
+	issue, cred, err := s.ownSprintTicket(ctx, email, issueKey)
+	if err != nil {
+		return user_dashboard_dto.TicketTransitions{}, err
+	}
+	transitions, err := s.jiraClient.GetTransitionsAs(ctx, cred, issue.Key)
+	if err != nil {
+		return user_dashboard_dto.TicketTransitions{}, err
+	}
+	out := user_dashboard_dto.TicketTransitions{
+		IssueKey:      issue.Key,
+		CurrentStatus: issue.Fields.Status.Name,
+		Transitions:   make([]user_dashboard_dto.TransitionOption, 0, len(transitions)),
+	}
+	for _, tr := range transitions {
+		out.Transitions = append(out.Transitions, user_dashboard_dto.TransitionOption{ID: tr.ID, Name: tr.Name, ToStatus: tr.To.Name})
+	}
+	return out, nil
+}
+
+func (s *userDashboardServiceImpl) Transition(ctx context.Context, email, issueKey, transitionID string) (string, error) {
+	issue, cred, err := s.ownSprintTicket(ctx, email, issueKey)
+	if err != nil {
+		return "", err
+	}
+	// Re-read the workflow: the ticket may have moved since the menu opened.
+	transitions, err := s.jiraClient.GetTransitionsAs(ctx, cred, issue.Key)
+	if err != nil {
+		return "", err
+	}
+	for _, tr := range transitions {
+		if tr.ID == transitionID {
+			if err := s.jiraClient.TransitionIssueAs(ctx, cred, issue.Key, tr.ID); err != nil {
+				return "", err
+			}
+			return tr.To.Name, nil
+		}
+	}
+	return "", ErrTransitionUnavailable
 }
