@@ -15,6 +15,9 @@
   &.dragging { opacity: .5; } &.busy { opacity: .6; cursor: progress; } }
 .kb-title { margin: 6px 0 8px; font-size: .86rem; line-height: 1.35; }
 .kb-meta { display: flex; gap: 10px; font-size: .74rem; color: var(--text-muted); .over { color: var(--danger); } }
+.kb-bar { display: block; height: 4px; margin-top: 8px; border-radius: 999px; background: var(--border); overflow: hidden;
+  > span { display: block; height: 100%; background: var(--primary); }
+  &.over > span { background: var(--error); } }
 .kb-empty { margin: 0; font-size: .78rem; color: var(--text-faint); text-align: center; padding: 16px 0; }
 .kb-hint { margin: 8px 0 0; font-size: .78rem; color: var(--text-muted); }
 @media (prefers-reduced-motion: reduce) { .kb-card, .kb-col { transition: none; } }

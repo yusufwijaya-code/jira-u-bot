@@ -94,7 +94,11 @@
   </div>
   <p class="tb-hint">
     {{ total() }} tiket di sprint aktif{{ branchTotal() ? ' + ' + branchTotal() + ' subtask/linked item di luar sprint' : '' }}.
-    Klik status di baris tiket atau subtask untuk memindahkannya sesuai workflow Jira.
+    @if (view() === 'list') {
+      Klik status di baris tiket atau subtask untuk memindahkannya sesuai workflow Jira.
+    } @else {
+      Seret kartu ke kolom status tujuan — kolom yang bisa dituju akan menyala.
+    }
   </p>
 
   @if (view() === 'list') {

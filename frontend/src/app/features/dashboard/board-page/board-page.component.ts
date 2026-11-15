@@ -7,7 +7,7 @@ import { BoardContextService } from '../../../core/services/board-context.servic
 import { ToastService } from '../../../core/ui/toast.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { BoardColumnsComponent } from './board-columns.component';
-import { statusTone, shortDuration, StatusTone } from './board-format';
+import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
 import { IconComponent } from '../../../shared/ui/icon.component';
 
 interface Column {
@@ -324,8 +324,7 @@ export class BoardPageComponent {
 
   /** Share of the budget used, capped at 100 for the bar. */
   protected budgetPercent(card: TicketCard): number {
-    if (!card.budgetSeconds) return 0;
-    return Math.min(100, Math.round((card.elapsedSeconds / card.budgetSeconds) * 100));
+    return budgetPercent(card);
   }
 
   protected toggleMenu(card: TicketCard): void {

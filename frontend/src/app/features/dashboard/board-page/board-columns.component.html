@@ -1,5 +1,5 @@
 <div class="kb" role="list">
-  @for (col of columns(); track col.status) {
+  @for (col of shown(); track col.status) {
     <section class="kb-col" role="listitem" [attr.data-kcol]="col.status" [attr.data-tone]="statusTone(col.status)"
       [class.drop-ok]="state(col.status) === 'ok'" [class.drop-no]="state(col.status) === 'no'" [class.drop-loading]="state(col.status) === 'loading'"
       (dragover)="onDragOver($event, col.status)" (drop)="onDrop($event, col.status)">
@@ -18,14 +18,17 @@
               }
               @if (branchCount()(card.issueKey)) { <span>↳ {{ branchCount()(card.issueKey) }}</span> }
             </footer>
+            @if (card.budgetSeconds) {
+              <span class="kb-bar" [class.over]="card.elapsedSeconds > card.budgetSeconds"><span [style.width.%]="budgetPercent(card)"></span></span>
+            }
           </article>
         } @empty {
-          <p class="kb-empty">Kosong</p>
+          <p class="kb-empty">{{ col.temp ? 'Lepas di sini' : 'Kosong' }}</p>
         }
       </div>
     </section>
   }
 </div>
 @if (touch) {
-  <p class="kb-hint">Di layar sentuh, ubah status dari tampilan Daftar.</p>
+  <p class="kb-hint">Di layar kecil/sentuh, ubah status dari tampilan Daftar.</p>
 }

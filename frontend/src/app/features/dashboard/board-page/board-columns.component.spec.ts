@@ -35,4 +35,32 @@ describe('BoardColumnsComponent', () => {
     el.querySelector('[data-kcol="Code Process"]')!.dispatchEvent(dragEvent('drop'));
     expect(emitted).toEqual([jasmine.objectContaining({ option: jasmine.objectContaining({ id: '21' }) })]);
   });
+
+  it('fetches transitions again once the card changed status', () => {
+    const f = render();
+    const el: HTMLElement = f.nativeElement;
+    el.querySelector('[data-kcard="OMS-1"]')!.dispatchEvent(dragEvent('dragstart'));
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [] });
+    el.querySelector('[data-kcard="OMS-1"]')!.dispatchEvent(dragEvent('dragend'));
+    f.componentRef.setInput('columns', [{ status: 'To Do', cards: [] }, { status: 'Code Process', cards: [{ ...card, status: 'Code Process' }] }]);
+    f.detectChanges();
+    el.querySelector('[data-kcard="OMS-1"]')!.dispatchEvent(dragEvent('dragstart'));
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [] });
+  });
+
+  it('adds a temporary drop zone for a reachable status without a column', () => {
+    const f = render();
+    const el: HTMLElement = f.nativeElement;
+    const emitted: unknown[] = [];
+    f.componentInstance.moveRequested.subscribe((v) => emitted.push(v));
+    el.querySelector('[data-kcard="OMS-1"]')!.dispatchEvent(dragEvent('dragstart'));
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '31', name: 'Review', toStatus: 'Code Review' }] });
+    f.detectChanges();
+    const zone = el.querySelector('[data-kcol="Code Review"]')!;
+    expect(zone.classList).toContain('drop-ok');
+    zone.dispatchEvent(dragEvent('drop'));
+    expect(emitted).toEqual([jasmine.objectContaining({ option: jasmine.objectContaining({ id: '31' }) })]);
+    f.detectChanges();
+    expect(el.querySelector('[data-kcol="Code Review"]')).toBeNull();
+  });
 });

@@ -20,3 +20,9 @@ export function shortDuration(totalSeconds: number): string {
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}j` : `${h}j ${m}m`;
 }
+
+/** Elapsed share of the budget, capped at 100 (0 when there is no budget). */
+export function budgetPercent(card: { elapsedSeconds: number; budgetSeconds: number }): number {
+  if (!card.budgetSeconds) return 0;
+  return Math.min(100, Math.round((card.elapsedSeconds / card.budgetSeconds) * 100));
+}

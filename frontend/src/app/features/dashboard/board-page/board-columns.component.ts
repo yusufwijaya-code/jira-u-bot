@@ -1,6 +1,6 @@
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
-import { shortDuration, statusTone } from './board-format';
+import { budgetPercent, shortDuration, statusTone } from './board-format';
 
 export interface ColumnView { status: string; cards: TicketCard[]; }
 export interface MoveRequest { card: TicketCard; option: TransitionOption; }
@@ -21,11 +21,31 @@ export class BoardColumnsComponent {
 
   protected readonly statusTone = statusTone;
   protected readonly shortDuration = shortDuration;
+  protected readonly budgetPercent = budgetPercent;
   protected dragging = signal<TicketCard | null>(null);
   /** Transitions per card, loaded once per page visit. */
   private cache = new Map<string, TransitionOption[]>();
   protected options = signal<TransitionOption[] | null>(null);
-  protected touch = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+
+  /** Columns shown: the real ones plus, while dragging, a temporary zone per reachable status that has no card yet. */
+  protected shown = computed(() => {
+    const cols = this.columns().map((c) => ({ ...c, temp: false }));
+    const card = this.dragging();
+    const opts = this.options();
+    if (!card || !opts) return cols;
+    const have = new Set(cols.map((c) => c.status.toLowerCase()));
+    for (const o of opts) {
+      if (have.has(o.toStatus.toLowerCase())) continue;
+      have.add(o.toStatus.toLowerCase());
+      cols.push({ status: o.toStatus, cards: [], temp: true });
+    }
+    return cols;
+  });
+  protected touch = typeof matchMedia === 'function' && matchMedia('(hover: none), (max-width: 767px)').matches;
+
+  private cacheKey(card: TicketCard): string {
+    return `${card.issueKey}|${card.status}`;
+  }
 
   protected targetOf(status: string): TransitionOption | undefined {
     return this.options()?.find((o) => o.toStatus.toLowerCase() === status.toLowerCase());
@@ -43,7 +63,7 @@ export class BoardColumnsComponent {
     event.dataTransfer?.setData('text/plain', card.issueKey);
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     this.dragging.set(card);
-    const cached = this.cache.get(card.issueKey);
+    const cached = this.cache.get(this.cacheKey(card));
     if (cached) {
       this.options.set(cached);
       return;
@@ -51,7 +71,7 @@ export class BoardColumnsComponent {
     this.options.set(null);
     this.dashboard.getTransitions(card.issueKey).subscribe({
       next: (res) => {
-        this.cache.set(card.issueKey, res.transitions ?? []);
+        this.cache.set(this.cacheKey(card), res.transitions ?? []);
         if (this.dragging()?.issueKey === card.issueKey) this.options.set(res.transitions ?? []);
       },
       error: () => this.options.set([]),
