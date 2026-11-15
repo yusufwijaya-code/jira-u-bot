@@ -441,7 +441,39 @@ func (s *userDashboardServiceImpl) ownSprintTicket(ctx context.Context, email, i
 			return issue, q.cred, nil
 		}
 	}
+	// A subtask / linked item of one of those tickets, outside the sprint
+	// (a dashboard branch), counts when it is assigned to the caller.
+	if issue, ok := s.ownBranch(ctx, q, issueKey); ok {
+		return issue, q.cred, nil
+	}
 	return jira_client_dto.Issue{}, nil, ErrNotOwnTicket
+}
+
+func (s *userDashboardServiceImpl) ownBranch(ctx context.Context, q sprintQuery, issueKey string) (jira_client_dto.Issue, bool) {
+	key := strings.ToUpper(issueKey)
+	related := false
+	for _, issue := range q.issues {
+		for _, rel := range issue.Relations() {
+			if strings.EqualFold(rel.Key, key) {
+				related = true
+			}
+		}
+	}
+	if !related || q.accountID == "" {
+		return jira_client_dto.Issue{}, false
+	}
+	issues, err := s.agile.SearchIssuesByKeysForAssignee(ctx, q.cred, []string{key}, q.accountID)
+	if err != nil {
+		log.Printf("user_dashboard_service: branch lookup of %s failed: %v", key, err)
+		return jira_client_dto.Issue{}, false
+	}
+	for _, issue := range issues {
+		a := issue.Fields.Assignee
+		if strings.EqualFold(issue.Key, key) && a != nil && a.AccountID == q.accountID {
+			return issue, true
+		}
+	}
+	return jira_client_dto.Issue{}, false
 }
 
 func (s *userDashboardServiceImpl) ListTransitions(ctx context.Context, email, issueKey string) (user_dashboard_dto.TicketTransitions, error) {

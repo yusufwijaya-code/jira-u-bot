@@ -787,3 +787,26 @@ func TestGetMyBoard_StoppedTicketShowsSPAndRecordedTime(t *testing.T) {
 		t.Errorf("OMS-2 sp=%v timeRecorded=%v, want 2/false (no session, nothing recorded)", todo.StoryPoints, todo.TimeRecorded)
 	}
 }
+
+func TestTransition_AllowsOwnSubtaskOutsideTheSprint(t *testing.T) {
+	svc, jira := newTransitionFixture()
+	jira.issues[0] = withRelations(jira.issues[0], []string{"OMS-2", "OMS-3"}, nil)
+	jira.related = []jira_client_dto.Issue{
+		plainIssue("OMS-2", "To Do", "acc-dev"),
+		plainIssue("OMS-3", "To Do", "acc-other"), // someone else's subtask
+	}
+
+	got, err := svc.ListTransitions(context.Background(), "dev@esb.co.id", "oms-2")
+	if err != nil || got.IssueKey != "OMS-2" || got.CurrentStatus != "To Do" {
+		t.Fatalf("own subtask: got %+v, err %v", got, err)
+	}
+	if status, err := svc.Transition(context.Background(), "dev@esb.co.id", "OMS-2", "11"); err != nil || status != "Code Process" || jira.transitioned != "OMS-2:11" {
+		t.Fatalf("move own subtask: status %q err %v sent %q", status, err, jira.transitioned)
+	}
+	if _, err := svc.ListTransitions(context.Background(), "dev@esb.co.id", "OMS-3"); !errors.Is(err, ErrNotOwnTicket) {
+		t.Errorf("someone else's subtask: err = %v, want ErrNotOwnTicket", err)
+	}
+	if _, err := svc.ListTransitions(context.Background(), "dev@esb.co.id", "OMS-77"); !errors.Is(err, ErrNotOwnTicket) {
+		t.Errorf("unrelated ticket: err = %v, want ErrNotOwnTicket", err)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ const (
 	actLeaveRemove = "leave.remove" // param date
 	actMute        = "mute"         // param for: minutes | tomorrow | forever
 	actUnmute      = "unmute"
+	actScope       = "scope" // params board (0 = all), then: switch board, show then again
 )
 
 // Form field names of the leave card.
@@ -64,11 +66,20 @@ type Settings interface {
 	NotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, error)
 }
 
+// BoardScope is the board picked in the web navbar (0 = every board).
+type BoardScope interface {
+	Get(ctx context.Context, email string) (int64, error)
+	Set(ctx context.Context, email string, boardID int64) error
+}
+
 type Deps struct {
 	Users     UserFinder
 	Dashboard Dashboard
 	Leaves    Leaves
 	Settings  Settings
+	// Scope (optional) makes /n-mytickets, /n-dashboard and /n-mute follow
+	// the web's board choice.
+	Scope BoardScope
 	// WebURL is the dashboard root, e.g. https://nudge.labcup.tech.
 	WebURL string
 	Now    func() time.Time
@@ -157,6 +168,14 @@ func (s *service) Action(ctx context.Context, email, function string, params map
 		return ActionReply{Reply: s.mute(ctx, u, params["for"]).reply(), Update: true}
 	case actUnmute:
 		return ActionReply{Reply: s.unmute(ctx, u, "").reply(), Update: true}
+	case actScope:
+		id, _ := strconv.ParseInt(params["board"], 10, 64)
+		s.saveBoard(ctx, email, max(id, 0))
+		then := params["then"]
+		if then != "/n-dashboard" && then != "/n-mute" {
+			then = "/n-mytickets"
+		}
+		return ActionReply{Reply: s.Command(ctx, email, then), Update: true}
 	}
 	return ActionReply{Reply: s.menu(u, "").reply()}
 }
@@ -217,22 +236,27 @@ func overdue(c user_dashboard_dto.Card) bool {
 }
 
 func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view {
-	board, err := s.d.Dashboard.GetMyBoard(ctx, u.Email, 0)
+	sc, err := s.scoped(ctx, u.Email, "")
 	if err != nil {
 		log.Printf("chat_interactive: GetMyBoard(%s) failed: %v", u.Email, err)
 		return note("Dashboard", jiraBody)
 	}
 	now := s.d.Now()
 
-	var all, active []user_dashboard_dto.Card
+	var all, active, branches []user_dashboard_dto.Card
 	counts := map[string]int{}
 	var order []string
-	for _, col := range board.Columns {
-		order = append(order, col.Status)
-		counts[col.Status] = len(col.Cards)
-		all = append(all, col.Cards...)
+	for _, g := range sc.picked {
+		for _, c := range g.cards {
+			if _, seen := counts[c.Status]; !seen {
+				order = append(order, c.Status)
+			}
+			counts[c.Status]++
+			all = append(all, c)
+		}
+		branches = append(branches, g.branches...)
 	}
-	for _, c := range append(append([]user_dashboard_dto.Card{}, all...), board.Related...) {
+	for _, c := range append(append([]user_dashboard_dto.Card{}, all...), branches...) {
 		if working(c) {
 			active = append(active, c)
 		}
@@ -260,6 +284,9 @@ func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view 
 	}
 
 	sections := []section{{items: []item{paragraph(overview)}}}
+	if sc.note != "" {
+		sections = append([]section{{items: []item{paragraph(sc.note)}}}, sections...)
+	}
 	if len(active) > 0 {
 		var items []item
 		for _, c := range active {
@@ -271,9 +298,9 @@ func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view 
 	}
 
 	var status []item
-	if st, err := s.d.Settings.GetEffective(ctx, u.UserID, 0); err == nil && user_setting_dto.MuteActive(st.MutedUntil, now) {
+	if until := s.activeMute(ctx, u.UserID, sc.id, now); until != nil {
 		b := action("Nyalakan", actUnmute)
-		status = append(status, item{row: &row{main: "🔕 Notifikasi " + muteLabel(st.MutedUntil, now), button: &b}})
+		status = append(status, item{row: &row{main: "🔕 Notifikasi " + muteLabel(until, now), button: &b}})
 	} else {
 		b := action("Mute", actCommand, "cmd", "/n-mute")
 		status = append(status, item{row: &row{main: "🔔 Notifikasi aktif", button: &b}})
@@ -283,6 +310,7 @@ func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view 
 		status = append(status, item{row: &row{main: "🌴 Cuti berikutnya: " + dayLabel(mustDate(next[0].Date)), button: &b}})
 	}
 	sections = append(sections, section{header: "Status", items: status})
+	sections = append(sections, s.scopeSection(sc, "/n-dashboard"))
 	sections = append(sections, section{items: []item{buttons(
 		action("📋 Tiket Saya", actCommand, "cmd", "/n-mytickets"),
 		action("🌴 Cuti", actCommand, "cmd", "/n-cuti"),
@@ -290,7 +318,7 @@ func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view 
 	)}})
 
 	return view{
-		id: "nudge-dashboard", title: "📊 Dashboard", subtitle: dayLabel(now),
+		id: "nudge-dashboard", title: "📊 Dashboard", subtitle: sc.label() + " · " + dayLabel(now),
 		sections: sections,
 		tip:      "Buka satu tiket: */n-tiket CORE-123*",
 	}
@@ -349,125 +377,6 @@ func budgetLine(c user_dashboard_dto.Card, now time.Time) string {
 		return "Budget " + humanDuration(int64(c.StoryPoints*3600)) + " · dihitung saat masuk Code Process"
 	}
 	return ""
-}
-
-// --- Papan Tiket -------------------------------------------------------------
-
-func (s *service) tiketCommand(ctx context.Context, email, args string) view {
-	if args == "" {
-		return s.ticketList(ctx, email)
-	}
-	keyWord, target, _ := strings.Cut(args, " ")
-	key, ok := normalizeKey(keyWord)
-	if !ok {
-		return note("📋 Tiket Saya", fmt.Sprintf("%q bukan kode tiket. Contoh: */n-tiket CORE-123* atau */n-tiket CORE-123 review*", keyWord))
-	}
-	return s.ticketDetail(ctx, email, key, strings.TrimSpace(target))
-}
-
-func (s *service) ticketList(ctx context.Context, email string) view {
-	board, err := s.d.Dashboard.GetMyBoard(ctx, email, 0)
-	if err != nil {
-		log.Printf("chat_interactive: GetMyBoard(%s) failed: %v", email, err)
-		return note("📋 Tiket Saya", jiraBody)
-	}
-	now := s.d.Now()
-
-	type group struct {
-		name  string
-		cards []user_dashboard_dto.Card
-	}
-	groups := map[int64]*group{}
-	var ids []int64
-	total := 0
-	for _, col := range board.Columns {
-		for _, c := range col.Cards {
-			g, ok := groups[c.BoardID]
-			if !ok {
-				name := "Tanpa board"
-				if c.BoardID > 0 {
-					name, _ = s.d.Dashboard.DescribeBoard(ctx, c.BoardID)
-				}
-				g = &group{name: name}
-				groups[c.BoardID] = g
-				ids = append(ids, c.BoardID)
-			}
-			g.cards = append(g.cards, c)
-			total++
-		}
-	}
-	if total == 0 && len(board.Related) == 0 {
-		return view{
-			id: "nudge-tiket", title: "📋 Tiket Saya",
-			sections: []section{{items: []item{
-				paragraph("Kamu belum punya tiket di sprint aktif 👍"),
-				buttons(action("📊 Dashboard", actCommand, "cmd", "/n-dashboard")),
-			}}},
-		}
-	}
-	sort.SliceStable(ids, func(i, j int) bool { return groups[ids[i]].name < groups[ids[j]].name })
-
-	var counts []string
-	for _, col := range board.Columns {
-		counts = append(counts, fmt.Sprintf("%s *%d*", col.Status, len(col.Cards)))
-	}
-	working, late := 0, 0
-	for _, c := range append(cardsOf(board), board.Related...) {
-		if c.HasBudgetDetail {
-			working++
-		}
-		if overdue(c) {
-			late++
-		}
-	}
-	overview := strings.Join(counts, " · ")
-	if working > 0 {
-		overview += fmt.Sprintf("\n⏱ *%d* sedang dikerjakan", working)
-		if late > 0 {
-			overview += fmt.Sprintf(" · 🔴 *%d* lewat budget", late)
-		}
-	}
-	overview += "\n_Klik *Geser* untuk pindah status._"
-
-	sections := []section{{items: []item{paragraph(overview)}}}
-	shown := 0
-	for _, id := range ids {
-		g := groups[id]
-		var items []item
-		for _, c := range g.cards {
-			if shown == maxTicketRows {
-				break
-			}
-			items = append(items, ticketRow(c, now, true))
-			shown++
-		}
-		if len(items) > 0 {
-			sections = append(sections, section{header: fmt.Sprintf("%s (%d)", g.name, len(g.cards)), collapseAfter: 8, items: items})
-		}
-	}
-	if shown < total {
-		sections = append(sections, section{items: []item{paragraph(fmt.Sprintf("_+%d tiket lain — lihat semua di web._", total-shown))}})
-	}
-	// Subtasks / linked items outside the sprint (shown under their parent on the web).
-	var related []item
-	for _, c := range board.Related {
-		if len(related) == 20 {
-			break
-		}
-		related = append(related, ticketRow(c, now, false))
-	}
-	if len(related) > 0 {
-		sections = append(sections, section{header: fmt.Sprintf("Subtask & terkait di luar sprint (%d)", len(board.Related)), collapseAfter: 3, items: related})
-	}
-	sections = append(sections, section{items: []item{buttons(
-		action("📊 Dashboard", actCommand, "cmd", "/n-dashboard"),
-		link("Buka Papan Tiket di web", s.d.WebURL+"/dashboard/board"),
-	)}})
-	return view{
-		id: "nudge-tiket", title: "📋 Tiket Saya", subtitle: fmt.Sprintf("%d tiket di sprint aktif · %s", total, dayLabel(now)),
-		sections: sections,
-		tip:      "Buka 1 tiket: */n-tiket CORE-123* · geser langsung: */n-tiket CORE-123 review*",
-	}
 }
 
 func cardsOf(b user_dashboard_dto.Board) []user_dashboard_dto.Card {
@@ -838,19 +747,60 @@ func (s *service) applyMute(ctx context.Context, u *registration_dto.User, c mut
 	if c.forever {
 		until = user_setting_dto.MuteForeverUntil
 	}
-	if err := s.d.Settings.MuteUntil(ctx, u.UserID, 0, until); err != nil {
-		log.Printf("chat_interactive: MuteUntil(%d) failed: %v", u.UserID, err)
+	boardID, name := s.muteBoard(ctx, u.Email)
+	if err := s.d.Settings.MuteUntil(ctx, u.UserID, boardID, until); err != nil {
+		log.Printf("chat_interactive: MuteUntil(%d, %d) failed: %v", u.UserID, boardID, err)
 		return s.muteView(ctx, u, "⚠️ "+errorBody)
 	}
-	return s.muteView(ctx, u, "🔕 Oke, notifikasi "+muteLabel(&until, s.d.Now())+".")
+	return s.muteView(ctx, u, "🔕 Oke, notifikasi "+name+" "+muteLabel(&until, s.d.Now())+".")
 }
 
+// unmute switches the notifications of the chosen board back on — its own
+// mute and, when one is running, the mute of every board too.
 func (s *service) unmute(ctx context.Context, u *registration_dto.User, _ string) view {
-	if err := s.d.Settings.Unmute(ctx, u.UserID, 0); err != nil {
-		log.Printf("chat_interactive: Unmute(%d) failed: %v", u.UserID, err)
-		return s.muteView(ctx, u, "⚠️ "+errorBody)
+	boardID, name := s.muteBoard(ctx, u.Email)
+	scopes := []int64{0}
+	if boardID > 0 {
+		scopes = []int64{boardID, 0}
 	}
-	return s.muteView(ctx, u, "🔔 Notifikasi nyala lagi.")
+	for _, id := range scopes {
+		if err := s.d.Settings.Unmute(ctx, u.UserID, id); err != nil {
+			log.Printf("chat_interactive: Unmute(%d, %d) failed: %v", u.UserID, id, err)
+			return s.muteView(ctx, u, "⚠️ "+errorBody)
+		}
+	}
+	return s.muteView(ctx, u, "🔔 Notifikasi "+name+" nyala lagi.")
+}
+
+// muteBoard is the board /n-mute acts on: the web's board choice (0 = every
+// board, the global mute) and its label.
+func (s *service) muteBoard(ctx context.Context, email string) (int64, string) {
+	id := s.storedBoard(ctx, email)
+	if id <= 0 {
+		return 0, "semua board"
+	}
+	name, _ := s.d.Dashboard.DescribeBoard(ctx, id)
+	if name == "" {
+		name = fmt.Sprintf("Board #%d", id)
+	}
+	return id, name
+}
+
+// activeMute is the running mute that silences boardID (the global one, or
+// that board's own), nil when notifications are on.
+func (s *service) activeMute(ctx context.Context, userID, boardID int64, now time.Time) *time.Time {
+	st, err := s.d.Settings.GetEffective(ctx, userID, boardID)
+	if err != nil {
+		log.Printf("chat_interactive: GetEffective(%d, %d) failed: %v", userID, boardID, err)
+		return nil
+	}
+	if user_setting_dto.MuteActive(st.MutedUntil, now) {
+		return st.MutedUntil
+	}
+	if boardID > 0 && user_setting_dto.MuteActive(st.BoardMutedUntil, now) {
+		return st.BoardMutedUntil
+	}
+	return nil
 }
 
 func (s *service) muteView(ctx context.Context, u *registration_dto.User, msg string) view {
@@ -860,14 +810,14 @@ func (s *service) muteView(ctx context.Context, u *registration_dto.User, msg st
 		sections = append(sections, section{items: []item{paragraph(msg)}})
 	}
 
+	boardID, name := s.muteBoard(ctx, u.Email)
 	muted := false
-	state := "🔔 Notifikasi *aktif*"
-	if st, err := s.d.Settings.GetEffective(ctx, u.UserID, 0); err != nil {
-		log.Printf("chat_interactive: GetEffective(%d) failed: %v", u.UserID, err)
-	} else if user_setting_dto.MuteActive(st.MutedUntil, now) {
+	state := "🔔 Notifikasi " + name + " *aktif*"
+	if until := s.activeMute(ctx, u.UserID, boardID, now); until != nil {
 		muted = true
-		state = "🔕 Notifikasi *" + muteLabel(st.MutedUntil, now) + "*"
+		state = "🔕 Notifikasi " + name + " *" + muteLabel(until, now) + "*"
 	}
+	state += "\n📌 _Board ikut pilihan di web (" + name + ")._"
 	if sw, err := s.d.Settings.NotificationSwitch(ctx, u.UserID); err == nil && !sw.Enabled {
 		state += "\n⚠️ _Notifikasi otomatis kamu sedang OFF di Pengaturan — nyalakan dulu di web supaya pengingat terkirim._"
 	}

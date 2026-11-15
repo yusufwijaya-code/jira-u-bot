@@ -37,6 +37,7 @@ import (
 	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
 	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/chat_log"
+	"nudge/modules/board_scope"
 	"nudge/modules/chat_log/chat_log_handler"
 	"nudge/modules/chat_log/chat_log_repository"
 	"nudge/modules/chat_oauth/chat_oauth_service"
@@ -176,8 +177,10 @@ func main() {
 
 	// Chat commands are the web dashboard's features (Dashboard, Papan Tiket,
 	// Cuti, Mute) on the same services.
+	boardScopeRepo := board_scope.New(db)
 	chatInteractiveSvc := chat_interactive_service.New(chat_interactive_service.Deps{
 		Users: registrationRepo, Dashboard: userDashboardSvc, Leaves: userLeaveSvc, Settings: userSettingSvc,
+		Scope: boardScopeRepo,
 		WebURL: cfg.FrontendURL + cfg.BasePath,
 	})
 
@@ -356,6 +359,7 @@ func main() {
 	chatAppRoutes.AdminTarget = admin_dashboard_handler.AdminTarget(adminDashboardSvc)
 	chatAppRoutes.AdminChange = admin_dashboard_handler.AdminChangeListener(adminDashboardSvc)
 	MountChatApp(router, &cfg, authSvc, chatAppRoutes)
+	MountBoardScope(router, &cfg, authSvc, board_scope.NewHandler(boardScopeRepo))
 	MountChatLog(router, &cfg, authSvc, chat_log_handler.New(chatLogRepo, deliveryRouter, registrationRepo))
 
 	srv := &http.Server{

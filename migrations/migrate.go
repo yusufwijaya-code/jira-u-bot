@@ -82,6 +82,9 @@ var chatAppSQL string
 //go:embed 0018_chat_log.sql
 var chatLogSQL string
 
+//go:embed 0019_board_scope.sql
+var boardScopeSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -177,6 +180,10 @@ func apply(db *sql.DB) error {
 	}
 	// Riwayat pesan — CREATE TABLE IF NOT EXISTS.
 	if _, err := db.Exec(chatLogSQL); err != nil {
+		return err
+	}
+	// The web's board choice, shared with chat commands — one ADD COLUMN.
+	if err := addColumnIfNotExists(db, boardScopeSQL); err != nil {
 		return err
 	}
 	// The new toggle starts ON when either old toggle was ON — exactly once

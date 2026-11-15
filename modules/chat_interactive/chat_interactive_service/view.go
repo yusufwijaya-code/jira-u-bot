@@ -39,6 +39,16 @@ type item struct {
 type row struct {
 	top, main, bottom string // Chat markup
 	button            *button
+	// depth > 0 shows the row as a branch (↳, indented) of the row above.
+	depth int
+}
+
+// branchPrefix is the card HTML put before a branch row's labels.
+func branchPrefix(depth int) string {
+	if depth <= 0 {
+		return ""
+	}
+	return strings.Repeat("&emsp;", depth-1) + "↳ "
 }
 
 type button struct {
@@ -116,9 +126,16 @@ func (v view) card() chat_app_dto.CardWithID {
 func (it item) widget() chat_app_dto.Widget {
 	switch {
 	case it.row != nil:
+		pad := branchPrefix(it.row.depth)
 		d := &chat_app_dto.DecoratedText{
-			TopLabel: cardHTML(it.row.top), Text: cardHTML(it.row.main),
+			TopLabel: pad + cardHTML(it.row.top), Text: pad + cardHTML(it.row.main),
 			BottomLabel: cardHTML(it.row.bottom), WrapText: true,
+		}
+		if pad != "" && d.BottomLabel != "" {
+			d.BottomLabel = strings.Repeat("&emsp;", it.row.depth) + d.BottomLabel
+		}
+		if d.TopLabel == pad {
+			d.TopLabel = ""
 		}
 		if it.row.button != nil {
 			b := it.row.button.widget()
@@ -156,15 +173,20 @@ func (v view) text() string {
 		for i, it := range s.items {
 			switch {
 			case it.row != nil:
-				line := "• " + it.row.main
+				indent := strings.Repeat("      ", it.row.depth)
+				bullet := "• "
+				if it.row.depth > 0 {
+					bullet = "↳ "
+				}
+				line := indent + bullet + it.row.main
 				if i > 0 && s.items[i-1].row != nil {
 					line = "\n" + line // blank line between tickets
 				}
 				if it.row.top != "" {
-					line += "\n   " + it.row.top
+					line += "\n   " + indent + it.row.top
 				}
 				if it.row.bottom != "" {
-					line += "\n   " + it.row.bottom
+					line += "\n   " + indent + it.row.bottom
 				}
 				lines = append(lines, line)
 			case it.text != "":
