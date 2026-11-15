@@ -79,9 +79,11 @@ describe('CreateCardComponent', () => {
     const el: HTMLElement = f.nativeElement;
     const pick = el.querySelector('[data-board-pick]') as HTMLElement;
     expect(pick).not.toBeNull();
-    expect(pick.querySelectorAll('option').length).toBe(2); // placeholder + 1 board
-    const sel = pick.querySelector('select') as HTMLSelectElement;
-    sel.value = '26'; sel.dispatchEvent(new Event('change')); f.detectChanges();
+    expect(pick.querySelector('select')).toBeNull();
+    (pick.querySelector('.ui-select-trigger') as HTMLButtonElement).click(); f.detectChanges();
+    const opts = pick.querySelectorAll('.ui-select-option');
+    expect(opts.length).toBe(2); // placeholder + 1 board
+    (opts[1] as HTMLElement).click(); f.detectChanges();
     http.expectOne((r) => r.url.endsWith('/api/dashboard/create/meta') && r.params.get('boardId') === '26')
       .flush({ projectKey: 'CORE', types: [], subtaskTypeId: '' });
     http.verify();

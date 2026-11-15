@@ -1,17 +1,49 @@
-:host { display: block; }
+// Entering the tab fades the panel up (keyframes fade-up / pop-in / fade-in / spin are global).
+:host { display: block; animation: fade-up 260ms var(--ease) backwards; }
 .cc { display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 :host ::ng-deep {
   .cc-form { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
   .cc-field { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--text-muted); flex: 1;
-    input, select, textarea { font: inherit; font-size: .88rem; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
-    input:focus, select:focus, textarea:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); } }
+    input, textarea { font: inherit; font-size: .88rem; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+      transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+    input:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--border-strong); }
+    input:focus, textarea:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
+    app-select { color: var(--text); } }
   .cc-row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .cc-err { color: var(--error); font-size: .78rem; }
-  .cc-warn { margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent); font-size: .82rem; }
+  .cc-err { color: var(--error); font-size: .78rem; animation: fade-in 200ms var(--ease); }
+  .cc-warn { margin: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent); font-size: .82rem; animation: fade-in 200ms var(--ease); }
   .cc-actions { display: flex; gap: 8px; justify-content: flex-end; }
   .cc-done { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--success) 10%, transparent); }
+  .cc-pop { animation: pop-in 240ms var(--ease) backwards; }
+  // Fields of a freshly picked type slide in one after another.
+  .cc-reveal { display: flex; flex-direction: column; gap: 12px;
+    > * { animation: fade-up 260ms var(--ease) backwards; }
+    @for $i from 1 through 8 { > :nth-child(#{$i}) { animation-delay: #{($i - 1) * 35}ms; } } }
+  .cc-multi { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cc-opt { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+    font: inherit; font-size: .8rem; color: var(--text-muted); cursor: pointer; transition: border-color .15s, background .15s, color .15s, transform .15s;
+    &:hover { border-color: var(--primary-light); color: var(--text); }
+    &:active { transform: scale(.96); }
+    &.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; } }
+  .tb-spin { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+  .tb-hint { animation: fade-in 200ms var(--ease); }
 }
-.cc-banner { padding: 12px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--primary) 8%, transparent); font-size: .88rem; }
+// Switching Satu card ⇄ Bulk subtask re-creates the child, so it re-enters.
+app-single-card-form, app-bulk-subtasks { display: block; animation: fade-up 240ms var(--ease) backwards; }
+.cc-banner { padding: 12px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--primary) 8%, transparent); font-size: .88rem; animation: fade-in 200ms var(--ease); }
 .cc-modes { align-self: flex-start; }
 .tb-chips { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; }
-.tb-chip { border: 0; background: none; font: inherit; font-size: .8rem; padding: 5px 12px; border-radius: 999px; color: var(--text-muted); cursor: pointer; &.active { background: var(--primary); color: #fff; } }
+.tb-chip { border: 0; background: none; font: inherit; font-size: .8rem; padding: 5px 12px; border-radius: 999px; color: var(--text-muted); cursor: pointer;
+  transition: background .2s var(--ease), color .2s var(--ease), transform .15s;
+  &:hover:not(.active) { background: var(--surface-2); color: var(--text); }
+  &:active { transform: scale(.96); }
+  &.active { background: var(--primary); color: #fff; } }
+
+@media (prefers-reduced-motion: reduce) {
+  :host, app-single-card-form, app-bulk-subtasks, .cc-banner, .tb-chip { animation: none; transition: none; }
+  :host ::ng-deep {
+    .cc-err, .cc-warn, .cc-pop, .cc-reveal > *, .tb-hint { animation: none; }
+    .cc-opt, .cc-field input, .cc-field textarea { transition: none; }
+  }
+}

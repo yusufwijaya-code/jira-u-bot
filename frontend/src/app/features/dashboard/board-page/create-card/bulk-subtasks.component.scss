@@ -20,6 +20,66 @@
 .bs-more { border: 0; background: none; padding: 0; font: inherit; font-size: .74rem; color: var(--primary); cursor: pointer; }
 .bs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; [data-create] { margin-left: auto; } }
 .tb-hint { color: var(--text-faint); }
+
+// Custom checkbox: rounded box that fills with the primary colour while the tick scales in.
+.bs-check {
+  appearance: none; -webkit-appearance: none; position: relative; display: inline-grid; place-items: center;
+  width: 18px; height: 18px; margin: 10px 0 0; border: 1.5px solid var(--border-strong); border-radius: 5px;
+  background: var(--surface); cursor: pointer;
+  transition: background-color .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease), transform .12s var(--ease);
+  &::after {
+    content: ''; width: 5px; height: 9px; margin-top: -2px; border: solid #fff; border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0); transition: transform .18s var(--ease);
+  }
+  &:hover:not(:disabled) { border-color: var(--primary-light); }
+  &:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--primary-ring); }
+  &:active:not(:disabled) { transform: scale(.9); }
+  &:checked { background: var(--primary); border-color: var(--primary); &::after { transform: rotate(45deg) scale(1); } }
+  &:disabled { cursor: not-allowed; opacity: .55; }
+}
+// Unchecked rows fade back so it's obvious they won't be created.
+.bs-table tbody tr:has(.bs-check:not(:checked)) td:not(:first-child) { opacity: .5; }
+.bs-table td { transition: opacity .2s var(--ease), background-color .25s var(--ease); }
+
+// Normalizing: dim the source text, show an AI panel with shimmering rows (.skeleton shimmer is global).
+.bs-paste textarea { transition: opacity .25s var(--ease), filter .25s var(--ease); }
+.bs-paste.busy textarea { opacity: .55; filter: blur(.4px); pointer-events: none; }
+.bs-ai { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 7%, var(--surface)), var(--surface) 60%);
+  animation: fade-in 200ms var(--ease); }
+.bs-ai-head { display: flex; align-items: center; gap: 10px; font-size: .86rem; font-weight: 600; color: var(--primary-strong); }
+.bs-ai-orb { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--primary-soft); animation: bs-orb 1.6s var(--ease) infinite; }
+@keyframes bs-orb { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--primary-ring); } 50% { transform: scale(1.08) rotate(8deg); box-shadow: 0 0 0 8px transparent; } }
+.bs-ai-dots i { font-style: normal; animation: bs-dot 1.2s infinite; &:nth-child(2) { animation-delay: .2s; } &:nth-child(3) { animation-delay: .4s; } }
+@keyframes bs-dot { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+.bs-ai-row { display: grid; grid-template-columns: 18px 1fr 64px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border);
+  animation: fade-up 300ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 80ms);
+  .skeleton { height: 12px; border-radius: 6px; } }
+.bs-ai-box { width: 18px; height: 18px !important; border-radius: 5px !important; }
+.bs-ai-row:nth-child(odd) .bs-ai-title { width: 80%; }
+.bs-ai-sp { height: 28px !important; }
+.bs-ai-user { height: 28px !important; }
+
+// --- Motion (keyframes fade-up / pop-in / fade-in are global) ---
+.bs-parent-chip { animation: pop-in 220ms var(--ease) backwards; }
+.bs-parent-pick input, .bs-title, .bs-sp, .bs-table textarea { transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+.bs-parent-pick input:focus, .bs-title:focus, .bs-sp:focus, .bs-table textarea:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
+.bs-cands { animation: pop-in 180ms var(--ease); transform-origin: top; button { transition: background .12s; } }
+// Preview rows cascade in (capped stagger); rows added later slide in on their own.
+.bs-table tbody tr { animation: fade-up 260ms var(--ease) backwards; animation-delay: calc(min(var(--i, 0), 12) * 30ms); }
+.bs-table tbody tr, .bs-table td { transition: opacity .25s var(--ease), background-color .25s var(--ease); }
+.bs-table textarea { animation: fade-in 200ms var(--ease); }
+.bs-state, .bs-dup, [data-summary-result], [data-blocker] { animation: fade-in 220ms var(--ease); }
+.bs-state.ok { animation: pop-in 260ms var(--ease); }
+.bs-more { transition: color .15s; &:hover { color: var(--primary-strong); } }
+.tb-act { transition: transform .15s, opacity .15s; &:hover:not(:disabled) { transform: scale(1.15); } &:disabled { opacity: .4; cursor: not-allowed; } }
+@media (prefers-reduced-motion: reduce) {
+  .bs-ai, .bs-ai-orb, .bs-ai-dots i, .bs-ai-row,
+  .bs-parent-chip, .bs-cands, .bs-table tbody tr, .bs-table textarea, .bs-state, .bs-dup, [data-summary-result], [data-blocker] { animation: none; }
+  .bs-table tbody tr, .bs-table td, .bs-parent-pick input, .bs-title, .bs-sp, .tb-act, .bs-more, .bs-check, .bs-check::after { transition: none; }
+}
 .tb-num { text-align: right; }
 .tb-act { border: 0; background: none; cursor: pointer; }
 @media (max-width: 960px) { .bs-grid { grid-template-columns: 1fr; } }

@@ -20,14 +20,14 @@
   </div>
 
   <div class="bs-grid">
-    <div class="bs-paste">
+    <div class="bs-paste" [class.busy]="normalizing()">
       <label class="cc-field"><span>① Paste Task Breakdown</span>
         <textarea data-paste rows="14" [attr.maxlength]="maxChars" [value]="text()" (input)="text.set($any($event.target).value)" placeholder="Copy tabel Task Breakdown dari tech spec, paste di sini"></textarea>
       </label>
       <div class="bs-paste-foot">
         <small>{{ text().length }}/{{ maxChars }} · Teks dikirim ke Google Gemini untuk dirapikan.</small>
         <button type="button" class="btn btn-primary btn-sm" data-normalize [disabled]="!aiReady() || !text().trim() || normalizing()" (click)="normalize()">
-          {{ normalizing() ? 'Merapikan…' : '✨ Normalize' }}</button>
+          @if (normalizing()) { <span class="tb-spin" aria-hidden="true"></span> Merapikan… } @else { ✨ Normalize }</button>
       </div>
       @if (!aiReady()) { <small class="tb-hint">AI belum aktif — isi baris manual dengan “＋ Tambah baris”.</small> }
       @if (aiError()) { <p class="cc-err" role="alert">{{ aiError() }}</p> }
@@ -35,13 +35,27 @@
 
     <div class="bs-preview">
       <span class="bs-label">② Preview ({{ rows().length }} baris)</span>
+      @if (normalizing()) {
+        <!-- While Gemini works: a pulsing AI badge and shimmering placeholder rows instead of a frozen table. -->
+        <div class="bs-ai" data-normalizing aria-live="polite" aria-busy="true">
+          <div class="bs-ai-head">
+            <span class="bs-ai-orb" aria-hidden="true">✨</span>
+            <span>Gemini sedang merapikan Task Breakdown<span class="bs-ai-dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></span>
+          </div>
+          @for (n of [1, 2, 3, 4, 5]; track n) {
+            <div class="bs-ai-row" [style.--i]="n">
+              <span class="skeleton bs-ai-box"></span><span class="skeleton bs-ai-title"></span><span class="skeleton bs-ai-sp"></span><span class="skeleton bs-ai-user"></span>
+            </div>
+          }
+        </div>
+      } @else {
       @for (w of warnings(); track w) { <p class="cc-warn">⚠ {{ w }}</p> }
       <table class="bs-table">
         <thead><tr><th></th><th>Judul</th><th class="tb-num">SP</th><th>Assignee</th><th></th></tr></thead>
         <tbody>
           @for (r of rows(); track r.id; let i = $index) {
-            <tr [attr.data-row]="i" [class.done]="r.state === 'done'" [class.failed]="r.state === 'failed'">
-              <td><input type="checkbox" data-check [checked]="r.checked" [disabled]="r.state === 'done' || sending()" (change)="patch(r.id, { checked: $any($event.target).checked })" /></td>
+            <tr [attr.data-row]="i" [style.--i]="i" [class.done]="r.state === 'done'" [class.failed]="r.state === 'failed'">
+              <td><input type="checkbox" class="bs-check" data-check [attr.aria-label]="'Pilih baris ' + (i + 1)"[checked]="r.checked" [disabled]="r.state === 'done' || sending()" (change)="patch(r.id, { checked: $any($event.target).checked })" /></td>
               <td>
                 <input class="bs-title" maxlength="255" [value]="r.title" [disabled]="r.state === 'done' || r.state === 'sending'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
                 @if (r.duplicateOf) { <small class="bs-dup">⚠ sudah ada: {{ r.duplicateOf }}</small> }
@@ -69,9 +83,10 @@
           @if (s.failed) { <button type="button" class="btn btn-soft btn-sm" data-retry [disabled]="sending() || refreshing()" (click)="create(true)">Ulangi yang gagal</button> }
         }
         <button type="button" class="btn btn-primary" data-create [disabled]="!canCreate()" (click)="create()">
-          {{ sending() ? 'Membuat…' : 'Buat ' + checked().length + ' subtask di Jira' }}</button>
+          @if (sending()) { <span class="tb-spin" aria-hidden="true"></span> Membuat… } @else { Buat {{ checked().length }} subtask di Jira }</button>
       </div>
       @if (rows().length && blocker(); as why) { <small class="tb-hint" data-blocker>{{ why }}</small> }
+      }
     </div>
   </div>
 </div>
