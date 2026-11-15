@@ -105,8 +105,8 @@ export class DashboardService {
    * Rebuilds the caller's untracked active-sprint time from Jira's changelog
    * (Tech Spec "Active Sprint Tracking & Changelog Backfill").
    */
-  backfillSprint(): Observable<{ added: number }> {
-    return this.http.post<{ added: number }>(`${this.base}/report/backfill`, {});
+  backfillSprint(): Observable<{ added: number; updated: number }> {
+    return this.http.post<{ added: number; updated: number }>(`${this.base}/report/backfill`, {});
   }
 
   /** Moves the ticket's Jira workflow allows right now — CORE and OMS differ (Papan Tiket). */

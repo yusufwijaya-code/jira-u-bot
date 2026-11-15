@@ -107,6 +107,17 @@ func TestGenerateReport_AggregateMatchesRealPDFFixtureTotals(t *testing.T) {
 	}
 }
 
+// A deviation under the cap must not blow past 100% (cap 10%, deviation
+// 0.086% used to show "11,617%").
+func TestAchievementPercent_CappedAt100(t *testing.T) {
+	cases := map[float64]float64{0: 100, 0.086: 100, 10: 100, 20: 50}
+	for deviation, want := range cases {
+		if got := achievementPercent(10, deviation); !almostEqual(got, want) {
+			t.Errorf("achievementPercent(10, %v) = %v, want %v", deviation, got, want)
+		}
+	}
+}
+
 func TestGenerateReport_WithinBandCounting(t *testing.T) {
 	repo := &fakeIssueSessionRepoForReport{sessions: []issue_session_dto.IssueSession{
 		{AssigneeEmail: "dev@esb.co.id", IssueKey: "A", SprintName: "S1", StoryPoints: 10, AccumulatedSeconds: 10 * 3600}, // 0% deviation -> WITHIN

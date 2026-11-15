@@ -148,25 +148,26 @@ func TestGetReport_UsesSessionEmailNotQueryParam(t *testing.T) {
 // --- POST /report/backfill (Tech Spec "Active Sprint Tracking & Changelog Backfill") ---
 
 type fakeBackfiller struct {
-	email string
-	added int
-	err   error
+	email   string
+	added   int
+	updated int
+	err     error
 }
 
-func (f *fakeBackfiller) RunForEmail(ctx context.Context, email string) (int, error) {
+func (f *fakeBackfiller) RunForEmail(ctx context.Context, email string) (int, int, error) {
 	f.email = email
-	return f.added, f.err
+	return f.added, f.updated, f.err
 }
 
 func TestBackfill_RunsForTheSessionUser(t *testing.T) {
-	b := &fakeBackfiller{added: 8}
+	b := &fakeBackfiller{added: 8, updated: 3}
 	h := NewSprintReportHandler(&fakeSprintReportService{}, WithBackfiller(b))
 
 	w, c := newReportTestContext("/api/dashboard/report/backfill?email=victim@esb.co.id")
 	c.Request.Method = http.MethodPost
 	h.Backfill(c)
 
-	if w.Code != http.StatusOK || w.Body.String() != `{"added":8}` {
+	if w.Code != http.StatusOK || w.Body.String() != `{"added":8,"updated":3}` {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 	if b.email != "dev@esb.co.id" {

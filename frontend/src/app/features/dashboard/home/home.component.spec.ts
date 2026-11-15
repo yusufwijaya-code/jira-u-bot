@@ -437,7 +437,7 @@ describe('HomeComponent', () => {
     });
 
     it('"Hitung ulang dari Jira" backfills, reports how many were added and reloads the summary', () => {
-      dashboard.backfillSprint.and.returnValue(of({ added: 8 }));
+      dashboard.backfillSprint.and.returnValue(of({ added: 8, updated: 0 }));
       const before = dashboard.getSprintReport.calls.count();
 
       (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
@@ -446,6 +446,16 @@ describe('HomeComponent', () => {
       expect(dashboard.backfillSprint).toHaveBeenCalled();
       expect(toast.success).toHaveBeenCalledWith('Data sprint diperbarui', '8 tiket ditambahkan dari riwayat Jira.');
       expect(dashboard.getSprintReport.calls.count()).toBe(before + 1);
+    });
+
+    it('"Hitung ulang dari Jira" reports recalculated tickets too', () => {
+      dashboard.backfillSprint.and.returnValue(of({ added: 1, updated: 7 }));
+      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(toast.success).toHaveBeenCalledWith(
+        'Data sprint diperbarui',
+        '1 tiket ditambahkan, 7 tiket dihitung ulang dari riwayat Jira.',
+      );
     });
 
     it('tells the user when the backfill fails', () => {

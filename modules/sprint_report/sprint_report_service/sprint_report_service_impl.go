@@ -118,9 +118,10 @@ func deviationPercent(estimated, actual float64) float64 {
 // aggregate deviation of exactly 0% (estimated matches actual to the
 // second) is treated as the ceiling case rather than computing a
 // division-by-zero: a perfect match is at least as good as hitting the
-// cap exactly.
+// cap exactly. Anything within the cap is likewise 100%: without that
+// ceiling a tiny deviation showed absurd figures like 11,617%.
 func achievementPercent(capPercent, deviationPercent float64) float64 {
-	if deviationPercent == 0 {
+	if deviationPercent <= capPercent {
 		return 100
 	}
 	return capPercent / deviationPercent * 100

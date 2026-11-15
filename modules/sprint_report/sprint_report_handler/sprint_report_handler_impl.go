@@ -23,7 +23,7 @@ type sprintReportHandlerImpl struct {
 
 // Backfiller is the sprint_backfill_service capability behind Backfill.
 type Backfiller interface {
-	RunForEmail(ctx context.Context, email string) (added int, err error)
+	RunForEmail(ctx context.Context, email string) (added, updated int, err error)
 }
 
 // Option configures the handler.
@@ -48,12 +48,12 @@ func (h *sprintReportHandlerImpl) Backfill(c *gin.Context) {
 		return
 	}
 	email := c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session).Email
-	added, err := h.backfill.RunForEmail(c.Request.Context(), email)
+	added, updated, err := h.backfill.RunForEmail(c.Request.Context(), email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal mengambil data dari Jira"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"added": added})
+	c.JSON(http.StatusOK, gin.H{"added": added, "updated": updated})
 }
 
 func (h *sprintReportHandlerImpl) GetReport(c *gin.Context) {

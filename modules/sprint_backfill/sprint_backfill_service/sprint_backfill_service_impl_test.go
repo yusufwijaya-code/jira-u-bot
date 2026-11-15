@@ -133,9 +133,15 @@ func TestRunForEmail_BackfillsFinishedSprintTicketsAndTheirSubtasks(t *testing.T
 	sessions := &fakeSessions{existing: map[string]bool{"CORE-11002": true}}
 	svc := newService(jira, &fakeUsers{users: []registration_dto.User{yusuf}}, sessions)
 
-	added, err := svc.RunForEmail(context.Background(), "yusuf@esb.co.id")
-	if err != nil || added != 2 {
-		t.Fatalf("RunForEmail = %d, %v; want 2 (CORE-10923, CORE-10955)", added, err)
+	added, updated, err := svc.RunForEmail(context.Background(), "yusuf@esb.co.id")
+	if err != nil || added != 2 || updated != 1 {
+		t.Fatalf("RunForEmail = %d added, %d updated, %v; want 2 (CORE-10923, CORE-10955), 1 (CORE-11002)", added, updated, err)
+	}
+	if got := sessions.updated["CORE-11002"]; got != 10*3600 {
+		t.Errorf("existing CORE-11002 recalculated to %d, want %d (Code Process + CODE REVIEW)", got, 10*3600)
+	}
+	if _, ok := sessions.updated["CORE-10923"]; ok {
+		t.Error("a session the backfill just inserted must not be recalculated again")
 	}
 	if !reflect.DeepEqual(jira.askedKeys, []string{"CORE-10955", "CORE-10956", "CORE-10957"}) {
 		t.Errorf("related keys asked = %v", jira.askedKeys)
@@ -150,20 +156,20 @@ func TestRunForEmail_BackfillsFinishedSprintTicketsAndTheirSubtasks(t *testing.T
 		t.Error("subtask CORE-10955 (active sprint, mine) must be backfilled")
 	}
 
-	// Changelogs are only fetched for real candidates.
+	// Changelogs are only fetched for real candidates, once each.
 	sort.Strings(jira.changelogOf)
-	if !reflect.DeepEqual(jira.changelogOf, []string{"CORE-10923", "CORE-10955", "CORE-11003"}) {
+	if !reflect.DeepEqual(jira.changelogOf, []string{"CORE-10923", "CORE-10955", "CORE-11002", "CORE-11003"}) {
 		t.Errorf("changelog fetched for %v", jira.changelogOf)
 	}
 }
 
 func TestRunForEmail_UnknownUserAndSearchFailure(t *testing.T) {
 	svc := newService(&fakeJira{}, &fakeUsers{}, &fakeSessions{})
-	if added, err := svc.RunForEmail(context.Background(), "nobody@esb.co.id"); added != 0 || err != nil {
-		t.Errorf("unknown user = %d, %v; want 0, nil", added, err)
+	if added, updated, err := svc.RunForEmail(context.Background(), "nobody@esb.co.id"); added != 0 || updated != 0 || err != nil {
+		t.Errorf("unknown user = %d, %d, %v; want 0, 0, nil", added, updated, err)
 	}
 	svc = newService(&fakeJira{searchErr: errors.New("jira down")}, &fakeUsers{users: []registration_dto.User{yusuf}}, &fakeSessions{})
-	if _, err := svc.RunForEmail(context.Background(), "yusuf@esb.co.id"); err == nil {
+	if _, _, err := svc.RunForEmail(context.Background(), "yusuf@esb.co.id"); err == nil {
 		t.Error("a failed sprint search must be reported to the button caller")
 	}
 }
@@ -181,6 +187,22 @@ func TestRunAll_SkipsInactiveUsersAndKeepsGoing(t *testing.T) {
 	sessions := &fakeSessions{}
 	if added := newService(jira, users, sessions).RunAll(context.Background()); added != 1 {
 		t.Errorf("RunAll = %d, want 1 (only the active user with a Jira account)", added)
+	}
+}
+
+// A session recorded by an older rule (CORE: stopped at CODE REVIEW) is
+// rewritten by the daily run, not only the ticket the poller never saw.
+func TestRunAll_RecalculatesExistingSessions(t *testing.T) {
+	jira := &fakeJira{
+		sprint:     []jira_client_dto.Issue{ticket("CORE-10923", "Done", activeSprint, sp(16), "acc-1")},
+		changelogs: map[string][]jira_client_dto.ChangelogEntry{"CORE-10923": cpThenReview()},
+	}
+	sessions := &fakeSessions{existing: map[string]bool{"CORE-10923": true}}
+	if added := newService(jira, &fakeUsers{users: []registration_dto.User{yusuf}}, sessions).RunAll(context.Background()); added != 0 {
+		t.Errorf("RunAll added %d, want 0 (the session exists)", added)
+	}
+	if got := sessions.updated["CORE-10923"]; got != 10*3600 {
+		t.Errorf("CORE-10923 accumulated = %d, want %d", got, 10*3600)
 	}
 }
 

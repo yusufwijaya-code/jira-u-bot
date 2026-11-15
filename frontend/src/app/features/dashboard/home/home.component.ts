@@ -354,10 +354,14 @@ export class HomeComponent {
     if (this.backfilling()) return;
     this.backfilling.set(true);
     this.dashboard.backfillSprint().subscribe({
-      next: ({ added }) => {
+      next: ({ added, updated }) => {
         this.backfilling.set(false);
-        if (added > 0) {
-          this.toast.success('Data sprint diperbarui', `${added} tiket ditambahkan dari riwayat Jira.`);
+        if (added > 0 || updated > 0) {
+          const parts = [
+            added > 0 ? `${added} tiket ditambahkan` : '',
+            updated > 0 ? `${updated} tiket dihitung ulang` : '',
+          ].filter(Boolean);
+          this.toast.success('Data sprint diperbarui', `${parts.join(', ')} dari riwayat Jira.`);
         } else {
           this.toast.info('Sudah lengkap', 'Tidak ada tiket baru yang perlu dihitung dari Jira.');
         }

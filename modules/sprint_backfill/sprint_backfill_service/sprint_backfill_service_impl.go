@@ -61,10 +61,10 @@ func NewSprintBackfillService(
 	}
 }
 
-func (s *sprintBackfillServiceImpl) RunForEmail(ctx context.Context, email string) (int, error) {
+func (s *sprintBackfillServiceImpl) RunForEmail(ctx context.Context, email string) (int, int, error) {
 	user, cred, err := s.userAndCredential(ctx, email)
 	if err != nil || user == nil {
-		return 0, err
+		return 0, 0, err
 	}
 	return s.runForUser(ctx, *user, cred)
 }
@@ -93,33 +93,36 @@ func (s *sprintBackfillServiceImpl) RunAll(ctx context.Context) int {
 		log.Printf("sprint_backfill: listing users failed: %v", err)
 		return 0
 	}
-	total := 0
+	total, totalUpdated := 0, 0
 	for _, user := range users {
 		if !user.FlagActive || user.JiraAccountID == "" {
 			continue
 		}
 		// The bot's own credential: an automatic run must not depend on a
 		// user's personal API key.
-		added, err := s.runForUser(ctx, user, nil)
+		added, updated, err := s.runForUser(ctx, user, nil)
 		if err != nil {
 			log.Printf("sprint_backfill: %s failed: %v", user.Email, err)
 		}
 		total += added
+		totalUpdated += updated
 	}
-	if total > 0 {
-		log.Printf("sprint_backfill: added %d session(s) from Jira changelogs", total)
+	if total > 0 || totalUpdated > 0 {
+		log.Printf("sprint_backfill: added %d, recalculated %d session(s) from Jira changelogs", total, totalUpdated)
 	}
 	return total
 }
 
 // runForUser covers the user's active-sprint tickets plus their own
-// subtasks/linked items that are in an active sprint too (AC3.1).
-func (s *sprintBackfillServiceImpl) runForUser(ctx context.Context, user registration_dto.User, cred *jira_client_dto.Credential) (int, error) {
+// subtasks/linked items that are in an active sprint too (AC3.1): tickets
+// without a session are backfilled, the others recalculated.
+func (s *sprintBackfillServiceImpl) runForUser(ctx context.Context, user registration_dto.User, cred *jira_client_dto.Credential) (int, int, error) {
 	issues, err := s.userIssues(ctx, user, cred)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	added := 0
+	fresh := make(map[string]bool)
 	for _, issue := range issues {
 		ok, err := s.backfillIssue(ctx, user, cred, issue)
 		if err != nil {
@@ -128,9 +131,21 @@ func (s *sprintBackfillServiceImpl) runForUser(ctx context.Context, user registr
 		}
 		if ok {
 			added++
+			fresh[issue.Key] = true
 		}
 	}
-	return added, nil
+
+	unlock := s.lockRecalc(user.Email)
+	defer unlock()
+	return added, s.recalculateIssues(ctx, user, cred, issues, fresh), nil
+}
+
+// lockRecalc keeps one recalculation per user at a time.
+func (s *sprintBackfillServiceImpl) lockRecalc(email string) func() {
+	lock, _ := s.recalcLocks.LoadOrStore(email, &sync.Mutex{})
+	mu := lock.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // userIssues = the user's active-sprint tickets plus their own subtasks /
@@ -166,10 +181,8 @@ func (s *sprintBackfillServiceImpl) userIssues(ctx context.Context, user registr
 }
 
 func (s *sprintBackfillServiceImpl) RecalculateForEmail(ctx context.Context, email string) (int, error) {
-	lock, _ := s.recalcLocks.LoadOrStore(email, &sync.Mutex{})
-	mu := lock.(*sync.Mutex)
-	mu.Lock()
-	defer mu.Unlock()
+	unlock := s.lockRecalc(email)
+	defer unlock()
 
 	user, cred, err := s.userAndCredential(ctx, email)
 	if err != nil || user == nil {
@@ -179,11 +192,21 @@ func (s *sprintBackfillServiceImpl) RecalculateForEmail(ctx context.Context, ema
 	if err != nil {
 		return 0, err
 	}
-	cal := s.calendar.ForEmail(ctx, email)
+	return s.recalculateIssues(ctx, *user, cred, issues, nil), nil
+}
+
+// recalculateIssues rewrites accumulatedSeconds of user's existing
+// active-sprint sessions among issues from the changelog (skip: keys left
+// alone, e.g. just backfilled). Returns how many were rewritten.
+func (s *sprintBackfillServiceImpl) recalculateIssues(ctx context.Context, user registration_dto.User, cred *jira_client_dto.Credential, issues []jira_client_dto.Issue, skip map[string]bool) int {
+	cal := s.calendar.ForEmail(ctx, user.Email)
 	elapsed := func(start, end time.Time) int64 { return s.businessHours.ElapsedBusinessSeconds(start, end, cal) }
 
 	updated := 0
 	for _, issue := range issues {
+		if skip[issue.Key] {
+			continue
+		}
 		if _, inSprint := issue.Fields.ActiveSprint(); !inSprint {
 			continue // AC4.3: sessions outside the active sprint stay as they are
 		}
@@ -209,7 +232,7 @@ func (s *sprintBackfillServiceImpl) RecalculateForEmail(ctx context.Context, ema
 		}
 		updated++
 	}
-	return updated, nil
+	return updated
 }
 
 // backfillIssue applies AC3.2–AC3.5 to one ticket.
