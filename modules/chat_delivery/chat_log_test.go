@@ -91,3 +91,14 @@ func TestLog_FailureAndSkipAreRecorded(t *testing.T) {
 		t.Errorf("entry = %+v", e)
 	}
 }
+
+func TestLog_AdminMessageIsKindAdmin(t *testing.T) {
+	rec := &fakeRecorder{}
+	store := &fakeStore{states: map[string]chat_app_dto.State{user: active(nil)}}
+	if err := loggedRouter(store, &fakeApp{}, &fakeLegacy{}, rec).SendAdminMessage(context.Background(), user, "halo dari admin"); err != nil {
+		t.Fatal(err)
+	}
+	if e := onlyEntry(t, rec); e.Kind != "admin" || e.Channel != "app" || e.Body != "halo dari admin" {
+		t.Errorf("entry = %+v", e)
+	}
+}

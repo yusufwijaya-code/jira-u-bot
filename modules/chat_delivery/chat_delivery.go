@@ -102,6 +102,12 @@ func (r *Router) SendPlainTextDM(ctx context.Context, email, text string) error 
 	return r.logged(ctx, chat_log_dto.KindMessage, email, text, chat_app_dto.OutgoingMessage{Text: text})
 }
 
+// SendAdminMessage sends a message an admin typed on the Pesan page; it
+// goes like any notice but is recorded as kind "admin".
+func (r *Router) SendAdminMessage(ctx context.Context, email, text string) error {
+	return r.logged(ctx, chat_log_dto.KindAdmin, email, text, chat_app_dto.OutgoingMessage{Text: text})
+}
+
 // logged delivers and records the outcome for the admin "Riwayat pesan".
 func (r *Router) logged(ctx context.Context, kind, email, text string, appMsg chat_app_dto.OutgoingMessage) error {
 	channel, err := r.deliver(ctx, email, text, appMsg)

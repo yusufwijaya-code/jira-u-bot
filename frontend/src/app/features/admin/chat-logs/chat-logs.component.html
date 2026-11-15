@@ -97,8 +97,8 @@
     @if (selected(); as u) {
       <div class="chat-head">
         <img class="chat-head-nudge" src="favicon.svg" alt="" width="36" height="36" />
-        <div>
-          <strong>Nudge</strong> <span class="chat-app-tag">APP</span>
+        <div class="chat-head-text">
+          <span class="chat-head-name"><strong>Nudge</strong> <span class="chat-app-tag">APP</span></span>
           <small>DM dengan {{ displayName(u) }}</small>
         </div>
         <span class="spacer"></span>
@@ -200,5 +200,34 @@
         {{ newBelow() }} pesan baru <app-icon name="chevron-down" [size]="14" />
       </button>
     }
+
+    <form class="chat-composer" (ngSubmit)="send()">
+      <textarea
+        rows="1"
+        name="draft"
+        [placeholder]="selected() ? 'Kirim pesan ke ' + displayName(selected()) + ' lewat Nudge…' : 'Pilih user dulu'"
+        [ngModel]="draft()"
+        (ngModelChange)="draft.set($event)"
+        (keydown)="onComposerKey($event)"
+        [disabled]="!email() || sending()"
+        [attr.maxlength]="maxMessage"
+        aria-label="Tulis pesan"
+        data-composer
+      ></textarea>
+      <button
+        type="submit"
+        class="chat-send"
+        [disabled]="!email() || !draft().trim() || sending()"
+        aria-label="Kirim pesan"
+        data-send
+      >
+        @if (sending()) {
+          <span class="spinner dark" aria-hidden="true"></span>
+        } @else {
+          <app-icon name="send" [size]="18" />
+        }
+      </button>
+    </form>
+    <p class="chat-composer-hint">Enter untuk kirim, Shift+Enter untuk baris baru. Dikirim lewat pengirim pilihan user (app Nudge / akun operator).</p>
   </div>
 </section>

@@ -35,7 +35,7 @@ export interface ChatLogEntry {
   id: number;
   email: string;
   direction: 'in' | 'out';
-  kind: 'reminder' | 'message' | 'reply' | 'command' | 'click' | 'added' | 'removed';
+  kind: 'reminder' | 'message' | 'admin' | 'reply' | 'command' | 'click' | 'added' | 'removed';
   channel: 'app' | 'operator' | 'fallback' | '';
   status: 'received' | 'sent' | 'failed' | 'skipped';
   body: string;
@@ -125,6 +125,11 @@ export class AdminService {
     if (q.kind) params['kind'] = q.kind;
     if (q.limit) params['limit'] = String(q.limit);
     return this.http.get<ChatLogPage>(`${environment.apiBasePath}/api/dashboard/admin/chat-logs`, { params });
+  }
+
+  /** DMs one user from the Pesan page; "skipped" = no sender reaches them. */
+  sendChatMessage(email: string, text: string): Observable<{ status: 'sent' | 'skipped' }> {
+    return this.http.post<{ status: 'sent' | 'skipped' }>(`${environment.apiBasePath}/api/dashboard/admin/chat-logs/send`, { email, text });
   }
 
   chatConversations(): Observable<{ conversations: ChatConversation[] }> {

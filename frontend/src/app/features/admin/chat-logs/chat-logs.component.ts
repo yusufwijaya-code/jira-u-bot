@@ -13,6 +13,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AdminService, ChatConversation, ChatLogEntry, UserRow } from '../../../core/services/admin.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { ToastService } from '../../../core/ui/toast.service';
 import { SelectComponent, SelectOption } from '../../../shared/ui/select.component';
 import { DateRange, DateRangePickerComponent, todayISO } from '../../../shared/ui/date-range-picker.component';
 import { UserAvatarComponent, adminUserAvatarUrl } from '../../../shared/ui/user-avatar.component';
@@ -25,6 +26,7 @@ export const LIVE_INTERVAL_MS = 5000;
 const KIND_LABEL: Record<ChatLogEntry['kind'], string> = {
   reminder: 'Reminder',
   message: 'Pesan',
+  admin: 'Pesan admin',
   reply: 'Balasan',
   command: 'Command',
   click: 'Klik tombol',
@@ -38,6 +40,7 @@ const KIND_FILTERS: SelectOption<string>[] = [
   { value: 'reminder,message', label: 'Reminder & notifikasi' },
   { value: 'command,click', label: 'Command & klik dari user' },
   { value: 'reply', label: 'Balasan Nudge' },
+  { value: 'admin', label: 'Pesan admin' },
   { value: 'added,removed', label: 'Aktivasi app' },
 ];
 
@@ -67,6 +70,7 @@ export class ChatLogsComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private host = inject(ElementRef<HTMLElement>);
+  private toast = inject(ToastService);
 
   private scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
@@ -91,6 +95,10 @@ export class ChatLogsComponent implements OnInit {
   protected loadingOlder = signal(false);
   protected error = signal('');
   protected newBelow = signal(0);
+
+  protected draft = signal('');
+  protected sending = signal(false);
+  protected readonly maxMessage = 4000;
 
   protected pickerOpen = signal(false);
   protected pickerQuery = signal('');
@@ -261,20 +269,57 @@ export class ChatLogsComponent implements OnInit {
   /** Live: fetch messages newer than the last one shown. */
   protected poll(): void {
     if (!this.live() || this.loading() || (typeof document !== 'undefined' && document.hidden)) return;
+    this.fetchNew(false);
+    this.admin.chatConversations().subscribe({ next: (res) => this.conversations.set(res.conversations ?? []), error: () => undefined });
+  }
+
+  /** Appends messages newer than the last shown; stick=true scrolls down. */
+  private fetchNew(stick: boolean): void {
+    if (!this.email()) return;
     const msgs = this.messages();
     const newest = msgs.length ? msgs[msgs.length - 1].id : 0;
     this.query({ afterID: newest || undefined, limit: 200 }).subscribe({
       next: (page) => {
         const fresh = [...(page.items ?? [])].reverse().filter((e) => e.id > newest);
         if (!fresh.length) return;
-        const atBottom = this.nearBottom();
-        this.messages.set([...this.messages(), ...fresh]);
+        const atBottom = stick || this.nearBottom();
+        this.messages.set([...this.messages(), ...fresh.filter((e) => !this.messages().some((m) => m.id === e.id))]);
         if (atBottom) this.scrollToBottom();
         else this.newBelow.update((n) => n + fresh.length);
       },
       error: () => undefined,
     });
-    this.admin.chatConversations().subscribe({ next: (res) => this.conversations.set(res.conversations ?? []), error: () => undefined });
+  }
+
+  /** Sends the draft to the selected user through their sender. */
+  protected send(): void {
+    const text = this.draft().trim();
+    const to = this.email();
+    if (!text || !to || this.sending()) return;
+    this.sending.set(true);
+    this.admin.sendChatMessage(to, text).subscribe({
+      next: (res) => {
+        this.sending.set(false);
+        this.draft.set('');
+        if (res.status === 'skipped') {
+          this.toast.error('Pesan tidak terkirim', 'User ini belum bisa dihubungi (Nudge belum aktif dan tidak ada akun operator).');
+        }
+        this.fetchNew(true);
+      },
+      error: (err) => {
+        this.sending.set(false);
+        this.toast.error('Pesan gagal dikirim', err?.error?.error || 'Coba lagi sebentar lagi.');
+        this.fetchNew(true);
+      },
+    });
+  }
+
+  /** Enter sends, Shift+Enter adds a line. */
+  protected onComposerKey(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      this.send();
+    }
   }
 
   protected onScroll(): void {
