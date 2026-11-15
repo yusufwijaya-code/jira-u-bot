@@ -8,6 +8,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { BoardService } from '../../core/services/board.service';
 import { MuteStateService } from '../../core/services/mute-state.service';
 import { BoardContextService, BoardSummary } from '../../core/services/board-context.service';
+import { ChatAppService } from '../../core/services/chat-app.service';
 import { signal } from '@angular/core';
 import { of } from 'rxjs';
 
@@ -52,6 +53,7 @@ describe('DashboardShellComponent', () => {
         { provide: AuthService, useValue: { currentUser$: user$ } },
         { provide: BoardService, useValue: { getSettings: () => of({ mute: { global: { active: false, until: null }, board: null } }) } },
         { provide: BoardContextService, useValue: boardContext },
+        { provide: ChatAppService, useValue: { status: signal(null), refresh: () => undefined, activateUrl: () => '' } },
       ],
     }).compileComponents();
 

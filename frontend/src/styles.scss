@@ -2728,3 +2728,45 @@ table.admin-users {
 @media (max-width: 640px) {
   .ui-date-popup { width: min(296px, calc(100vw - 32px)); }
 }
+
+/* Nudge Chat App activation (Tech Spec "Nudge sebagai Google Chat App") */
+.chat-app-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--primary-ring);
+  border-radius: var(--radius-lg);
+  background: var(--primary-soft);
+  color: var(--text);
+
+  > app-icon { color: var(--primary); flex: none; }
+  p { flex: 1 1 260px; margin: 0; font-size: 0.9rem; }
+  &.required { border-color: var(--accent); background: var(--accent-soft); > app-icon { color: var(--accent); } }
+}
+
+.chat-app-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.chat-app-manual {
+  text-align: left;
+  ol { margin: 14px 0 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.7; }
+  .btn-block { width: 100%; margin-top: 18px; justify-content: center; }
+}
+
+.sender-choices { display: grid; gap: 10px; }
+.sender-choice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 12px);
+  cursor: pointer;
+
+  &.selected { border-color: var(--primary); background: var(--primary-soft); }
+  &.disabled { opacity: 0.6; cursor: default; }
+  input { margin-top: 3px; }
+  small { display: block; color: var(--text-muted); }
+}
