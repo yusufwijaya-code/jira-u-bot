@@ -345,7 +345,7 @@ textarea { height: auto; min-height: 112px; padding: 12px 14px; resize: vertical
   background: var(--surface);
   cursor: pointer;
   user-select: none;
-  animation: fade-up 360ms var(--ease) both;
+  animation: fade-up 360ms var(--ease) backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
   transition:
     border-color var(--normal) var(--ease),
@@ -675,10 +675,20 @@ tr.clickable:hover td { background: var(--surface-2); }
   flex-direction: column;
   gap: 20px;
 
-  > * { animation: fade-up 420ms var(--ease) both; }
+  // `backwards`, not `both`: a fill that outlives the animation keeps every
+  // child a stacking context, and a later card then covers an earlier
+  // card's open dropdown.
+  > * { animation: fade-up 420ms var(--ease) backwards; }
   > *:nth-child(2) { animation-delay: 60ms; }
   > *:nth-child(3) { animation-delay: 120ms; }
   > *:nth-child(4) { animation-delay: 180ms; }
+
+  // A card with an open popover sits above its siblings, even while the
+  // entrance animation still runs.
+  > *:has(.ui-select.open, .ui-time.open, .ui-date.open, .status-dropdown) {
+    position: relative;
+    z-index: 30;
+  }
 }
 
 /* ---------- User menu (dropdown) ---------- */
@@ -1032,7 +1042,7 @@ tr.clickable:hover td { background: var(--surface-2); }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  animation: fade-up 420ms var(--ease) both;
+  animation: fade-up 420ms var(--ease) backwards;
   animation-delay: calc(var(--i, 0) * 60ms);
   transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease);
 
@@ -1325,7 +1335,7 @@ table.admin-users {
   }
 }
 
-.hero-content { position: relative; z-index: 1; max-width: 460px; animation: fade-up 600ms var(--ease) both; }
+.hero-content { position: relative; z-index: 1; max-width: 460px; animation: fade-up 600ms var(--ease) backwards; }
 
 .hero-brand {
   display: flex;
@@ -1364,7 +1374,7 @@ table.admin-users {
     gap: 12px;
     font-size: 0.92rem;
     color: #d9dbee;
-    animation: fade-up 500ms var(--ease) both;
+    animation: fade-up 500ms var(--ease) backwards;
 
     &:nth-child(1) { animation-delay: 200ms; }
     &:nth-child(2) { animation-delay: 280ms; }
@@ -1394,7 +1404,7 @@ table.admin-users {
   width: 100%;
   max-width: 380px;
   text-align: center;
-  animation: fade-up 500ms var(--ease) 100ms both;
+  animation: fade-up 500ms var(--ease) 100ms backwards;
 
   .login-logo { display: none; margin: 0 auto 8px; border-radius: 16px; }
   h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 800; }
@@ -1704,7 +1714,7 @@ table.admin-users {
   background: var(--surface-2);
   font-size: 0.86rem;
   color: var(--text-muted);
-  animation: fade-up 360ms var(--ease) both;
+  animation: fade-up 360ms var(--ease) backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
 
   > .icon { flex-shrink: 0; color: var(--text-faint); }
@@ -1787,7 +1797,7 @@ table.admin-users {
   border-left: 4px solid var(--level);
   border-radius: var(--radius);
   background: var(--surface);
-  animation: fade-up 360ms var(--ease) both;
+  animation: fade-up 360ms var(--ease) backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
   transition: box-shadow var(--normal) var(--ease), transform var(--fast) var(--ease);
 
