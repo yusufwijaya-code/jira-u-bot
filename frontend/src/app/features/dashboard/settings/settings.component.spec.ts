@@ -93,13 +93,46 @@ describe('SettingsComponent', () => {
 
     fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
+    // Most tests are about the notification cards, on the "Per board" tab.
+    openTab('board');
   });
 
-  it('renders the credential card, the scope bar, then the four notification cards', () => {
-    const order = Array.from(el().querySelectorAll('section.card[data-card]')).map((s) => s.getAttribute('data-card'));
-    expect(order).toEqual(['credential', 'reminder', 'overage', 'events', 'quiet']);
+  function openTab(name: 'umum' | 'board'): void {
+    (el().querySelector(`[data-tab="${name}"]`) as HTMLButtonElement).click();
+    fixture.detectChanges();
+  }
+  const cardNames = () => Array.from(el().querySelectorAll('section.card[data-card]')).map((s) => s.getAttribute('data-card'));
+
+  it('splits Umum (every board) from Per board (notification cards)', () => {
+    openTab('umum');
+    expect(cardNames()).toEqual(['credential']);
+    expect(el().querySelector('app-chat-sender-card')).not.toBeNull();
+    expect(el().querySelector('.scope-bar')).toBeNull();
+
+    openTab('board');
+    expect(cardNames()).toEqual(['reminder', 'overage', 'events', 'quiet']);
+    expect(el().querySelector('app-chat-sender-card')).toBeNull();
     expect(el().querySelector('.scope-bar')?.getAttribute('data-scope')).toBe('default');
     expect(el().querySelector('.scope-bar')?.textContent).toContain('Pengaturan default semua board');
+  });
+
+  it('opens on Umum, or on Per board when a board is already picked', () => {
+    expect(TestBed.createComponent(SettingsComponent).componentInstance['tab']()).toBe('umum');
+    context.selectedId.set(28);
+    expect(TestBed.createComponent(SettingsComponent).componentInstance['tab']()).toBe('board');
+  });
+
+  it('picks the board to configure from the chips in the Per board tab', () => {
+    const chips = Array.from(el().querySelectorAll('.settings-board')).map((c) => c.textContent!.replace(/\s+/g, ' ').trim());
+    expect(chips[0]).toContain('Default semua board');
+    expect(chips[1]).toContain('ESB OMS Board');
+    expect(chips[1]).toContain('Ikut default');
+
+    (el().querySelector('[data-scope-chip="28"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(context.select).toHaveBeenCalledWith(28);
+    expect(el().querySelector('[data-scope-chip="28"]')!.classList).toContain('active');
+    expect(component().tab()).toBe('board');
   });
 
   it('checks the saved pre-budget tiers and shows a custom tier tile', () => {

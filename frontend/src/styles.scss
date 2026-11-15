@@ -3342,3 +3342,131 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .chat-composer-hint { display: none; }
   .chat-action { display: none; }
 }
+
+/* ==========================================================================
+   Pengaturan › tabs (Umum / Per board) and board chooser
+   ========================================================================== */
+.settings-tabs {
+  position: sticky;
+  top: calc(var(--topbar-h) + 8px);
+  z-index: 15;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-sm);
+}
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+
+  > .icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: var(--surface-2);
+    transition: inherit;
+  }
+  > span { display: flex; flex-direction: column; min-width: 0; }
+  strong { font-size: 0.95rem; color: var(--text); }
+  small { font-size: 0.76rem; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  &:hover { background: var(--surface-2); }
+  &.active {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+    box-shadow: inset 0 0 0 1px var(--primary-ring);
+    > .icon { background: var(--primary); color: #fff; }
+    strong { color: var(--primary-strong); }
+  }
+  &:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+}
+
+/* Tab content eases in when switching. */
+.settings-tabs ~ section,
+.settings-tabs ~ .settings-boards,
+.settings-tabs ~ app-chat-sender-card {
+  animation: settings-in 0.22s var(--ease);
+}
+@keyframes settings-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.settings-boards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.settings-board {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease), transform var(--fast) var(--ease);
+
+  &:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+  &.active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    box-shadow: 0 0 0 3px var(--primary-ring);
+  }
+  &:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+}
+.settings-board-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--gradient);
+  color: #fff;
+}
+.settings-board-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  strong { font-size: 0.9rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  small { display: flex; flex-wrap: wrap; gap: 4px; font-size: 0.74rem; color: var(--text-faint); }
+}
+.board-state {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-weight: 600;
+  &.custom { background: var(--accent-soft); color: var(--accent); }
+  &.muted { background: var(--error-soft); color: var(--error-strong); }
+}
+
+@media (max-width: 640px) {
+  .settings-tabs { top: calc(var(--topbar-h) + 4px); }
+  .settings-tab { padding: 8px 10px; gap: 8px; small { display: none; } > .icon { width: 30px; height: 30px; } }
+  .settings-boards { grid-template-columns: 1fr; }
+}

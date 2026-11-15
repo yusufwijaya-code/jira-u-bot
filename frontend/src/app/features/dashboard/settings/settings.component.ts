@@ -91,6 +91,12 @@ export class SettingsComponent {
   protected otherBoardBusy = signal<number | null>(null);
   /** Scope of the loaded settings (board id, null = default). */
   protected scopeBoardId = signal<number | null>(null);
+  /**
+   * Umum = what applies to every board (master switch, sender, Jira key);
+   * Per board = notification settings of the default / one board. Opens on
+   * "Per board" when a board is already picked in the navbar.
+   */
+  protected tab = signal<'umum' | 'board'>(inject(SettingsScope).selectedId() === null ? 'umum' : 'board');
   protected useDefault = signal(false);
   /** "Atur khusus board ini" was clicked: editable until saved / cancelled. */
   protected editingCustom = signal(false);
