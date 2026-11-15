@@ -12,7 +12,7 @@
 - **Notifikasi perubahan status tiket** (`modules/status_watch`): tiap 10 detik satu JQL (`sprint in openSprints() AND assignee in (<user terdaftar>) AND updated >= <cursor>`) dibandingkan dengan snapshot `tr_issuestatus`; setiap status tiket sprint aktif milik user berubah — digeser di Jira, Papan Tiket, atau `/n-geser` — user dapat DM "To Do → Code Process · oleh <pelaku> · jam" (pelaku dari changelog Jira). Bila tiket keluar dari status yang dihitung, pesan ditambah info waktu ("Selesai X lebih awal dari budget" / "Waktu terpakai X dari budget Y"), menggantikan notif lama "selesai lebih awal" & "balik ke To Do". Tiket yang baru pertama terlihat tidak dinotif; tidak dikirim saat saklar utama OFF, mute, jam tenang, atau cuti
 - Aturan tracking per project (`jira_client_dto/tracking_rules.go`): OMS dihitung hanya saat **Code Process**; CORE dihitung saat **Code Process + CODE REVIEW** dan berhenti saat keluar dari keduanya (reminder tetap dikirim selama review, pesannya ditandai "CODE REVIEW")
 - Elapsed time dihitung berbasis jam kerja (08:30–17:30 WIB, istirahat 12:00–13:00) dan kalender **per user** = libur nasional + hari cuti user itu (`modules/user_leave`, tabel `tr_user_leave`). Hari cuti tidak dihitung ke waktu tiket, deadline mundur, dan reminder tidak dikirim ke user itu; menambah/menghapus cuti di tanggal yang sudah lewat menghitung ulang `accumulatedSeconds` session sprint aktif user dari changelog Jira (`editedBy = 'leave-recalc'`)
-- Routing pesan: tiket milik sendiri → webhook space bersama, tiket orang lain → DM pribadi (via OAuth)
+- **Pengirim pesan**: app Google Chat **Nudge** atau akun operator (pilihan per user di Pengaturan; akun operator selalu lewat Nudge). Jika kirim lewat Nudge gagal, pesan dikirim ulang lewat akun operator. Aktivasi app 1-klik dari dashboard atau manual dari Google Chat; event app diterima di `POST /api/chat/events` (JWT Google diverifikasi). Webhook space tidak dipakai lagi.
 - Command interaktif (`/n-mytickets`, `/n-budget <issueKey>`, `/n-overdue`, `/n-team`, `/n-help`) — dikirim langsung di DM Google Chat biasa (bukan lewat Chat App terpisah), dideteksi lewat polling `spaces.messages.list` memakai OAuth yang sama dengan fitur DM reminder, dibalas atas nama akun yang sama
 - Command `/n-geser<issueKey>:todo` dan `/n-geser<issueKey>:code-review` — geser status tiket Jira langsung dari chat (hanya untuk tiket milik si pengirim sendiri), dengan validasi transisi yang tersedia di workflow project sebelum eksekusi (tidak lagi diiklankan di pesan reminder; tetap tercantum di `/n-help`)
 - **Dashboard web** (frontend Angular di `frontend/`, disajikan di root `https://nudge.labcup.tech/`; backend hanya JSON API di `/api/...`, login via Sign in with Google, domain `@esb.co.id` saja):
@@ -58,7 +58,8 @@
 1. Copy `.env.example` ke `.env`, isi kredensial Jira, Google Chat, dan MySQL.
 2. (Opsional, untuk fitur DM & command interaktif) `go run . --setup-oauth` sekali untuk otorisasi OAuth Google Chat secara interaktif, lalu isi `GOOGLE_CHAT_SELF_USER_ID` (format `users/<id>`, didapat dari field `sender.name` pada pesan yang pernah dikirim akun tersebut lewat Chat API) di `.env`.
 3. Untuk dashboard: buat OAuth Client baru tipe **Web application** di GCP Console (project yang sama dengan OAuth DM), isi `GOOGLE_SIGNIN_CLIENT_ID`/`GOOGLE_SIGNIN_CLIENT_SECRET`/`GOOGLE_SIGNIN_REDIRECT_URL`, `ADMIN_EMAIL`, dan `CREDENTIAL_ENCRYPTION_KEY` (32-byte base64, `openssl rand -base64 32`) di `.env`.
-4. `go run .` untuk menjalankan service — migrasi database diterapkan otomatis saat start.
+4. Chat App: taruh key JSON service account `nudge-app@jira-u-bot.iam.gserviceaccount.com` di server (`shared/data/chat-app-sa.json`, chmod 600) lalu isi env `GOOGLE_CHAT_APP_*`; daftarkan `GOOGLE_CHAT_APP_ACTIVATION_REDIRECT_URL` di OAuth client Sign-In; email user ditambahkan di GCP › Google Chat API › Configuration › Visibility.
+5. `go run .` untuk menjalankan service — migrasi database diterapkan otomatis saat start.
 
 ## Deploy
 
@@ -84,7 +85,10 @@ File server di repo: `deploy/nudge.service` (`/etc/systemd/system/`), `deploy/ng
 - `modules/poller` — loop polling Jira & deteksi perubahan status tiket
 - `modules/reminder_engine` — logika tier reminder, overage, early completion, dan filter preference per-user
 - `modules/business_hours` — kalkulasi elapsed/deadline berbasis jam kerja & kalender libur
-- `modules/google_chat_notifier` / `modules/chat_dm_notifier` — pengirim pesan ke webhook space & DM
+- `modules/google_chat_notifier` / `modules/chat_dm_notifier` — format pesan reminder & pengirim DM lewat akun operator (OAuth)
+- `modules/chat_app` — Google Chat App "Nudge": client REST (service account), verifikasi JWT event, event service/handler (`POST /api/chat/events`), repository state per user (`ms_user.chatApp*`, `chatSender`)
+- `modules/chat_app_activation` — aktivasi app 1-klik (OAuth `spaces.setup`), status & pilihan pengirim
+- `modules/chat_delivery` — router pengirim per penerima (Nudge / operator) + cadangan ke akun operator saat app gagal
 - `modules/chat_interactive` — logika dispatch command (`/n-mytickets`, dll) ke jawaban teks
 - `modules/chat_command_poller` — loop polling pesan DM tiap 10 detik, mendeteksi & membalas command
 - `modules/chat_command_poll_cursor` — penyimpanan cursor (createTime pesan terakhir diproses) per DM space
