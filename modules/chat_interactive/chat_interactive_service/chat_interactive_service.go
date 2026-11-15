@@ -40,7 +40,9 @@ const ActionPrefix = "nudge."
 type Reply struct {
 	Text  string
 	Cards []chat_app_dto.CardWithID
-	// Title is a one-line summary (notification preview of a card).
+	// Title is the one line sent as message text above the cards — what
+	// Google Chat shows in Home and notifications (a card-only message
+	// shows "Sent an attachment" there).
 	Title string
 }
 

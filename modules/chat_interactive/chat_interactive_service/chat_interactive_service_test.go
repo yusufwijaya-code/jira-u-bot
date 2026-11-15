@@ -711,3 +711,23 @@ func TestView_TextPutsABlankLineBetweenTickets(t *testing.T) {
 		t.Errorf("text = %q", got)
 	}
 }
+
+// Every command card comes with a title line (sent as message text, the
+// Home / notification preview) and no card header repeating it.
+func TestReply_EveryCardHasATitleLineAndNoRepeatedHeader(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	for _, cmd := range []string{"/n-help", "/n-dashboard", "/n-mytickets", "/n-tiket CORE-1", "/n-cuti", "/n-mute", "/n-unmute", "halo", "/n-tiket OMS-5"} {
+		r := f.svc.Command(context.Background(), dev, cmd)
+		if r.Title == "" || !strings.HasPrefix(r.Title, "*") {
+			t.Errorf("%s: title line = %q", cmd, r.Title)
+		}
+		if len(r.Cards) != 1 || r.Cards[0].Card.Header != nil {
+			t.Errorf("%s: card header must be nil, cards = %+v", cmd, r.Cards)
+		}
+	}
+	if r := f.svc.Command(context.Background(), dev, "/n-mytickets"); r.Title != "*📋 Tiket Saya* — Semua board · 4 tiket · ⏱ 2 dikerjakan · 🔴 1 lewat budget" {
+		t.Errorf("tiket title line = %q", r.Title)
+	}
+}

@@ -210,8 +210,8 @@ func TestSendReminder_UsesCardsOnAppAndTextOnOperator(t *testing.T) {
 	if err := r.SendReminder(context.Background(), msg); err != nil {
 		t.Fatal(err)
 	}
-	// The short line is only the notification preview, not text above the card.
-	if app.sent[0].Text != "" || app.sent[0].FallbackText != "short" || len(app.sent[0].CardsV2) != 1 {
+	// The short line goes as text above the card (Home / notification preview).
+	if app.sent[0].Text != "short" || app.sent[0].FallbackText != "short" || len(app.sent[0].CardsV2) != 1 {
 		t.Errorf("app message = %+v", app.sent[0])
 	}
 
@@ -287,7 +287,7 @@ func TestSendPlainTextDM_TextCardsOnTheAppTextOnTheOperator(t *testing.T) {
 	r := New(Deps{Store: store, App: app, OperatorEmail: op, TextCards: cardFor})
 	_ = r.SendPlainTextDM(context.Background(), user, "halo\nKetik */n-help*")
 	_ = r.SendAdminMessage(context.Background(), user, "pesan biasa")
-	if len(app.sent) != 2 || len(app.sent[0].CardsV2) != 1 || app.sent[0].FallbackText != "short" || app.sent[0].Text != "" {
+	if len(app.sent) != 2 || len(app.sent[0].CardsV2) != 1 || app.sent[0].FallbackText != "short" || app.sent[0].Text != "short" {
 		t.Fatalf("hinted notice = %+v", app.sent)
 	}
 	if app.sent[1].Text != "pesan biasa" || len(app.sent[1].CardsV2) != 0 {
