@@ -178,10 +178,10 @@
   span { font-size: 0.78rem; }
 }
 button.tb-stat { cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s;
-  &:hover { border-color: var(--danger); transform: translateY(-1px); }
-  &.active { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+  &:hover { border-color: var(--error); transform: translateY(-1px); }
+  &.active { border-color: var(--error); box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 18%, transparent); }
 }
-.tb-stat-over strong { color: var(--danger); }
+.tb-stat-over strong { color: var(--error); }
 .tb-stat-bar { display: block; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 6px;
   span { display: block; height: 100%; background: var(--success); transition: width .3s; } }
 .tb-chips { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }

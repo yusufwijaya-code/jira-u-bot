@@ -12,11 +12,11 @@
 .bs-table { width: 100%; border-collapse: collapse; font-size: .84rem;
   th { text-align: left; font-size: .72rem; text-transform: uppercase; color: var(--text-faint); padding: 6px; }
   td { padding: 6px; border-top: 1px solid var(--border); vertical-align: top; }
-  tr.done { opacity: .7; } tr.failed td { background: color-mix(in srgb, var(--danger) 6%, transparent); } }
+  tr.done { opacity: .7; } tr.failed td { background: color-mix(in srgb, var(--error) 6%, transparent); } }
 .bs-title { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
 .bs-sp { width: 64px; font: inherit; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
 .bs-dup { display: block; color: var(--warning, #b45309); }
-.bs-state { display: block; &.ok { color: var(--success); } &.err { color: var(--danger); } }
+.bs-state { display: block; &.ok { color: var(--success); } &.err { color: var(--error); } }
 .bs-more { border: 0; background: none; padding: 0; font: inherit; font-size: .74rem; color: var(--primary); cursor: pointer; }
 .bs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; [data-create] { margin-left: auto; } }
 .tb-hint { color: var(--text-faint); }

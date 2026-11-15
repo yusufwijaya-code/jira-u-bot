@@ -104,6 +104,30 @@ describe('SingleCardFormComponent', () => {
     expect((el.querySelector('[data-submit]') as HTMLButtonElement).disabled).toBeFalse();
   });
 
+  it('shows unslotted Jira field errors as a message and never the raw jira_rejected', () => {
+    const f = render();
+    const el: HTMLElement = f.nativeElement;
+    fillAll(el); f.detectChanges();
+    setIn(el, '[data-summary]', 'S'); setIn(el, '[data-field="customfield_12001"]', 'mr'); setIn(el, '[data-field="customfield_12002"]', '1');
+    f.detectChanges();
+    (el.querySelector('[data-submit]') as HTMLButtonElement).click();
+    http.expectOne((r) => r.url.endsWith('/create/issue')).flush(
+      { error: 'jira_rejected', fields: { customfield_10016: 'Number value expected' }, messages: [] }, { status: 422, statusText: 'Unprocessable' });
+    f.detectChanges();
+    expect(el.textContent).toContain('customfield_10016: Number value expected');
+    expect(el.textContent).not.toContain('jira_rejected');
+  });
+
+  it('shows an empty state when the project has no creatable types', () => {
+    TestBed.configureTestingModule({ imports: [SingleCardFormComponent], providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const f = TestBed.createComponent(SingleCardFormComponent);
+    f.componentRef.setInput('boardId', 28);
+    f.componentRef.setInput('meta', { projectKey: 'OMS', subtaskTypeId: '', types: null } as unknown as CreateMeta);
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('Tidak ada tipe card yang bisa kamu buat di project ini.');
+    expect(f.nativeElement.querySelector('[data-type]')).toBeNull();
+  });
+
   it('disables submit for an unsupported type and shows Jira field errors', () => {
     const f = render();
     const el: HTMLElement = f.nativeElement;

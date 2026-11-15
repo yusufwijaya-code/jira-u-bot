@@ -43,7 +43,7 @@
             <tr [attr.data-row]="i" [class.done]="r.state === 'done'" [class.failed]="r.state === 'failed'">
               <td><input type="checkbox" data-check [checked]="r.checked" [disabled]="r.state === 'done' || sending()" (change)="patch(r.id, { checked: $any($event.target).checked })" /></td>
               <td>
-                <input class="bs-title" [value]="r.title" [disabled]="r.state === 'done' || r.state === 'sending'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
+                <input class="bs-title" maxlength="255" [value]="r.title" [disabled]="r.state === 'done' || r.state === 'sending'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
                 @if (r.duplicateOf) { <small class="bs-dup">⚠ sudah ada: {{ r.duplicateOf }}</small> }
                 @switch (r.state) {
                   @case ('sending') { <small class="bs-state">⏳ membuat…</small> }

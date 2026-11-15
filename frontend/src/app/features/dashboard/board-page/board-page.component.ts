@@ -193,9 +193,9 @@ export class BoardPageComponent {
 
   @HostListener('document:keydown', ['$event'])
   protected onShortcut(event: KeyboardEvent): void {
-    if (event.key !== '/' || this.tab() !== 'board') return;
+    if (event.key !== '/' || this.tab() !== 'board' || event.ctrlKey || event.metaKey || event.altKey) return;
     const t = event.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     event.preventDefault();
     (document.querySelector('[data-search]') as HTMLInputElement | null)?.focus();
   }

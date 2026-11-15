@@ -28,6 +28,25 @@ describe('CreateCardComponent', () => {
     expect(el.querySelector('[data-mode]')).toBeNull();
   });
 
+  it('shows the token banner, not an endless spinner, when meta answers 412', () => {
+    const f = render(26);
+    f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/create/status')).flush({ tokenReady: true, aiReady: true });
+    http.expectOne((r) => r.url.endsWith('/create/meta')).flush({ error: 'jira_token_required' }, { status: 412, statusText: 'x' });
+    f.detectChanges();
+    expect(f.nativeElement.querySelector('[data-token-banner]')).not.toBeNull();
+    expect(f.nativeElement.querySelector('.tb-spin')).toBeNull();
+  });
+
+  it('shows an empty state when meta has no types', () => {
+    const f = render(26);
+    f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/create/status')).flush({ tokenReady: true, aiReady: true });
+    http.expectOne((r) => r.url.endsWith('/create/meta')).flush({ projectKey: 'CORE', types: [], subtaskTypeId: '' });
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('Tidak ada tipe card yang bisa kamu buat di project ini.');
+  });
+
   it('shows a neutral error, not the token banner, when status fails', () => {
     const f = render(26);
     f.detectChanges();

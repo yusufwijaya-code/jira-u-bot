@@ -1,8 +1,11 @@
+@if ((meta().types ?? []).length === 0) {
+  <p class="tb-hint" data-no-types>Tidak ada tipe card yang bisa kamu buat di project ini.</p>
+} @else {
 <form class="cc-form" (submit)="$event.preventDefault(); submit()">
   <label class="cc-field"><span>Tipe</span>
     <select data-type [value]="typeId()" (change)="setType($any($event.target).value)">
       <option value="">Pilih tipe…</option>
-      @for (t of meta().types; track t.id) { <option [value]="t.id">{{ t.name }}{{ t.subtask ? ' (subtask)' : '' }}{{ t.supported ? '' : ' — tidak didukung' }}</option> }
+      @for (t of meta().types ?? []; track t.id) { <option [value]="t.id">{{ t.name }}{{ t.subtask ? ' (subtask)' : '' }}{{ t.supported ? '' : ' — tidak didukung' }}</option> }
     </select>
   </label>
   @if (type(); as t) {
@@ -52,3 +55,4 @@
       <button type="button" class="btn btn-soft btn-sm" (click)="again()">Buat lagi</button></div>
   }
 </form>
+}

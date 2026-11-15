@@ -252,3 +252,25 @@ func TestParent_RejectsOtherProjectAndSubtasks(t *testing.T) {
 }
 
 func jsonUnmarshal(s string, out any) error { return json.Unmarshal([]byte(s), out) }
+
+func TestMeta_NoIssueTypesYieldsEmptyNotNil(t *testing.T) {
+	j := omsJira()
+	j.types = nil
+	m, err := newSvc(j, &fakeAI{}).Meta(context.Background(), "dev@esb.co.id", 28)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Types == nil || len(m.Types) != 0 {
+		t.Fatalf("Types = %#v, want non-nil empty", m.Types)
+	}
+}
+
+func TestNormalize_DoesNotCacheEmptyResult(t *testing.T) {
+	ai := &fakeAI{reply: `{"rows":[],"warnings":[]}`}
+	s := newSvc(omsJira(), ai)
+	s.Normalize(context.Background(), "dev@esb.co.id", 26, "x")
+	again, _ := s.Normalize(context.Background(), "dev@esb.co.id", 26, "x")
+	if again.Cached || ai.calls != 2 {
+		t.Fatalf("cached=%v calls=%d, want uncached and 2 calls", again.Cached, ai.calls)
+	}
+}

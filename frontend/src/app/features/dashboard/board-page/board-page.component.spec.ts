@@ -490,6 +490,34 @@ describe('BoardPageComponent', () => {
     expect(spy).toHaveBeenCalledWith('create', { mode: 'bulk', parent: 'CORE-1' });
   });
 
+  it('does not offer + Subtask on a sprint card that is itself a subtask', () => {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    (fixture.componentInstance as any).createCardEnabled = true;
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
+      columns: [{ status: 'Code Process', cards: [
+        { issueKey: 'CORE-1', summary: 'Parent', status: 'Code Process', issueURL: 'https://x/browse/CORE-1', boardId: 26, storyPoints: 5 },
+        { issueKey: 'CORE-9', summary: 'Sub', status: 'Code Process', issueURL: 'https://x/browse/CORE-9', boardId: 26, storyPoints: 1, parentKey: 'CORE-1', relation: 'subtask' },
+      ] }],
+    });
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-card="CORE-1"] [data-add-subtask]')).not.toBeNull();
+    expect(el.querySelector('[data-card="CORE-9"] [data-add-subtask]')).toBeNull();
+  });
+
+  it('ignores "/" with Ctrl held or from a select', () => {
+    const fixture = render();
+    const input = fixture.nativeElement.querySelector('[data-search]') as HTMLInputElement;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', ctrlKey: true }));
+    expect(document.activeElement).not.toBe(input);
+    const sel = document.createElement('select');
+    document.body.appendChild(sel);
+    sel.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement).not.toBe(input);
+    sel.remove();
+  });
+
   it('the Buat Card tab resets mode and parent, unlike + Subtask', () => {
     const fixture = renderWithBranch();
     const cmp = fixture.componentInstance as any;

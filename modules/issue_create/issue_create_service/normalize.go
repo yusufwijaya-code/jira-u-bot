@@ -104,9 +104,11 @@ func (s *Service) Normalize(ctx context.Context, email string, boardID int64, te
 		return Normalized{}, err
 	}
 	n := sanitize(raw)
-	s.mu.Lock()
-	s.results[key] = cachedNormalized{n: n, at: now}
-	s.mu.Unlock()
+	if len(n.Rows) > 0 { // never cache an empty result: the user will retry
+		s.mu.Lock()
+		s.results[key] = cachedNormalized{n: n, at: now}
+		s.mu.Unlock()
+	}
 	return n, nil
 }
 

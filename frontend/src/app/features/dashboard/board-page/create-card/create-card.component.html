@@ -19,7 +19,9 @@
       </div>
       @if (metaError()) { <p class="cc-err">{{ metaError() }}</p> }
       @if (meta(); as m) {
-        @if (mode() === 'single') {
+        @if ((m.types ?? []).length === 0) {
+          <p class="tb-hint" data-no-types>Tidak ada tipe card yang bisa kamu buat di project ini.</p>
+        } @else if (mode() === 'single') {
           <app-single-card-form [boardId]="board()!" [meta]="m" (created)="created.emit()" />
         } @else {
           <app-bulk-subtasks [boardId]="board()!" [meta]="m" [aiReady]="!!status()?.aiReady" [initialParent]="initialParent()" (created)="created.emit()" />

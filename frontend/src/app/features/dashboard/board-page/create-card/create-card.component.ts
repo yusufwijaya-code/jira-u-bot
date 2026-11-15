@@ -66,7 +66,10 @@ export class CreateCardComponent {
     if (!id) return;
     this.metaSub = this.api.meta(id).subscribe({
       next: (m) => this.meta.set(m),
-      error: (err) => this.metaError.set(err?.status === 412 ? null : err?.error?.error ?? 'Gagal memuat tipe card dari Jira'),
+      error: (err) => {
+        if (err?.status === 412) this.status.update((s) => (s ? { ...s, tokenReady: false } : s));
+        else this.metaError.set(err?.error?.error ?? 'Gagal memuat tipe card dari Jira');
+      },
     });
   }
 }

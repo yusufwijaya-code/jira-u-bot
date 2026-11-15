@@ -113,6 +113,30 @@ describe('BulkSubtasksComponent', () => {
     expect((el.querySelector('[data-row="0"] [data-check]') as HTMLInputElement).checked).toBeFalse();
   });
 
+  it('keeps a deliberately re-checked duplicate checked while its title is edited', () => {
+    const f = render();
+    normalize(f);
+    const el: HTMLElement = f.nativeElement;
+    const check = el.querySelector('[data-row="1"] [data-check]') as HTMLInputElement;
+    check.click(); f.detectChanges();
+    expect(check.checked).toBeTrue();
+    const title = el.querySelector('[data-row="1"] .bs-title') as HTMLInputElement;
+    title.value = '[Docs] Release  document'; title.dispatchEvent(new Event('input')); f.detectChanges();
+    expect((el.querySelector('[data-row="1"] [data-check]') as HTMLInputElement).checked).toBeTrue();
+  });
+
+  it('a 422 from our API marks rows failed with the server message and does not re-read the parent', () => {
+    const f = render();
+    normalize(f);
+    const el: HTMLElement = f.nativeElement;
+    (el.querySelector('[data-create]') as HTMLButtonElement).click();
+    http.expectOne((r) => r.url.endsWith('/create/subtasks')).flush({ error: 'SP harus 0–100' }, { status: 422, statusText: 'x' });
+    f.detectChanges();
+    http.expectNone((r) => r.url.includes('/create/parent/'));
+    expect(el.textContent).toContain('SP harus 0–100');
+    expect(el.textContent).not.toContain('Koneksi terputus');
+  });
+
   it('adopts rows found in Jira after a transport error and retries only the rest', () => {
     const f = render();
     normalize(f);

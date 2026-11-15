@@ -3,6 +3,7 @@ package issue_create_handler
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,6 +47,12 @@ func Routes(g *gin.RouterGroup, h *Handler) {
 	c.POST("/subtasks", h.subtasks)
 }
 
+const maxBodyBytes = 256 << 10
+
+func limitBody(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
+}
+
 func email(c *gin.Context) string {
 	return c.MustGet(auth_middleware.CurrentUserKey).(auth_dto.Session).Email
 }
@@ -81,6 +88,7 @@ func (h *Handler) fail(c *gin.Context, err error) {
 	case errors.As(err, &rej):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "jira_rejected", "fields": rej.Fields, "messages": rej.Messages})
 	default:
+		log.Printf("issue_create: %s %s failed: %v", c.Request.Method, c.FullPath(), err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Jira/AI tidak merespons, coba lagi"})
 	}
 }
@@ -134,6 +142,7 @@ func (h *Handler) parent(c *gin.Context) {
 }
 
 func (h *Handler) createOne(c *gin.Context) {
+	limitBody(c)
 	var req svc.CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.BoardID <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "request tidak valid"})
@@ -148,6 +157,7 @@ func (h *Handler) createOne(c *gin.Context) {
 }
 
 func (h *Handler) normalize(c *gin.Context) {
+	limitBody(c)
 	var req struct {
 		BoardID int64  `json:"boardId"`
 		Text    string `json:"text"`
@@ -165,6 +175,7 @@ func (h *Handler) normalize(c *gin.Context) {
 }
 
 func (h *Handler) subtasks(c *gin.Context) {
+	limitBody(c)
 	var req struct {
 		BoardID   int64         `json:"boardId"`
 		ParentKey string        `json:"parentKey"`

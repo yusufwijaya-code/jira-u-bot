@@ -16,7 +16,7 @@ export class SingleCardFormComponent {
   created = output<string>();
 
   protected typeId = signal('');
-  protected type = computed<CreateType | undefined>(() => this.meta().types.find((t) => t.id === this.typeId()));
+  protected type = computed<CreateType | undefined>(() => (this.meta().types ?? []).find((t) => t.id === this.typeId()));
   protected summary = signal('');
   protected description = signal('');
   protected sp = signal<number | null>(null);
@@ -66,9 +66,22 @@ export class SingleCardFormComponent {
         this.saving.set(false);
         const body = err?.error ?? {};
         if (body.fields) this.errors.set(body.fields);
-        this.formError.set(body.messages?.join(' ') || body.message || body.error || 'Gagal membuat card');
+        this.formError.set(this.describeError(body));
       },
     });
+  }
+
+  /** Messages + field errors that have no inline slot; never the raw "jira_rejected" code. */
+  private describeError(body: { error?: string; message?: string; messages?: string[]; fields?: Record<string, string> }): string {
+    const shown = new Set(['summary', ...(this.type()?.fields ?? []).map((f) => f.id)]);
+    const names = new Map((this.meta().types ?? []).flatMap((t) => t.fields).map((f) => [f.id, f.name] as const));
+    const parts = [...(body.messages ?? [])];
+    for (const [key, msg] of Object.entries(body.fields ?? {})) {
+      if (!shown.has(key)) parts.push(`${names.get(key) ?? key}: ${msg}`);
+    }
+    if (parts.length) return parts.join(' ');
+    if (body.message) return body.message;
+    return body.error && body.error !== 'jira_rejected' ? body.error : 'Gagal membuat card';
   }
 
   /** "Buat lagi": keep type & parent, clear the rest. */

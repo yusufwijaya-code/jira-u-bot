@@ -131,7 +131,8 @@ export class BulkSubtasksComponent implements OnInit {
       if (adoptSent && dup && (r.state === 'failed' || r.state === 'sending')) {
         return { ...r, state: 'done', key: dup, duplicateOf: null, error: undefined, checked: false };
       }
-      return { ...r, duplicateOf: dup, checked: dup ? false : r.checked };
+      // uncheck only on the not-duplicate -> duplicate transition, so a deliberate re-check sticks
+      return { ...r, duplicateOf: dup, checked: dup && !r.duplicateOf ? false : r.checked };
     }));
   }
 
@@ -170,7 +171,8 @@ export class BulkSubtasksComponent implements OnInit {
       next: (res) => this.applyResults(res.results ?? []),
       error: (err) => {
         this.sending.set(false);
-        const transport = !err?.status || err.status >= 500;
+        // Only an unanswered/timed-out request is uncertain; 4xx/502 from our API mean nothing was created.
+        const transport = !err?.status || err.status === 504;
         this.rows.update((rows) => rows.map((r) => (ids.has(r.id) ? { ...r, state: 'failed', error: transport ? 'Koneksi terputus — sebagian subtask mungkin sudah dibuat. Baris yang sudah ada ditandai.' : err?.error?.error ?? 'Gagal mengirim' } : r)));
         this.finished.set({ ok: this.rows().filter((r) => r.state === 'done').length, failed: this.rows().filter((r) => r.state === 'failed').length });
         if (transport) this.refreshParent(true);

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -212,7 +213,7 @@ func (s *Service) metaFor(ctx context.Context, cred *jira_client_dto.Credential,
 	if err != nil {
 		return Meta{}, err
 	}
-	m := Meta{ProjectKey: project}
+	m := Meta{ProjectKey: project, Types: []TypeMeta{}}
 	for _, t := range types {
 		fields, err := s.d.Jira.IssueTypeFieldsAs(ctx, cred, project, t.ID)
 		if err != nil {
@@ -434,5 +435,6 @@ func friendlyJiraError(err error) string {
 	if errors.As(err, &rej) {
 		return strings.TrimPrefix(rej.Error(), "jira rejected the issue: ")
 	}
+	log.Printf("issue_create: jira error: %v", err)
 	return "Jira tidak merespons, coba lagi"
 }
