@@ -223,9 +223,6 @@ func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx cont
 	return nil
 }
 
-func (f *fakeRegistrationRepositoryForPoller) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
-	return nil
-}
 
 func (f *fakeRegistrationRepositoryForPoller) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil

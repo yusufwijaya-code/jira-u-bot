@@ -22,6 +22,9 @@ type UserDashboardService interface {
 	// ListBoards returns the boards whose active sprint holds tickets
 	// assigned to email, ordered by name (AC1.1).
 	ListBoards(ctx context.Context, email string) ([]user_dashboard_dto.BoardSummary, error)
+	// DescribeBoard returns a board's name and project key from the board
+	// cache — "Board #<id>" and "" when it can't be looked up. Never fails.
+	DescribeBoard(ctx context.Context, boardID int64) (name, projectKey string)
 	// GetTeamView returns email's own active (Code Process) tickets.
 	GetTeamView(ctx context.Context, email string) (user_dashboard_dto.TeamView, error)
 	// GetOverdueView returns email's own active tickets whose elapsed

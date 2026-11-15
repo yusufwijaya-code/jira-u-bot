@@ -159,11 +159,18 @@ func (s UserSetting) IsSilenced(now time.Time) bool {
 	return s.NotificationsOff || s.IsMuted(now) || s.InQuietHours(now)
 }
 
+// tomorrowCutoffHour: before this hour (WIB) "besok" still means the coming
+// morning — someone muting at 00:30 means a few hours, not ~32.
+const tomorrowCutoffHour = 4
+
 // TomorrowMorning is the "mute until tomorrow" target: 08:30 WIB on the next
-// calendar day (AC4.4).
+// calendar day (AC4.4), or the same day when it's still before 04:00.
 func TomorrowMorning(now time.Time) time.Time {
 	local := now.In(Jakarta)
 	next := local.AddDate(0, 0, 1)
+	if local.Hour() < tomorrowCutoffHour {
+		next = local
+	}
 	return time.Date(next.Year(), next.Month(), next.Day(), 8, 30, 0, 0, Jakarta)
 }
 

@@ -230,6 +230,22 @@ func (s *userDashboardServiceImpl) GetMyBoard(ctx context.Context, email string,
 	return board, nil
 }
 
+func (s *userDashboardServiceImpl) DescribeBoard(ctx context.Context, boardID int64) (string, string) {
+	name := fmt.Sprintf("Board #%d", boardID)
+	if s.boards == nil {
+		return name, ""
+	}
+	b, err := s.boards.EnsureKnown(ctx, boardID)
+	if err != nil {
+		log.Printf("user_dashboard_service: board %d lookup failed: %v", boardID, err)
+		return name, ""
+	}
+	if b.Name != "" {
+		name = b.Name
+	}
+	return name, b.ProjectKey
+}
+
 func (s *userDashboardServiceImpl) ListBoards(ctx context.Context, email string) ([]user_dashboard_dto.BoardSummary, error) {
 	q, err := s.activeSprintIssues(ctx, email)
 	if err != nil {

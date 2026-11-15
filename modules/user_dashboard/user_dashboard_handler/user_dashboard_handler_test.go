@@ -2,7 +2,9 @@ package user_dashboard_handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"nudge/modules/board/board_service"
@@ -39,6 +41,8 @@ type fakeUserDashboardService struct {
 
 	boards      []user_dashboard_dto.BoardSummary
 	boardsEmail string
+	// boardNames: boardID -> {name, projectKey} for DescribeBoard.
+	boardNames map[int64][2]string
 
 	// Tech Spec "Papan Tiket & Cuti": ListTransitions / Transition.
 	transitions        user_dashboard_dto.TicketTransitions
@@ -68,6 +72,12 @@ func (f *fakeUserDashboardService) GetMyBoard(ctx context.Context, email string,
 func (f *fakeUserDashboardService) ListBoards(ctx context.Context, email string) ([]user_dashboard_dto.BoardSummary, error) {
 	f.boardsEmail = email
 	return f.boards, nil
+}
+func (f *fakeUserDashboardService) DescribeBoard(ctx context.Context, boardID int64) (string, string) {
+	if n, ok := f.boardNames[boardID]; ok {
+		return n[0], n[1]
+	}
+	return fmt.Sprintf("Board #%d", boardID), ""
 }
 func (f *fakeUserDashboardService) GetTeamView(ctx context.Context, email string) (user_dashboard_dto.TeamView, error) {
 	f.teamEmail = email
@@ -883,5 +893,55 @@ func TestGetTransitions_ReturnsListAndMapsErrors(t *testing.T) {
 	handler.GetTransitions(c)
 	if w.Code != http.StatusForbidden {
 		t.Errorf("not own ticket → %d, want 403", w.Code)
+	}
+}
+
+// Review finding #7: a board outside the user's active sprints that still
+// has custom settings or a running mute must stay reachable from
+// Pengaturan, otherwise it can never be reset.
+func TestListBoards_ReportsOtherBoardsWithCustomSettingsOrMute(t *testing.T) {
+	svc := &fakeUserDashboardService{
+		boards:     []user_dashboard_dto.BoardSummary{{BoardID: 28, Name: "ESB OMS Board", ProjectKey: "OMS"}},
+		boardNames: map[int64][2]string{40: {"Old Board", "OLD"}, 41: {"Muted Board", "MUT"}},
+	}
+	until := time.Now().Add(time.Hour)
+	expired := time.Now().Add(-time.Hour)
+	settings := &fakeUserSettingsForHandler{states: map[int64]user_setting_service.BoardState{
+		28: {BoardID: 28, Custom: true},
+		40: {BoardID: 40, Custom: true},
+		41: {BoardID: 41, MutedUntil: &until},
+		42: {BoardID: 42, MutedUntil: &expired}, // nothing left to undo
+	}}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, settings, nil)
+
+	w, c := newTestContextWithUser("GET", "/api/dashboard/boards", "")
+	handler.ListBoards(c)
+
+	var res struct {
+		Boards      []map[string]any `json:"boards"`
+		OtherBoards []struct {
+			BoardID           int64  `json:"boardId"`
+			Name              string `json:"name"`
+			ProjectKey        string `json:"projectKey"`
+			HasCustomSettings bool   `json:"hasCustomSettings"`
+			Muted             struct {
+				Active bool `json:"active"`
+			} `json:"muted"`
+		} `json:"otherBoards"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v (%s)", err, w.Body.String())
+	}
+	if len(res.Boards) != 1 {
+		t.Errorf("boards = %d, want 1 (the picker list is unchanged)", len(res.Boards))
+	}
+	if len(res.OtherBoards) != 2 {
+		t.Fatalf("otherBoards = %+v, want boards 40 and 41", res.OtherBoards)
+	}
+	if o := res.OtherBoards[0]; o.BoardID != 40 || o.Name != "Old Board" || o.ProjectKey != "OLD" || !o.HasCustomSettings || o.Muted.Active {
+		t.Errorf("otherBoards[0] = %+v", o)
+	}
+	if o := res.OtherBoards[1]; o.BoardID != 41 || o.HasCustomSettings || !o.Muted.Active {
+		t.Errorf("otherBoards[1] = %+v", o)
 	}
 }

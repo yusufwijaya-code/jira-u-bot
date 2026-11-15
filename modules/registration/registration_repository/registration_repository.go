@@ -21,9 +21,6 @@ type RegistrationRepository interface {
 	// sender is only ever someone the registration + reminder flow already
 	// vetted.
 	FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error)
-	// UpdateReminderTierPreference sets the CSV of tiers email wants to
-	// receive — csv may be "" (deliberately all unchecked, spec AC2.1).
-	UpdateReminderTierPreference(ctx context.Context, email, csv string) error
 	// FindAll lists every registered user — Admin Dashboard (spec AC6.1).
 	FindAll(ctx context.Context) ([]registration_dto.User, error)
 	UpdateFlagActive(ctx context.Context, userID int64, active bool) error

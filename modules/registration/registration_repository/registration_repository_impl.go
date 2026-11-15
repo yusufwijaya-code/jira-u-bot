@@ -108,18 +108,6 @@ func (r *registrationRepositoryImpl) UpdateGoogleChatDMSpaceID(ctx context.Conte
 	return err
 }
 
-func (r *registrationRepositoryImpl) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
-	const query = `
-		UPDATE ms_user
-		SET reminderTierPreference = ?,
-		    editedBy = ?,
-		    editedDate = CURRENT_TIMESTAMP
-		WHERE email = ?
-	`
-	_, err := r.db.ExecContext(ctx, query, csv, email, email)
-	return err
-}
-
 func (r *registrationRepositoryImpl) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	query := `SELECT ` + userColumns + ` FROM ms_user ORDER BY createdDate DESC`
 	rows, err := r.db.QueryContext(ctx, query)

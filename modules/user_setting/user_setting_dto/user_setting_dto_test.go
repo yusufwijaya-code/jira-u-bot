@@ -161,6 +161,24 @@ func TestTomorrowMorning(t *testing.T) {
 	}
 }
 
+// Clicked in the small hours, "besok" means the coming morning, not the
+// morning after it (review finding #8).
+func TestTomorrowMorning_AfterMidnightMeansSameDayMorning(t *testing.T) {
+	got := TomorrowMorning(time.Date(2026, 11, 15, 0, 30, 0, 0, Jakarta))
+	want := time.Date(2026, 11, 15, 8, 30, 0, 0, Jakarta)
+	if !got.Equal(want) {
+		t.Errorf("TomorrowMorning(00:30) = %v, want %v", got, want)
+	}
+}
+
+func TestTomorrowMorning_FromFourAMIsNextDay(t *testing.T) {
+	got := TomorrowMorning(time.Date(2026, 11, 15, 4, 0, 0, 0, Jakarta))
+	want := time.Date(2026, 11, 16, 8, 30, 0, 0, Jakarta)
+	if !got.Equal(want) {
+		t.Errorf("TomorrowMorning(04:00) = %v, want %v", got, want)
+	}
+}
+
 func TestApply_ValidInputKeepsMuteAndUserID(t *testing.T) {
 	muted := wib(15, 0)
 	base := Default()

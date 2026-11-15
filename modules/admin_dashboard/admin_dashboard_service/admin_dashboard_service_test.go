@@ -31,9 +31,6 @@ func (f *fakeRegistrationRepoForAdmin) FindUserByJiraAccountID(ctx context.Conte
 func (f *fakeRegistrationRepoForAdmin) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	return nil
 }
-func (f *fakeRegistrationRepoForAdmin) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
-	return nil
-}
 func (f *fakeRegistrationRepoForAdmin) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	return f.users, nil
 }

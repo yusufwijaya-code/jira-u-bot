@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -317,7 +318,9 @@ func (h *SettingsHandler) ListBoards(c *gin.Context) {
 
 	now := time.Now()
 	out := make([]gin.H, 0, len(boards))
+	listed := make(map[int64]bool, len(boards))
 	for _, b := range boards {
+		listed[b.BoardID] = true
 		state := states[b.BoardID]
 		out = append(out, gin.H{
 			"boardId":           b.BoardID,
@@ -330,7 +333,32 @@ func (h *SettingsHandler) ListBoards(c *gin.Context) {
 			"muted":             muteStateJSON(state.MutedUntil, now),
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"boards": out})
+
+	// Boards outside the target's active sprints that still carry custom
+	// settings or a running mute: they apply again as soon as the board
+	// comes back, so Pengaturan must be able to show and undo them. Kept
+	// out of "boards" so the navbar picker is unchanged.
+	otherIDs := make([]int64, 0)
+	for id, state := range states {
+		if listed[id] || (!state.Custom && !user_setting_dto.MuteActive(state.MutedUntil, now)) {
+			continue
+		}
+		otherIDs = append(otherIDs, id)
+	}
+	sort.Slice(otherIDs, func(i, j int) bool { return otherIDs[i] < otherIDs[j] })
+	others := make([]gin.H, 0, len(otherIDs))
+	for _, id := range otherIDs {
+		state := states[id]
+		name, projectKey := h.dashboardSvc.DescribeBoard(ctx, id)
+		others = append(others, gin.H{
+			"boardId":           id,
+			"name":              name,
+			"projectKey":        projectKey,
+			"hasCustomSettings": state.Custom,
+			"muted":             muteStateJSON(state.MutedUntil, now),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"boards": out, "otherBoards": others})
 }
 
 func (h *SettingsHandler) SaveCredential(c *gin.Context) {

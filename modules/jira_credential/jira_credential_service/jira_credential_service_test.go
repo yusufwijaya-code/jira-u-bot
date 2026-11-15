@@ -75,9 +75,6 @@ func (f *fakeRegistrationRepoForCredential) UpdateGoogleChatDMSpaceID(ctx contex
 	return nil
 }
 
-func (f *fakeRegistrationRepoForCredential) UpdateReminderTierPreference(ctx context.Context, email, csv string) error {
-	return nil
-}
 
 func (f *fakeRegistrationRepoForCredential) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
