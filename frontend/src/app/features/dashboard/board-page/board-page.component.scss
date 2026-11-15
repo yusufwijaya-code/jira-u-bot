@@ -1,7 +1,9 @@
 // Papan Tiket — one table section per status. Shared bits (.status-chip,
 // .status-menu, .status-dropdown, .ticket-key) come from styles.scss.
 
-:host { display: flex; flex-direction: column; gap: 14px; }
+:host { display: block; }
+// .page-stack (global) gives the staggered entrance like the other pages.
+.tb-page { gap: 14px; }
 
 [data-tone='todo'] { --tone: var(--text-faint); }
 [data-tone='process'] { --tone: var(--primary); }

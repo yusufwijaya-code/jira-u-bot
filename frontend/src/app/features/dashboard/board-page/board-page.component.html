@@ -1,3 +1,4 @@
+<div class="page-stack tb-page">
 @if (initialLoading()) {
   <!-- First load: the page's shape, shimmering, instead of a lone "Memuat…" line. -->
   <div class="tb-skeleton" aria-busy="true" aria-label="Memuat tiket" data-skeleton>
@@ -185,6 +186,7 @@
     <div class="empty-inline"><span>Tidak ada tiket yang cocok dengan "{{ query() }}".</span></div>
   }
 }
+</div>
 
 <ng-template #timeCell let-card>
   @if (hasTime(card)) {
