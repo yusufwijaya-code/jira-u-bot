@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { AddLeaveResult, Leave, LeaveService } from '../../../core/services/leave.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { DateRangePickerComponent } from '../../../shared/ui/date-range-picker.component';
 
 const DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -25,7 +26,7 @@ export function leaveLabel(date: string): string {
 @Component({
   selector: 'app-leave',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, DateRangePickerComponent],
   templateUrl: './leave.component.html',
 })
 export class LeaveComponent {
@@ -48,6 +49,9 @@ export class LeaveComponent {
   });
 
   protected today = todayWIB();
+  /** The API accepts leave up to 60 days back. */
+  protected minDate = new Date(Date.now() + 7 * 3600_000 - 60 * 86400_000).toISOString().slice(0, 10);
+
   protected label = leaveLabel;
 
   constructor() {

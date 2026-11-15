@@ -8,14 +8,16 @@
       </div>
     </header>
     <div class="leave-form">
-      <label>
-        <span>Dari</span>
-        <input type="date" data-from [value]="from()" (input)="from.set($any($event.target).value)" />
-      </label>
-      <label>
-        <span>Sampai</span>
-        <input type="date" data-to [value]="to()" [min]="from()" (input)="to.set($any($event.target).value)" />
-      </label>
+      <div class="leave-field" data-range>
+        <span>Tanggal</span>
+        <app-date-range-picker
+          ariaLabel="Tanggal cuti"
+          [from]="from()"
+          [to]="to()"
+          [min]="minDate"
+          (rangeChange)="from.set($event.from); to.set($event.to)"
+        />
+      </div>
       <label class="leave-note">
         <span>Catatan</span>
         <input type="text" maxlength="200" placeholder="Opsional" [value]="note()" (input)="note.set($any($event.target).value)" />
@@ -33,8 +35,8 @@
       </button>
     </div>
     <p class="leave-hint">
-      Kosongkan "Sampai" untuk cuti satu hari. Akhir pekan dan libur nasional otomatis dilewati. Cuti di tanggal yang sudah lewat
-      ikut menghitung ulang waktu tiket sprint aktif kamu.
+      Klik tanggal mulai lalu tanggal selesai; untuk satu hari cukup klik sekali lalu Selesai. Akhir pekan dan libur nasional otomatis
+      dilewati. Cuti di tanggal yang sudah lewat ikut menghitung ulang waktu tiket sprint aktif kamu.
     </p>
   </section>
 
