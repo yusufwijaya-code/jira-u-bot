@@ -314,6 +314,50 @@ describe('BoardPageComponent', () => {
     expect(row.classList).toContain('just-moved');
     expect(row.querySelector('[data-status-chip]')?.textContent).toContain('Code Process');
   });
+
+  it('shows summary cards for the scope', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-stat="tickets"]')?.textContent).toContain('2');
+    expect(el.querySelector('[data-stat="points"]')?.textContent).toContain('3');
+    expect(el.querySelector('[data-stat="over"]')?.textContent).toContain('1');
+    expect(el.querySelector('[data-stat="done"]')?.textContent).toContain('0%');
+  });
+
+  it('filters to over-budget tickets from the chip and the summary card', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-filter="over"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"]')).toBeNull();
+    expect(el.querySelector('[data-card="OMS-2"]')).not.toBeNull();
+    (el.querySelector('[data-stat="over"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('shows a reset button when the filter leaves nothing', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-search]') as HTMLInputElement).value = 'zzz';
+    el.querySelector('[data-search]')!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (el.querySelector('[data-reset-filter]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('focuses the search on "/" and clears it on Escape', () => {
+    const fixture = render();
+    const input = fixture.nativeElement.querySelector('[data-search]') as HTMLInputElement;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/' }));
+    expect(document.activeElement).toBe(input);
+    input.value = 'oms';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(input.value).toBe('');
+  });
 });
 
 describe('board-page helpers', () => {

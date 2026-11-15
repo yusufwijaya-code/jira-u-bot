@@ -1,5 +1,7 @@
 import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { environment } from '../../../../environments/environment';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
@@ -20,6 +22,8 @@ interface MenuState {
 
 /** Colour family of a status dot, from its name (Jira workflows differ per project). */
 export type StatusTone = 'todo' | 'process' | 'review' | 'done' | 'other';
+
+export type BoardFilter = 'all' | 'over' | 'nosp';
 
 export const COLLAPSED_STORAGE_KEY = 'nudge.board.collapsed';
 
@@ -58,6 +62,13 @@ export class BoardPageComponent {
   private dashboard = inject(DashboardService);
   private boardContext = inject(BoardContextService);
   private toast = inject(ToastService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  protected readonly createCardEnabled = environment.features.createCard;
+  protected tab = signal<'board' | 'create'>(
+    environment.features.createCard && this.route.snapshot.queryParamMap.get('tab') === 'create' ? 'create' : 'board',
+  );
+  protected filter = signal<BoardFilter>('all');
 
   protected columns = signal<Column[]>([]);
   /**
@@ -113,14 +124,61 @@ export class BoardPageComponent {
    */
   protected visible = computed<Column[]>(() => {
     const q = this.query().trim().toLowerCase();
-    if (!q) return this.columns();
+    const filtering = this.filter() !== 'all';
+    if (!q && !filtering) return this.columns();
     return this.columns()
       .map((c) => ({
         status: c.status,
-        cards: c.cards.filter((card) => matches(card, q) || (this.branchMap().get(card.issueKey) ?? []).some((b) => matches(b, q))),
+        cards: c.cards.filter(
+          (card) =>
+            this.passesFilter(card) &&
+            (!q || matches(card, q) || (this.branchMap().get(card.issueKey) ?? []).some((b) => matches(b, q))),
+        ),
       }))
       .filter((c) => c.cards.length > 0);
   });
+
+  protected setTab(tab: 'board' | 'create', extra: Record<string, string | null> = {}): void {
+    this.tab.set(tab);
+    this.router.navigate([], { queryParams: { tab: tab === 'create' ? 'create' : null, ...extra }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  protected stats = computed(() => {
+    const cards = this.columns().flatMap((c) => c.cards);
+    const done = cards.filter((c) => statusTone(c.status) === 'done').length;
+    return {
+      tickets: cards.length,
+      points: Math.round(cards.reduce((n, c) => n + (c.storyPoints || 0), 0) * 10) / 10,
+      over: cards.filter((c) => this.isOverBudget(c)).length,
+      donePercent: cards.length ? Math.round((done / cards.length) * 100) : 0,
+    };
+  });
+
+  protected setFilter(f: BoardFilter): void {
+    this.filter.set(this.filter() === f ? 'all' : f);
+  }
+
+  protected resetFilters(): void {
+    this.filter.set('all');
+    this.query.set('');
+  }
+
+  private passesFilter(card: TicketCard): boolean {
+    switch (this.filter()) {
+      case 'over': return this.isOverBudget(card);
+      case 'nosp': return !card.storyPoints;
+      default: return true;
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected onShortcut(event: KeyboardEvent): void {
+    if (event.key !== '/' || this.tab() !== 'board') return;
+    const t = event.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    event.preventDefault();
+    (document.querySelector('[data-search]') as HTMLInputElement | null)?.focus();
+  }
 
   /** The branches under a row; while searching, all of them when the parent matches, else only the matching ones. */
   protected branchesOf(card: TicketCard): TicketCard[] {
@@ -167,7 +225,7 @@ export class BoardPageComponent {
 
   /** Empty sections start collapsed; the user's own choice wins. */
   protected isCollapsed(col: Column): boolean {
-    if (this.query().trim()) return false;
+    if (this.query().trim() || this.filter() !== 'all') return false;
     const choice = this.collapsedChoice()[col.status];
     return choice ?? col.cards.length === 0;
   }

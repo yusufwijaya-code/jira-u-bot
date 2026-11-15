@@ -2786,6 +2786,7 @@ table.admin-users {
   display: flex;
   flex-direction: column;
 }
+.page:has(.tb-page) { max-width: 1440px; }
 app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 .chat-window {
