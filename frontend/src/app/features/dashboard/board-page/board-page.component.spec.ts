@@ -106,18 +106,40 @@ describe('BoardPageComponent', () => {
   it('collapses empty statuses by default and remembers a toggle', () => {
     const fixture = render();
     const el: HTMLElement = fixture.nativeElement;
-    const empty = () => el.querySelector('[data-status="Code Process"]')!;
-    expect(empty().querySelector('.tb-empty')).toBeNull();
+    const isOpen = (status: string) => el.querySelector(`[data-status="${status}"] [data-collapse]`)!.classList.contains('open');
+    expect(isOpen('Code Process')).toBeFalse();
+    expect(el.querySelector('[data-status="Code Process"] [data-collapse]')!.hasAttribute('inert')).toBeTrue();
 
-    (empty().querySelector('[data-section-toggle]') as HTMLButtonElement).click();
+    (el.querySelector('[data-status="Code Process"] [data-section-toggle]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(empty().querySelector('.tb-empty')?.textContent).toContain('Tidak ada tiket');
+    expect(isOpen('Code Process')).toBeTrue();
+    expect(el.querySelector('[data-status="Code Process"] .tb-empty')?.textContent).toContain('Tidak ada tiket');
 
     const todoToggle = el.querySelector('[data-status="To Do"] [data-section-toggle]') as HTMLButtonElement;
     todoToggle.click();
     fixture.detectChanges();
-    expect(el.querySelector('[data-status="To Do"] table')).toBeNull();
+    expect(isOpen('To Do')).toBeFalse();
     expect(JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY)!)).toEqual({ 'Code Process': false, 'To Do': true });
+  });
+
+  it('opens and closes every status at once', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    const btn = el.querySelector('[data-toggle-all]') as HTMLButtonElement;
+    const openCount = () => el.querySelectorAll('[data-collapse].open').length;
+    expect(openCount()).toBe(1);
+    expect(btn.textContent).toContain('Tutup semua');
+
+    btn.click();
+    fixture.detectChanges();
+    expect(openCount()).toBe(0);
+    expect(btn.textContent).toContain('Buka semua');
+    expect(JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY)!)).toEqual({ 'To Do': true, 'Code Process': true });
+
+    btn.click();
+    fixture.detectChanges();
+    expect(openCount()).toBe(2);
+    expect(btn.textContent).toContain('Tutup semua');
   });
 
   it('filters rows by key or summary and hides sections without a match', () => {

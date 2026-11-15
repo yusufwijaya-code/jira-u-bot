@@ -47,6 +47,11 @@
         </button>
       }
     </nav>
+    <div class="tb-actions">
+      <button type="button" class="tb-toggle-all" data-toggle-all [disabled]="!!query().trim()" (click)="toggleAll()">
+        <app-icon class="tb-all-icon" [class.up]="!allCollapsed()" name="chevron-down" [size]="14" />
+        {{ allCollapsed() ? 'Buka semua' : 'Tutup semua' }}
+      </button>
     <label class="tb-search">
       <app-icon name="search" [size]="16" />
       <input
@@ -58,6 +63,7 @@
         (input)="setQuery($any($event.target).value)"
       />
     </label>
+    </div>
   </div>
   <p class="tb-hint">
     {{ total() }} tiket di sprint aktif{{ branchTotal() ? ' + ' + branchTotal() + ' subtask/linked item di luar sprint' : '' }}.
@@ -79,7 +85,8 @@
         <app-icon class="tb-chevron" [class.open]="!isCollapsed(col)" name="chevron-down" [size]="16" />
       </button>
 
-      @if (!isCollapsed(col)) {
+      <!-- Always rendered so opening and closing can both animate; inert keeps a closed body out of tab order. -->
+      <div class="tb-collapse" data-collapse [class.open]="!isCollapsed(col)" [attr.inert]="isCollapsed(col) ? '' : null">
         <div class="tb-body">
         @if (col.cards.length === 0) {
           <p class="tb-empty">Tidak ada tiket di status ini.</p>
@@ -180,7 +187,7 @@
           </table>
         }
         </div>
-      }
+      </div>
     </section>
   } @empty {
     <div class="empty-inline"><span>Tidak ada tiket yang cocok dengan "{{ query() }}".</span></div>

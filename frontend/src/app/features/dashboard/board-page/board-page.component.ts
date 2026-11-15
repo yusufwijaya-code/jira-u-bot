@@ -172,8 +172,25 @@ export class BoardPageComponent {
     return choice ?? col.cards.length === 0;
   }
 
+  /** True when every listed section is closed — the toolbar button then offers "Buka semua". */
+  protected allCollapsed = computed(() => {
+    const cols = this.visible();
+    return cols.length > 0 && cols.every((c) => this.isCollapsed(c));
+  });
+
   protected toggleSection(col: Column): void {
-    const next = { ...this.collapsedChoice(), [col.status]: !this.isCollapsed(col) };
+    this.saveCollapsed({ ...this.collapsedChoice(), [col.status]: !this.isCollapsed(col) });
+  }
+
+  /** Opens every section when all are closed, otherwise closes them all. */
+  protected toggleAll(): void {
+    const collapse = !this.allCollapsed();
+    const next = { ...this.collapsedChoice() };
+    for (const c of this.columns()) next[c.status] = collapse;
+    this.saveCollapsed(next);
+  }
+
+  private saveCollapsed(next: Record<string, boolean>): void {
     this.collapsedChoice.set(next);
     try {
       localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(next));
