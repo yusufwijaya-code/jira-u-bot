@@ -746,3 +746,44 @@ func TestTransition_ExecutesAndReturnsNewStatus(t *testing.T) {
 		t.Fatalf("status=%q err=%v transitioned=%q", status, err, jira.transitioned)
 	}
 }
+
+// Papan Tiket: SP always comes from Jira, and a ticket whose clock stopped
+// (finished / back to To Do) still shows the time its closed session
+// recorded — without HasBudgetDetail, which the dashboard keeps for running
+// clocks.
+func TestGetMyBoard_StoppedTicketShowsSPAndRecordedTime(t *testing.T) {
+	three, two := 3.0, 2.0
+	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
+		{Key: "CORE-1", Fields: jira_client_dto.IssueFields{Summary: "Done", Status: jira_client_dto.Status{Name: "Code Completed"}, StoryPointsCoreEstimate: &three}},
+		{Key: "OMS-2", Fields: jira_client_dto.IssueFields{Summary: "Never tracked", Status: jira_client_dto.Status{Name: "To Do"}, StoryPoints: &two}},
+	}}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
+	}}
+	sessionRepo := &fakeIssueSessionRepoForDashboard{byIssueKey: map[string]issue_session_dto.IssueSession{
+		"CORE-1": {IssueKey: "CORE-1", StoryPoints: 3, AccumulatedSeconds: 9000, FlagActive: false},
+	}}
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, sessionRepo)
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if err != nil {
+		t.Fatalf("GetMyBoard returned error: %v", err)
+	}
+	cards := map[string]user_dashboard_dto.Card{}
+	for _, col := range board.Columns {
+		for _, c := range col.Cards {
+			cards[c.IssueKey] = c
+		}
+	}
+	done := cards["CORE-1"]
+	if done.StoryPoints != 3 || !done.TimeRecorded || done.HasBudgetDetail {
+		t.Errorf("CORE-1 sp=%v timeRecorded=%v hasBudgetDetail=%v, want 3/true/false", done.StoryPoints, done.TimeRecorded, done.HasBudgetDetail)
+	}
+	if done.ElapsedSeconds != 9000 || done.BudgetSeconds != 10800 {
+		t.Errorf("CORE-1 elapsed/budget = %d/%d, want 9000/10800", done.ElapsedSeconds, done.BudgetSeconds)
+	}
+	todo := cards["OMS-2"]
+	if todo.StoryPoints != 2 || todo.TimeRecorded {
+		t.Errorf("OMS-2 sp=%v timeRecorded=%v, want 2/false (no session, nothing recorded)", todo.StoryPoints, todo.TimeRecorded)
+	}
+}

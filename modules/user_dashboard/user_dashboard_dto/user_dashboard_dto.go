@@ -9,7 +9,13 @@ type Card struct {
 	Summary         string  `json:"summary"`
 	Status          string  `json:"status"`
 	HasBudgetDetail bool    `json:"hasBudgetDetail"`
-	StoryPoints     float64 `json:"storyPoints"`
+	// TimeRecorded: the ticket's clock is stopped (finished / back to To Do)
+	// but its closed session recorded time — ElapsedSeconds/BudgetSeconds
+	// then hold that final tally (Papan Tiket). Never set together with
+	// HasBudgetDetail, which stays reserved for running clocks.
+	TimeRecorded bool `json:"timeRecorded"`
+	// StoryPoints: from the tracked session, else straight from Jira.
+	StoryPoints float64 `json:"storyPoints"`
 	ElapsedLabel    string  `json:"elapsedLabel"`
 	RemainingLabel  string  `json:"remainingLabel"`
 	DeadlineLabel   string  `json:"deadlineLabel"`

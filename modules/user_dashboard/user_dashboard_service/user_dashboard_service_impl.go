@@ -312,19 +312,31 @@ func (s *userDashboardServiceImpl) buildCard(ctx context.Context, issue jira_cli
 		Status:   issue.Fields.Status.Name,
 		IssueURL: s.issueURL(issue.Key),
 	}
-
-	// Budget detail for every status whose time counts — CORE also counts
-	// CODE REVIEW (Tech Spec "CORE: Waktu Code Review Ikut Dihitung").
-	if !jira_client_dto.RuleForIssue(issue.Key).IsTracked(card.Status) {
-		return card
+	if sp := issue.Fields.EffectiveStoryPoints(); sp != nil {
+		card.StoryPoints = *sp
 	}
 
 	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issue.Key)
-	if err != nil || !found || !session.FlagActive {
+	if err != nil || !found {
 		return card
 	}
 
-	s.attachBudgetDetail(ctx, &card, *session)
+	// Budget detail for every status whose time counts — CORE also counts
+	// CODE REVIEW (Tech Spec "CORE: Waktu Code Review Ikut Dihitung").
+	if jira_client_dto.RuleForIssue(issue.Key).IsTracked(card.Status) && session.FlagActive {
+		s.attachBudgetDetail(ctx, &card, *session)
+		return card
+	}
+
+	// Clock stopped (finished / back to To Do): show what was recorded.
+	if session.AccumulatedSeconds > 0 && session.StoryPoints > 0 {
+		card.TimeRecorded = true
+		card.StoryPoints = session.StoryPoints
+		card.ElapsedSeconds = session.AccumulatedSeconds
+		card.BudgetSeconds = int64(session.StoryPoints * 3600)
+		card.ElapsedLabel = google_chat_notifier_service.FormatDuration(card.ElapsedSeconds)
+		card.RemainingLabel = google_chat_notifier_service.FormatDuration(card.BudgetSeconds - card.ElapsedSeconds)
+	}
 	return card
 }
 
