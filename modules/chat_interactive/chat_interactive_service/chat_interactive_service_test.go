@@ -540,3 +540,31 @@ func TestMyTickets_ListsEveryTicketWithItsTimeInfo(t *testing.T) {
 		}
 	}
 }
+
+func TestMatchStatus_FollowsEachProjectsStatusNames(t *testing.T) {
+	core := []string{"To Do", "Code Process", "CODE REVIEW", "Code Completed"}
+	oms := []string{"To Do", "Code Process", "Code Review", "Done"}
+	cases := []struct {
+		typed      string
+		candidates []string
+		want       string
+	}{
+		{"review", core, "CODE REVIEW"},
+		{"cr", oms, "Code Review"},
+		{"code-review", core, "CODE REVIEW"},
+		{"done", core, "Code Completed"},
+		{"selesai", oms, "Done"},
+		{"completed", core, "Code Completed"},
+		{"process", oms, "Code Process"},
+		{"TODO", core, "To Do"},
+	}
+	for _, c := range cases {
+		i, ok := matchStatus(c.typed, c.candidates)
+		if !ok || c.candidates[i] != c.want {
+			t.Errorf("matchStatus(%q) = %v %v, want %q", c.typed, i, ok, c.want)
+		}
+	}
+	if _, ok := matchStatus("code", core); ok {
+		t.Error("an ambiguous word must not pick a status")
+	}
+}

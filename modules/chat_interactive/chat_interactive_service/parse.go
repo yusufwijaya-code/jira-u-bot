@@ -76,27 +76,35 @@ func squash(s string) string {
 	return b.String()
 }
 
-// statusShortcuts expand short status words people type.
-var statusShortcuts = map[string]string{
-	"cr": "codereview", "review": "codereview",
-	"cp": "codeprocess", "process": "codeprocess", "progress": "inprogress",
-	"todo": "todo", "selesai": "done",
+// statusShortcuts expand short status words people type. Projects name
+// statuses differently (CORE "CODE REVIEW" / "Code Completed", OMS "Code
+// Review" / "Done"), so a word can stand for several names, tried in order.
+var statusShortcuts = map[string][]string{
+	"cr": {"codereview"}, "review": {"codereview"},
+	"cp": {"codeprocess"}, "process": {"codeprocess"}, "progress": {"inprogress", "codeprocess"},
+	"todo": {"todo"},
+	"done": {"done", "codecompleted"}, "selesai": {"done", "codecompleted"},
+	"completed": {"codecompleted", "done"},
 }
 
 // matchStatus picks the one candidate status the typed target means:
-// exact match first, then a unique partial match. ok is false when nothing
-// or more than one candidate matches.
+// exact match first (shortcut names in order), then a unique partial
+// match. ok is false when nothing or more than one candidate matches.
 func matchStatus(target string, candidates []string) (int, bool) {
 	t := squash(target)
-	if s, ok := statusShortcuts[t]; ok {
-		t = s
-	}
 	if t == "" {
 		return 0, false
 	}
-	for i, c := range candidates {
-		if squash(c) == t {
-			return i, true
+	exact := []string{t}
+	if s, ok := statusShortcuts[t]; ok {
+		exact = s
+		t = s[0]
+	}
+	for _, want := range exact {
+		for i, c := range candidates {
+			if squash(c) == want {
+				return i, true
+			}
 		}
 	}
 	found := -1
