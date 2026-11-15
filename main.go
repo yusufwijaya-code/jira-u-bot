@@ -36,6 +36,9 @@ import (
 	"nudge/modules/chat_delivery"
 	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
 	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/chat_log"
+	"nudge/modules/chat_log/chat_log_handler"
+	"nudge/modules/chat_log/chat_log_repository"
 	"nudge/modules/chat_oauth/chat_oauth_service"
 	"nudge/modules/issue_session/issue_session_repository"
 	"nudge/modules/issue_session/issue_session_service"
@@ -91,6 +94,9 @@ func mysqlDSN(cfg config.AppConfig) string {
 		cfg.MySQLUser, cfg.MySQLPassword, cfg.MySQLHost, cfg.MySQLPort, cfg.MySQLDatabase,
 	)
 }
+
+// chatLogRetention is how long the admin "Riwayat pesan" keeps entries.
+const chatLogRetention = 90 * 24 * time.Hour
 
 func main() {
 	if shouldRunSetupMode(os.Args) {
@@ -171,6 +177,10 @@ func main() {
 		log.Fatalf("failed to initialize chat oauth service: %v", err)
 	}
 
+	// Admin "Riwayat pesan": every message Nudge sends and every command or
+	// Chat event it receives, kept for chatLogRetention.
+	chatLogRepo := chat_log_repository.New(db)
+
 	var chatDMNotifierSvc chat_dm_notifier_service.ChatDMNotifierService
 	var chatCommandPollerSvc chat_command_poller_service.ChatCommandPollerService
 	if chatOAuthSvc != nil {
@@ -178,7 +188,10 @@ func main() {
 
 		cursorRepo := chat_command_poll_cursor_repository.NewChatCommandPollCursorRepository(db)
 		chatCommandPollerSvc = chat_command_poller_service.NewChatCommandPollerService(
-			chatOAuthSvc, registrationRepo, cursorRepo, chatInteractiveSvc, chatDMNotifierSvc, cfg.GoogleChatSelfUserID,
+			chatOAuthSvc, registrationRepo, cursorRepo,
+			chat_log.LoggedCommands{ChatInteractiveService: chatInteractiveSvc, Log: chatLogRepo},
+			chat_log.LoggedReplies{Inner: chatDMNotifierSvc, Log: chatLogRepo},
+			cfg.GoogleChatSelfUserID,
 		)
 	}
 
@@ -195,7 +208,7 @@ func main() {
 		}
 	}
 	operatorName := resolveOperatorName(context.Background(), registrationRepo, cfg.JiraEmail)
-	deliveryDeps := chat_delivery.Deps{Store: chatAppRepo, OperatorEmail: cfg.JiraEmail, OperatorName: operatorName}
+	deliveryDeps := chat_delivery.Deps{Store: chatAppRepo, OperatorEmail: cfg.JiraEmail, OperatorName: operatorName, Log: chatLogRepo}
 	deliveryDeps.Cards = chat_app_card.Build // phase 3: cards with action buttons on the app path
 	if chatAppClient != nil {
 		deliveryDeps.App = chatAppClient
@@ -259,6 +272,12 @@ func main() {
 		statusWatchSvc.Run(shutdownMgr.Context())
 	}()
 
+	shutdownMgr.AddWorker()
+	go func() {
+		defer shutdownMgr.WorkerDone()
+		chat_log.RunRetention(shutdownMgr.Context(), chatLogRepo, chatLogRetention)
+	}()
+
 	if chatCommandPollerSvc != nil {
 		shutdownMgr.AddWorker()
 		go func() {
@@ -312,6 +331,7 @@ func main() {
 	if chatAppClient != nil && cfg.GoogleChatAppProjectNumber != "" {
 		chatAppSvc := chat_app_service.New(chat_app_service.Deps{
 			Users: registrationRepo, States: chatAppRepo, Commands: chatInteractiveSvc, App: chatAppClient,
+			Log: chatLogRepo,
 		})
 		chatAppRoutes.Events = chat_app_handler.New(chat_app_auth.NewVerifier(cfg.GoogleChatAppProjectNumber), chatAppSvc).Events
 	} else if chatAppClient != nil {
@@ -330,6 +350,7 @@ func main() {
 	chatAppRoutes.AdminTarget = admin_dashboard_handler.AdminTarget(adminDashboardSvc)
 	chatAppRoutes.AdminChange = admin_dashboard_handler.AdminChangeListener(adminDashboardSvc)
 	MountChatApp(router, &cfg, authSvc, chatAppRoutes)
+	MountChatLog(router, &cfg, authSvc, chat_log_handler.New(chatLogRepo))
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

@@ -14,6 +14,7 @@ import (
 	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_dto"
 	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/chat_log/chat_log_dto"
 	"nudge/modules/registration/registration_dto"
 	"nudge/modules/user_setting/user_setting_dto"
 )
@@ -29,7 +30,8 @@ const (
 	inactiveText      = "Akun Nudge kamu sedang dinonaktifkan admin."
 	welcomeText       = "✅ App Nudge aktif! Notifikasi Nudge sekarang bisa datang langsung dari sini.\n\n" +
 		"Atur pengirim pesan di *Pengaturan*: https://nudge.labcup.tech/dashboard/settings\n\n" +
-		"💡 Ketik */n-help* buat lihat command"
+		"💡 Ketik */n-help* buat lihat command\n\n" +
+		"_Pesan & command di DM ini dicatat untuk keperluan admin Nudge._"
 )
 
 type UserFinder interface {
@@ -58,6 +60,8 @@ type Deps struct {
 	App      AppSender
 	// CommandTimeout bounds the synchronous reply (Google waits ~30s); 0 = 25s.
 	CommandTimeout time.Duration
+	// Log records events and replies for the admin "Riwayat pesan" (nil = off).
+	Log chat_log_dto.Recorder
 }
 
 type Service interface {
@@ -79,6 +83,63 @@ func (s *service) Handle(ctx context.Context, ev chat_app_dto.Event) chat_app_dt
 	if !ev.Space.IsDM() {
 		return chat_app_dto.Response{}
 	}
+	s.recordEvent(ctx, ev)
+	resp := s.handle(ctx, ev)
+	if text := responseText(resp); text != "" {
+		s.record(ctx, chat_log_dto.Entry{
+			Email: ev.User.Email, Direction: chat_log_dto.DirectionOut, Kind: chat_log_dto.KindReply,
+			Channel: chat_log_dto.ChannelApp, Status: chat_log_dto.StatusSent, Body: text,
+		})
+	}
+	return resp
+}
+
+func (s *service) record(ctx context.Context, e chat_log_dto.Entry) {
+	if s.d.Log != nil && e.Email != "" {
+		s.d.Log.Record(ctx, e)
+	}
+}
+
+// recordEvent logs what the user did: a message or command, a button
+// click, or adding/removing the app.
+func (s *service) recordEvent(ctx context.Context, ev chat_app_dto.Event) {
+	e := chat_log_dto.Entry{Email: ev.User.Email, Direction: chat_log_dto.DirectionIn, Channel: chat_log_dto.ChannelApp, Status: chat_log_dto.StatusReceived}
+	switch ev.Type {
+	case chat_app_dto.EventAddedToSpace:
+		e.Kind, e.Body = chat_log_dto.KindAdded, "Menambahkan app Nudge"
+	case chat_app_dto.EventRemovedFromSpace:
+		e.Kind, e.Body = chat_log_dto.KindRemoved, "Menghapus app Nudge"
+	case chat_app_dto.EventMessage:
+		e.Kind = chat_log_dto.KindCommand
+		if ev.Message != nil {
+			e.Body = strings.TrimSpace(ev.Message.Text)
+		}
+		if text, _ := commandText(ev.Message); e.Body == "" {
+			e.Body = text
+		}
+	case chat_app_dto.EventCardClicked:
+		e.Kind, e.Body = chat_log_dto.KindClick, "Klik tombol"
+		if ev.Action != nil {
+			e.Body = fmt.Sprintf("Klik tombol: geser %s ke %s", ev.Action.Param("issueKey"), ev.Action.Param("target"))
+		}
+	default:
+		return
+	}
+	s.record(ctx, e)
+}
+
+// responseText is the text a sync response shows (text or card status).
+func responseText(r chat_app_dto.Response) string {
+	if r.Text != "" {
+		return r.Text
+	}
+	if len(r.CardsV2) > 0 {
+		return "(kartu diperbarui)"
+	}
+	return ""
+}
+
+func (s *service) handle(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
 	switch ev.Type {
 	case chat_app_dto.EventAddedToSpace:
 		return s.added(ctx, ev)
@@ -215,9 +276,15 @@ func (s *service) lateReply(email, space string, wait func() string) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), lateReplyTimeout)
 		defer cancel()
+		e := chat_log_dto.Entry{
+			Email: email, Direction: chat_log_dto.DirectionOut, Kind: chat_log_dto.KindReply,
+			Channel: chat_log_dto.ChannelApp, Status: chat_log_dto.StatusSent, Body: out,
+		}
 		if err := s.d.App.CreateMessage(ctx, space, chat_app_dto.OutgoingMessage{Text: out}); err != nil {
 			log.Printf("chat_app_service: late reply to %s failed: %v", email, err)
+			e.Status, e.Error = chat_log_dto.StatusFailed, err.Error()
 		}
+		s.record(ctx, e)
 	}()
 }
 

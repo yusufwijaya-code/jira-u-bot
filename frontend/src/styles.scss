@@ -245,6 +245,7 @@ input[type='password'],
 input[type='search'],
 input[type='number'],
 input[type='time'],
+input[type='date'],
 select,
 textarea {
   width: 100%;
@@ -2770,3 +2771,88 @@ table.admin-users {
   input { margin-top: 3px; }
   small { display: block; color: var(--text-muted); }
 }
+
+/* ==========================================================================
+   Admin › Riwayat pesan
+   ========================================================================== */
+.log-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(140px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+
+  .filter-actions { display: flex; gap: 8px; }
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr 1fr;
+    .field:first-child, .filter-actions { grid-column: 1 / -1; }
+  }
+}
+
+.log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.log-item {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: var(--surface);
+
+  &.in { border-left-color: var(--accent); background: var(--surface-2); }
+  &.out { border-left-color: var(--primary); }
+}
+
+.log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+
+  .spacer { flex: 1; }
+  .log-user { color: var(--ink); font-size: 0.85rem; }
+  .log-email { font-size: 0.76rem; }
+}
+
+.log-dir { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.log-item.in .log-dir { color: #b86e00; }
+.log-item.out .log-dir { color: var(--primary); }
+
+.log-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-size: 0.72rem;
+  font-weight: 600;
+
+  &.subtle { background: #f1f2f6; color: var(--text-muted); }
+}
+
+.log-status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+
+  &[data-status='sent'] { color: var(--success); }
+  &[data-status='failed'] { color: var(--error); }
+  &[data-status='skipped'] { color: var(--text-faint); }
+}
+
+.log-body {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text);
+
+  &.clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+}
+
+.log-error { margin-top: 6px; font-size: 0.78rem; }
+
+.load-more { display: flex; justify-content: center; margin-top: 16px; }
+

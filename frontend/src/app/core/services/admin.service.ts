@@ -30,6 +30,34 @@ export interface BroadcastResponse {
   skippedEmails?: string[] | null;
 }
 
+/** One "Riwayat pesan" entry (a message Nudge sent or an event it got). */
+export interface ChatLogEntry {
+  id: number;
+  email: string;
+  direction: 'in' | 'out';
+  kind: 'reminder' | 'message' | 'reply' | 'command' | 'click' | 'added' | 'removed';
+  channel: 'app' | 'operator' | 'fallback' | '';
+  status: 'received' | 'sent' | 'failed' | 'skipped';
+  body: string;
+  error?: string;
+  createdDate: string;
+}
+
+export interface ChatLogPage {
+  items: ChatLogEntry[];
+  /** Pass as beforeID for the next (older) page; 0 = no more. */
+  nextBeforeID: number;
+}
+
+export interface ChatLogQuery {
+  email?: string;
+  /** YYYY-MM-DD (WIB), inclusive. */
+  from?: string;
+  to?: string;
+  beforeID?: number;
+  limit?: number;
+}
+
 /** A Nudge App activation date as "15 Nov 2026" (WIB), or "—" (AC4.1). */
 export function formatActivationDate(iso: string | null): string {
   if (!iso) return '—';
@@ -70,6 +98,16 @@ export class AdminService {
 
   deleteUser(userId: number): Observable<unknown> {
     return this.http.delete(`${environment.apiBasePath}/dashboard/admin/users/${userId}`);
+  }
+
+  chatLogs(q: ChatLogQuery): Observable<ChatLogPage> {
+    const params: Record<string, string> = {};
+    if (q.email) params['email'] = q.email;
+    if (q.from) params['from'] = q.from;
+    if (q.to) params['to'] = q.to;
+    if (q.beforeID) params['beforeID'] = String(q.beforeID);
+    if (q.limit) params['limit'] = String(q.limit);
+    return this.http.get<ChatLogPage>(`${environment.apiBasePath}/api/dashboard/admin/chat-logs`, { params });
   }
 
   broadcast(message: string): Observable<BroadcastResponse> {

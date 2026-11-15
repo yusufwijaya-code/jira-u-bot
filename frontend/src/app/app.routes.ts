@@ -73,6 +73,12 @@ export const routes: Routes = [
         title: 'Broadcast · Admin · Nudge',
         data: { heading: 'Broadcast Message', subheading: 'Kirim pengumuman ke semua user aktif', crumbs: ['Admin', 'Broadcast Message'] },
       },
+      {
+        path: 'chat-logs',
+        loadComponent: () => import('./features/admin/chat-logs/chat-logs.component').then((m) => m.ChatLogsComponent),
+        title: 'Riwayat Pesan · Admin · Nudge',
+        data: { heading: 'Riwayat Pesan', subheading: 'Pesan Nudge dan aksi user di Google Chat', crumbs: ['Admin', 'Riwayat Pesan'] },
+      },
     ],
   },
   { path: '**', redirectTo: '' },
