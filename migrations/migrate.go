@@ -67,6 +67,15 @@ var userNotificationSwitchSQL string
 //go:embed 0015_add_user_leave.sql
 var addUserLeaveSQL string
 
+//go:embed 0016_status_change_notif.sql
+var statusSnapshotSQL string
+
+//go:embed 0016b_user_setting_status_change.sql
+var userSettingStatusChangeSQL string
+
+//go:embed 0016c_migration_marker.sql
+var migrationMarkerSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -145,8 +154,45 @@ func apply(db *sql.DB) error {
 		return err
 	}
 	// Tech Spec "Papan Tiket & Cuti" — CREATE TABLE IF NOT EXISTS.
-	_, err := db.Exec(addUserLeaveSQL)
-	return err
+	if _, err := db.Exec(addUserLeaveSQL); err != nil {
+		return err
+	}
+	// Tech Spec "Notifikasi Perubahan Status Tiket".
+	if _, err := db.Exec(statusSnapshotSQL); err != nil {
+		return err
+	}
+	if err := addColumnIfNotExists(db, userSettingStatusChangeSQL); err != nil {
+		return err
+	}
+	// The new toggle starts ON when either old toggle was ON — exactly once
+	// (marker), so a failed or interrupted run is retried on the next start
+	// and later starts never overwrite what users saved.
+	return runOnce(db, "notify_status_change_from_old_toggles",
+		`UPDATE ms_user_setting SET notifyStatusChange = (notifyEarlyFinish OR notifyReturnedToTodo)`)
+}
+
+// runOnce applies a one-time data statement and records it in
+// ms_migration_marker in the same transaction.
+func runOnce(db *sql.DB, name, statement string) error {
+	if _, err := db.Exec(migrationMarkerSQL); err != nil {
+		return err
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT IGNORE INTO ms_migration_marker (name) VALUES (?)`, name)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil // already applied
+	}
+	if _, err := tx.Exec(statement); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // applyPerBoardSettings (Tech Spec "Per-Board Settings & Active Sprint
@@ -221,3 +267,4 @@ func addColumnIfNotExists(db *sql.DB, alterSQL string) error {
 	}
 	return err
 }
+

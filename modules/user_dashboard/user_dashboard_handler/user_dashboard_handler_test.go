@@ -516,7 +516,7 @@ func TestUpdateNotificationSettings_SavesForSessionUser(t *testing.T) {
 	handler := settingsHandler(settings)
 
 	w, c := newTestContextWithUser("PUT", "/api/dashboard/settings/notification",
-		`{"reminderTiers":["60m","15m"],"overageTiers":["30m"],"overageRepeatMinutes":null,"notifyEarlyFinish":false,"notifyReturnedToTodo":true,"quietHours":null}`)
+		`{"reminderTiers":["60m","15m"],"overageTiers":["30m"],"overageRepeatMinutes":null,"notifyStatusChange":false,"quietHours":null}`)
 	handler.UpdateNotificationSettings(c)
 
 	if w.Code != http.StatusOK {

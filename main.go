@@ -43,6 +43,8 @@ import (
 	"nudge/modules/sprint_backfill/sprint_backfill_service"
 	"nudge/modules/sprint_report/sprint_report_handler"
 	"nudge/modules/sprint_report/sprint_report_service"
+	"nudge/modules/status_watch/status_watch_repository"
+	"nudge/modules/status_watch/status_watch_service"
 	"nudge/modules/user_avatar/user_avatar_handler"
 	"nudge/modules/user_avatar/user_avatar_repository"
 	"nudge/modules/user_avatar/user_avatar_service"
@@ -211,6 +213,20 @@ func main() {
 	go func() {
 		defer shutdownMgr.WorkerDone()
 		sprintBackfillSvc.RunDaily(shutdownMgr.Context())
+	}()
+
+	// Tech Spec "Notifikasi Perubahan Status Tiket": DM on every status
+	// change of a registered user's active-sprint ticket (Jira or Nudge).
+	statusWatchSvc := status_watch_service.NewStatusWatchService(status_watch_service.Deps{
+		Jira: jiraAgileClient, Users: registrationRepo, Settings: userSettingSvc, Sessions: issueSessionRepo,
+		Snapshots:     status_watch_repository.NewStatusWatchRepository(db),
+		BusinessHours: businessHoursSvc, Calendar: userLeaveSvc,
+		Webhook: notifierSvc, DM: dmNotifierSvc, SelfEmail: cfg.JiraEmail, JiraBaseURL: cfg.JiraBaseURL,
+	})
+	shutdownMgr.AddWorker()
+	go func() {
+		defer shutdownMgr.WorkerDone()
+		statusWatchSvc.Run(shutdownMgr.Context())
 	}()
 
 	if chatCommandPollerSvc != nil {

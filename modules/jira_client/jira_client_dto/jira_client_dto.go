@@ -167,11 +167,20 @@ type IssueType struct {
 
 type SearchResponse struct {
 	Issues []Issue `json:"issues"`
+	// NextPageToken is set by /search/jql while more pages remain.
+	NextPageToken string `json:"nextPageToken"`
 }
 
 type ChangelogEntry struct {
 	Created string               `json:"created"`
+	Author  *ChangelogAuthor     `json:"author"`
 	Items   []ChangelogEntryItem `json:"items"`
+}
+
+// ChangelogAuthor is who made a change (Tech Spec "Notifikasi Perubahan
+// Status Tiket": "digeser oleh …").
+type ChangelogAuthor struct {
+	DisplayName string `json:"displayName"`
 }
 
 type ChangelogEntryItem struct {

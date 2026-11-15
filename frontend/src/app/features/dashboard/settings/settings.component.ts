@@ -34,7 +34,7 @@ export const DEFAULT_QUIET_END = '10:00';
 const CARD_FIELDS: Record<SettingsCard, (keyof NotificationSettings)[]> = {
   reminder: ['reminderTiers'],
   overage: ['overageTiers', 'overageRepeatMinutes'],
-  events: ['notifyEarlyFinish', 'notifyReturnedToTodo'],
+  events: ['notifyStatusChange', 'statusChangeStatuses'],
   quiet: ['quietHours'],
 };
 
@@ -162,26 +162,43 @@ export class SettingsComponent {
     if (this.scopeBoardId() === null || !board) return 'mixed';
     return board.reviewTracked ? 'core' : 'other';
   });
-  protected earlyFinishHint = computed(() => {
+  /** Destination statuses offered for the status-change filter, from the scope's project workflow. */
+  protected statusOptions = computed(() => statusOptionsFor(this.statusRule()));
+
+  protected trackedLabel = computed(() => {
     switch (this.statusRule()) {
       case 'core':
-        return 'Saat tiket pindah ke Code Completed sebelum budget habis.';
+        return 'Code Process atau CODE REVIEW';
       case 'other':
-        return 'Saat tiket pindah ke Code Review sebelum budget habis.';
+        return 'Code Process';
       default:
-        return 'Saat tiket selesai sebelum budget habis: pindah ke Code Review, atau Code Completed untuk board CORE.';
+        return 'status yang dihitung waktunya';
     }
   });
-  protected returnedToTodoHint = computed(() => {
-    switch (this.statusRule()) {
-      case 'core':
-        return 'Saat tiket dikembalikan dari Code Process atau CODE REVIEW ke To Do.';
-      case 'other':
-        return 'Saat tiket dikembalikan dari Code Process ke To Do.';
-      default:
-        return 'Saat tiket dikembalikan ke To Do dari Code Process (atau CODE REVIEW untuk board CORE).';
-    }
-  });
+
+  /** Empty filter = every status. */
+  protected isStatusPicked(d: NotificationSettings, status: string): boolean {
+    const picked = d.statusChangeStatuses ?? [];
+    return picked.length === 0 || picked.some((s) => s.toLowerCase() === status.toLowerCase());
+  }
+
+  protected toggleStatus(d: NotificationSettings, status: string): void {
+    const all = this.statusOptions();
+    const current = d.statusChangeStatuses ?? [];
+    const picked = current.length ? [...current] : [...all];
+    const i = picked.findIndex((s) => s.toLowerCase() === status.toLowerCase());
+    if (i >= 0) picked.splice(i, 1);
+    else picked.push(status);
+    // Keep at least one — switching everything off is the main toggle's job.
+    if (picked.length === 0) return;
+    // Every option picked again → back to "every status" (also covers unlisted ones).
+    const everything = all.every((o) => picked.some((p) => p.toLowerCase() === o.toLowerCase()));
+    this.patch({ statusChangeStatuses: everything ? [] : picked });
+  }
+
+  protected pickAllStatuses(): void {
+    this.patch({ statusChangeStatuses: [] });
+  }
 
   constructor() {
     // Reload whenever the navbar board changes.
@@ -204,8 +221,10 @@ export class SettingsComponent {
       next: (res) => {
         this.scopeBoardId.set(res.scope === 'board' ? res.boardId : null);
         this.useDefault.set(res.scope === 'board' && res.useDefault);
-        this.saved = { ...res.notification };
-        this.draft.set({ ...res.notification });
+        // An older API has no status filter: treat it as "every status".
+        const notification = { ...res.notification, statusChangeStatuses: res.notification.statusChangeStatuses ?? [] };
+        this.saved = { ...notification };
+        this.draft.set({ ...notification });
         this.quietStart = res.notification.quietHours?.start ?? DEFAULT_QUIET_START;
         this.quietEnd = res.notification.quietHours?.end ?? DEFAULT_QUIET_END;
         this.globalMute.set(res.mute.global);
@@ -397,6 +416,20 @@ function pick(source: NotificationSettings, fields: (keyof NotificationSettings)
   const out: Partial<NotificationSettings> = {};
   for (const field of fields) {
     (out as Record<string, unknown>)[field] = source[field];
+  }
+  return out;
+}
+
+/** Statuses of the CORE and OMS workflows (Jira); matching is case-insensitive. */
+const CORE_STATUSES = ['To Do', 'Code Process', 'CODE REVIEW', 'Code Completed', 'Feedback', 'SIT', 'TEST RUN', 'TEST COMPLETE', 'UAT', 'Release Candidate', 'Done'];
+const OMS_STATUSES = ['To Do', 'Code Process', 'Code Review', 'Code Complete', 'Feedback', 'Testing & Review', 'Test Complete', 'UAT', 'Release Candidate', 'Done'];
+
+export function statusOptionsFor(rule: 'core' | 'other' | 'mixed'): string[] {
+  if (rule === 'core') return CORE_STATUSES;
+  if (rule === 'other') return OMS_STATUSES;
+  const out: string[] = [];
+  for (const s of [...CORE_STATUSES, ...OMS_STATUSES]) {
+    if (!out.some((o) => o.toLowerCase() === s.toLowerCase())) out.push(s);
   }
   return out;
 }

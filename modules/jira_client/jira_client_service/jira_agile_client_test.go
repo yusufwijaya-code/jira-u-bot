@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"nudge/modules/jira_client/jira_client_dto"
 )
 
 func TestSearchActiveSprintIssuesByAssignee_UsesOpenSprintsJQLAndSprintField(t *testing.T) {
@@ -106,5 +109,77 @@ func TestFetchAvatar_OnlyAllowsTheJiraSiteAndImages(t *testing.T) {
 	}
 	if _, _, err := client.FetchAvatar(context.Background(), server.URL+"/html"); err == nil {
 		t.Error("a non-image response must be refused")
+	}
+}
+
+func TestChangelogEntry_DecodesAuthor(t *testing.T) {
+	var resp jira_client_dto.ChangelogResponse
+	raw := `{"changelog":{"histories":[{"created":"2026-11-15T10:15:00.000+0700","author":{"displayName":"Anwar"},"items":[{"field":"status","fromString":"To Do","toString":"Code Process"}]}]}}`
+	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if h := resp.Changelog.Histories[0]; h.Author == nil || h.Author.DisplayName != "Anwar" {
+		t.Fatalf("history = %+v", h)
+	}
+}
+
+// Tech Spec "Notifikasi Perubahan Status Tiket".
+func TestSearchSprintIssuesUpdatedWithin_PostsRelativeJQLAndReadsEveryPage(t *testing.T) {
+	var bodies []searchJQLRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		var b searchJQLRequest
+		json.NewDecoder(r.Body).Decode(&b)
+		bodies = append(bodies, b)
+		if b.NextPageToken == "" {
+			json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{{"key": "OMS-1", "fields": map[string]any{}}}, "nextPageToken": "p2"})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{{"key": "CORE-2", "fields": map[string]any{}}}})
+	}))
+	defer server.Close()
+
+	client := NewJiraAgileClient(newTestConfig(server.URL))
+	issues, err := client.SearchSprintIssuesUpdatedWithin(context.Background(), []string{"acc-1", "acc-2"}, 90*time.Second)
+	if err != nil || len(issues) != 2 || len(bodies) != 2 || bodies[1].NextPageToken != "p2" {
+		t.Fatalf("issues = %v, err = %v, bodies = %+v", issues, err, bodies)
+	}
+	for _, want := range []string{`sprint in openSprints()`, `assignee in ("acc-1","acc-2")`, `updated >= "-2m"`} {
+		if !strings.Contains(bodies[0].JQL, want) {
+			t.Errorf("jql = %q, want %s", bodies[0].JQL, want)
+		}
+	}
+
+	bodies = nil
+	if _, err := client.SearchSprintIssuesUpdatedWithin(context.Background(), []string{"acc-1"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(bodies[0].JQL, "updated >=") {
+		t.Errorf("jql = %q, want no updated filter for a full read", bodies[0].JQL)
+	}
+}
+
+func TestGetRecentChangelog_ReadsTheLastPage(t *testing.T) {
+	var starts []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := r.URL.Query().Get("startAt")
+		starts = append(starts, start)
+		created := "2026-11-01T10:00:00.000+0700"
+		if start != "0" {
+			created = "2026-11-15T10:00:00.000+0700"
+		}
+		json.NewEncoder(w).Encode(map[string]any{"total": 150,
+			"values": []map[string]any{{"created": created, "items": []map[string]any{{"field": "status"}}}}})
+	}))
+	defer server.Close()
+
+	got, err := NewJiraAgileClient(newTestConfig(server.URL)).GetRecentChangelog(context.Background(), "OMS-1")
+	if err != nil || len(got) != 1 || got[0].Created != "2026-11-15T10:00:00.000+0700" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if len(starts) != 2 || starts[1] != "50" {
+		t.Errorf("startAt = %v, want 0 then 50", starts)
 	}
 }

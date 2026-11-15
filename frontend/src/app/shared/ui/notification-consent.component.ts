@@ -20,8 +20,8 @@ import { IconComponent } from './icon.component';
           <div class="modal-icon"><app-icon name="bell" [size]="22" /></div>
           <h3 id="consent-title">Aktifkan notifikasi Nudge?</h3>
           <p id="consent-desc">
-            Nudge bisa mengirim pesan Google Chat ke kamu saat budget waktu tiket kamu hampir habis, sudah lewat, selesai lebih
-            awal, atau tiket balik ke To Do. Kamu bisa mengubahnya kapan saja di Pengaturan.
+            Nudge bisa mengirim pesan Google Chat ke kamu saat budget waktu tiket kamu hampir habis atau sudah lewat, dan saat
+            status tiket kamu berubah. Kamu bisa mengubahnya kapan saja di Pengaturan.
           </p>
 
           <label class="toggle-row consent-toggle">

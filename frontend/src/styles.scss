@@ -1478,6 +1478,21 @@ table.admin-users {
   .tile-remove:focus-visible { opacity: 1; }
 }
 
+.status-filter {
+  margin-top: 14px;
+
+  .status-filter-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+}
+
 .tier-add {
   margin-top: 16px;
 

@@ -10,7 +10,6 @@ import (
 	"nudge/base/helpers/curl_helper"
 	"nudge/config"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
-	"nudge/modules/jira_client/jira_client_dto"
 )
 
 type googleChatNotifierServiceImpl struct {
@@ -57,10 +56,6 @@ const helpHint = "💡 Ketik */n-help* di sini buat lihat command lain"
 
 func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 	switch {
-	case msg.IsEarlyCompletion:
-		return fmt.Sprintf("✅ *%s* — Selesai Lebih Awal", msg.IssueKey)
-	case msg.IsReturnedToTodo:
-		return fmt.Sprintf("↩️ *%s* — Dikembalikan ke To Do", msg.IssueKey)
 	case msg.IsOverage:
 		return fmt.Sprintf("🔴 *%s* — SUDAH LEWAT BUDGET", msg.IssueKey)
 	default:
@@ -76,6 +71,9 @@ func messageHeader(msg google_chat_notifier_dto.ReminderMessage) string {
 // mangled, line-break-less wall of text in DMs. A bare URL auto-linkifies
 // identically in both paths.
 func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
+	if msg.Text != "" {
+		return msg.Text
+	}
 	budgetHours := float64(msg.BudgetSeconds) / 3600
 	elapsedHours := float64(msg.ElapsedSeconds) / 3600
 	remainingSeconds := msg.BudgetSeconds - msg.ElapsedSeconds
@@ -91,27 +89,12 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 	if msg.InReview {
 		lines = append(lines, "*Status:* CODE REVIEW (waktu review tetap dihitung)")
 	}
-	if msg.IsEarlyCompletion {
-		lines = append(lines, fmt.Sprintf("*Pindah ke %s:* %s", jira_client_dto.RuleForIssue(msg.IssueKey).DoneStatus, FormatDeadline(msg.CodeReviewEnteredAt)))
-	}
 	lines = append(lines,
 		fmt.Sprintf("*Story Point:* %.1f SP (budget %.1f jam, dihitung dari %.1f SP × 1 jam/SP)", msg.StoryPoints, budgetHours, msg.StoryPoints),
 		fmt.Sprintf("*Waktu berjalan:* %.1f jam", elapsedHours),
 	)
 
 	switch {
-	case msg.IsEarlyCompletion:
-		lines = append(lines,
-			fmt.Sprintf("*Sisa budget tidak terpakai:* %s", FormatDuration(remainingSeconds)),
-			fmt.Sprintf("*Limit seharusnya selesai:* %s", FormatDeadline(msg.Deadline)),
-			"",
-			"Mantap, kerja bagus! 👏",
-		)
-	case msg.IsReturnedToTodo:
-		lines = append(lines,
-			"",
-			"↩️ Tiket ini dipindah balik ke To Do sebelum selesai dari Code Process.",
-		)
 	case msg.IsOverage:
 		lines = append(lines,
 			fmt.Sprintf("*Lewat budget selama:* %s", FormatDuration(remainingSeconds)),
@@ -187,4 +170,14 @@ func tierLabel(tier string) string {
 	default:
 		return tier
 	}
+}
+
+// PickNotifier is the one routing rule for automatic notices: the bot
+// account's own tickets (selfEmail) — or every ticket when there is no DM
+// notifier — go to the webhook space; everyone else gets a DM.
+func PickNotifier(email, selfEmail string, webhook, dm GoogleChatNotifierService) GoogleChatNotifierService {
+	if email == selfEmail || dm == nil {
+		return webhook
+	}
+	return dm
 }

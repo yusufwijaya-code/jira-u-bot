@@ -191,45 +191,14 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if session.CurrentSessionStartedDate != nil {
 			additionalSeconds = p.businessHours.ElapsedBusinessSeconds(*session.CurrentSessionStartedDate, time.Now(), p.holidayCalendar.ForEmail(ctx, session.AssigneeEmail))
 		}
-		totalElapsed := session.AccumulatedSeconds + additionalSeconds
-		budgetSeconds := int64(session.StoryPoints * 3600)
 
 		if err := p.issueSession.CloseSession(ctx, key, additionalSeconds); err != nil {
 			return fmt.Errorf("poller: CloseSession(%s) failed: %w", key, err)
 		}
 
-		// Exit-destination notices (spec AC4.1/AC4.4/AC4.5, plus the To Do
-		// case for /n-geser and manual Jira changes) are best-effort: the
-		// session above is already closed by the time we get here, so there
-		// is no natural retry hook if either step below fails — log and move
-		// on to the next ticket rather than failing the cycle.
-		status, err := p.jiraClient.GetIssueStatus(ctx, key)
-		if err != nil {
-			log.Printf("poller: GetIssueStatus(%s) failed, skipping exit-destination notice: %v", key, err)
-			continue
-		}
-		var startedAt time.Time
-		if session.CurrentSessionStartedDate != nil {
-			startedAt = *session.CurrentSessionStartedDate
-		}
-		// Tech Spec "CORE: Waktu Code Review Ikut Dihitung" AC1.4: the
-		// project's "done" status (OMS: Code Review, CORE: Code Completed)
-		// means finished; To Do means pulled back; anything else just stops
-		// the clock silently. Matched case-insensitively.
-		rule := jira_client_dto.RuleForIssue(key)
-		switch {
-		case rule.IsDone(status):
-			// finishedAt is "now": GetIssueStatus above just confirmed the
-			// ticket left its tracked statuses this cycle — the closest we
-			// track to the actual transition.
-			if err := p.reminderEngine.NotifyIfEarlyCompletion(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt, time.Now()); err != nil {
-				log.Printf("poller: NotifyIfEarlyCompletion(%s) failed: %v", key, err)
-			}
-		case strings.EqualFold(status, jira_client_dto.StatusToDo):
-			if err := p.reminderEngine.NotifyReturnedToTodo(ctx, key, session.AssigneeEmail, session.IssueSummary, totalElapsed, budgetSeconds, startedAt); err != nil {
-				log.Printf("poller: NotifyReturnedToTodo(%s) failed: %v", key, err)
-			}
-		}
+		// The exit notice (finished early / back to To Do / ...) is sent by
+		// status_watch with every other status change (Tech Spec
+		// "Notifikasi Perubahan Status Tiket").
 	}
 
 	// Entry events: new to the DB this cycle — open a fresh session at the

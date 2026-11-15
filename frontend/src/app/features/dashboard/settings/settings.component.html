@@ -31,13 +31,13 @@
           <span class="card-icon"><app-icon [name]="ns.enabled ? 'bell' : 'bell-off'" [size]="20" /></span>
           <div>
             <h2>Notifikasi Nudge</h2>
-            <p>Saklar utama semua notif otomatis: reminder budget, selesai lebih awal, dan balik ke To Do.</p>
+            <p>Saklar utama semua notif otomatis: reminder budget dan perubahan status tiket.</p>
           </div>
         </header>
         <label class="toggle-row">
           <span class="toggle-text">
             <strong>{{ ns.enabled ? 'Notifikasi aktif' : 'Notifikasi mati' }}</strong>
-            <small>{{ ns.enabled ? 'Pengaturan di bawah menentukan kapan reminder dikirim.' : 'Tidak ada notif otomatis yang dikirim, apa pun pengaturan di bawah.' }}</small>
+            <small>{{ ns.enabled ? 'Pengaturan di bawah menentukan notif mana yang dikirim.' : 'Tidak ada notif otomatis yang dikirim, apa pun pengaturan di bawah.' }}</small>
           </span>
           <input
             type="checkbox"
@@ -217,41 +217,61 @@
       <ng-container *ngTemplateOutlet="footer; context: { card: 'overage' }" />
     </section>
 
-    <!-- 3. Event toggles -->
+    <!-- 3. Status change notice (Tech Spec "Notifikasi Perubahan Status Tiket") -->
     <section class="card" data-card="events" [class.readonly]="readOnly()" [attr.inert]="readOnly() ? '' : null">
       <header class="card-header">
-        <span class="card-icon"><app-icon name="zap" [size]="20" /></span>
+        <span class="card-icon"><app-icon name="repeat" [size]="20" /></span>
         <div>
-          <h2>Jenis notifikasi</h2>
-          <p>Pilih notif status tiket yang mau kamu terima.</p>
+          <h2>Perubahan status tiket</h2>
+          <p>DM setiap status tiket kamu di sprint aktif berubah, baik digeser di Jira maupun di Nudge.</p>
         </div>
       </header>
       <div class="toggle-list">
         <label class="toggle-row">
           <span class="toggle-text">
-            <strong>Selesai lebih awal</strong>
-            <small data-hint="early-finish">{{ earlyFinishHint() }}</small>
+            <strong>Kirim notif perubahan status</strong>
+            <small data-hint="status-change">
+              Contoh: "To Do → Code Process · oleh Anwar". Saat tiket keluar dari {{ trackedLabel() }}, ikut info waktu terhadap budget.
+            </small>
           </span>
           <input
             type="checkbox"
             class="switch"
-            [checked]="d.notifyEarlyFinish"
-            (change)="patch({ notifyEarlyFinish: $any($event.target).checked })"
-          />
-        </label>
-        <label class="toggle-row">
-          <span class="toggle-text">
-            <strong>Tiket balik ke To Do</strong>
-            <small data-hint="returned-to-todo">{{ returnedToTodoHint() }}</small>
-          </span>
-          <input
-            type="checkbox"
-            class="switch"
-            [checked]="d.notifyReturnedToTodo"
-            (change)="patch({ notifyReturnedToTodo: $any($event.target).checked })"
+            data-toggle="status-change"
+            [checked]="d.notifyStatusChange"
+            (change)="patch({ notifyStatusChange: $any($event.target).checked })"
           />
         </label>
       </div>
+      @if (d.notifyStatusChange) {
+        <div class="status-filter" data-status-filter>
+          <div class="status-filter-head">
+            <span>Kirim saat tiket pindah ke</span>
+            @if (d.statusChangeStatuses.length) {
+              <button type="button" class="btn btn-ghost btn-sm" data-pick-all (click)="pickAllStatuses()">Pilih semua</button>
+            } @else {
+              <span class="count-pill">Semua status</span>
+            }
+          </div>
+          <div class="tier-grid">
+            @for (status of statusOptions(); track status; let i = $index) {
+              <label class="tier-tile" [style.--i]="i">
+                <input
+                  type="checkbox"
+                  class="visually-hidden"
+                  [attr.data-status]="status"
+                  [checked]="isStatusPicked(d, status)"
+                  (change)="toggleStatus(d, status)"
+                />
+                <span class="check-box" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="14" height="14"><path d="M20 6 9 17l-5-5" /></svg>
+                </span>
+                <span class="tier-text"><strong>{{ status }}</strong></span>
+              </label>
+            }
+          </div>
+        </div>
+      }
       <ng-container *ngTemplateOutlet="footer; context: { card: 'events' }" />
     </section>
 

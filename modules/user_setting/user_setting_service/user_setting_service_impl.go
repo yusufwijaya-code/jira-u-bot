@@ -101,8 +101,8 @@ func (s *userSettingServiceImpl) GetEffective(ctx context.Context, userID, board
 			eff.ReminderTiers = board.ReminderTiers
 			eff.OverageTiers = board.OverageTiers
 			eff.OverageRepeatMinutes = board.OverageRepeatMinutes
-			eff.NotifyEarlyFinish = board.NotifyEarlyFinish
-			eff.NotifyReturnedToTodo = board.NotifyReturnedToTodo
+			eff.NotifyStatusChange = board.NotifyStatusChange
+			eff.StatusChangeStatuses = board.StatusChangeStatuses
 			eff.QuietHours = board.QuietHours
 		}
 	}

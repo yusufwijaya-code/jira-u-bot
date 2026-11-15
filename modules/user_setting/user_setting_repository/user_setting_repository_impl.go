@@ -18,7 +18,7 @@ func NewUserSettingRepository(db *sql.DB) UserSettingRepository {
 }
 
 const rowColumns = `userID, boardID, useDefault, reminderTiers, overageTiers, overageRepeatMinutes,
-	notifyEarlyFinish, notifyReturnedToTodo, mutedUntil, quietHoursStart, quietHoursEnd`
+	notifyStatusChange, statusChangeStatuses, mutedUntil, quietHoursStart, quietHoursEnd`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -31,16 +31,18 @@ func scanRow(scanner rowScanner) (user_setting_dto.UserSetting, error) {
 		repeat                      sql.NullInt64
 		mutedUntil                  sql.NullTime
 		quietStart, quietEnd        sql.NullString
+		statusFilter                sql.NullString
 	)
 	err := scanner.Scan(
 		&s.UserID, &s.BoardID, &s.UseDefault, &reminderTiers, &overageTiers, &repeat,
-		&s.NotifyEarlyFinish, &s.NotifyReturnedToTodo, &mutedUntil, &quietStart, &quietEnd,
+		&s.NotifyStatusChange, &statusFilter, &mutedUntil, &quietStart, &quietEnd,
 	)
 	if err != nil {
 		return user_setting_dto.UserSetting{}, err
 	}
 	s.ReminderTiers = user_setting_dto.SplitTierCSV(reminderTiers)
 	s.OverageTiers = user_setting_dto.SplitTierCSV(overageTiers)
+	s.StatusChangeStatuses = user_setting_dto.SplitStatusCSV(statusFilter.String)
 	if repeat.Valid {
 		minutes := int(repeat.Int64)
 		s.OverageRepeatMinutes = &minutes
@@ -93,15 +95,15 @@ func (r *userSettingRepositoryImpl) UpsertNotification(ctx context.Context, s us
 	const query = `
 		INSERT INTO ms_user_setting (
 			userID, boardID, useDefault, reminderTiers, overageTiers, overageRepeatMinutes,
-			notifyEarlyFinish, notifyReturnedToTodo, quietHoursStart, quietHoursEnd
+			notifyStatusChange, statusChangeStatuses, quietHoursStart, quietHoursEnd
 		) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
 			useDefault = 0,
 			reminderTiers = VALUES(reminderTiers),
 			overageTiers = VALUES(overageTiers),
 			overageRepeatMinutes = VALUES(overageRepeatMinutes),
-			notifyEarlyFinish = VALUES(notifyEarlyFinish),
-			notifyReturnedToTodo = VALUES(notifyReturnedToTodo),
+			notifyStatusChange = VALUES(notifyStatusChange),
+			statusChangeStatuses = VALUES(statusChangeStatuses),
 			quietHoursStart = VALUES(quietHoursStart),
 			quietHoursEnd = VALUES(quietHoursEnd)
 	`
@@ -120,8 +122,8 @@ func (r *userSettingRepositoryImpl) UpsertNotification(ctx context.Context, s us
 		strings.Join(s.ReminderTiers, ","),
 		strings.Join(s.OverageTiers, ","),
 		repeat,
-		s.NotifyEarlyFinish,
-		s.NotifyReturnedToTodo,
+		s.NotifyStatusChange,
+		strings.Join(s.StatusChangeStatuses, ","),
 		quietStart,
 		quietEnd,
 	)

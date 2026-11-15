@@ -1,6 +1,7 @@
 package user_setting_dto
 
 import (
+	"fmt"
 	"errors"
 	"reflect"
 	"testing"
@@ -20,7 +21,7 @@ func TestDefault_ReproducesLegacyBehavior(t *testing.T) {
 	if d.OverageRepeatMinutes == nil || *d.OverageRepeatMinutes != 5 {
 		t.Errorf("OverageRepeatMinutes = %v, want 5", d.OverageRepeatMinutes)
 	}
-	if !d.NotifyEarlyFinish || !d.NotifyReturnedToTodo {
+	if !d.NotifyStatusChange {
 		t.Error("both event notifications must default to on")
 	}
 	if d.IsSilenced(time.Now()) {
@@ -189,8 +190,7 @@ func TestApply_ValidInputKeepsMuteAndUserID(t *testing.T) {
 		ReminderTiers:        []string{"45m", "2h"},
 		OverageTiers:         []string{"1h", "15m"},
 		OverageRepeatMinutes: nil,
-		NotifyEarlyFinish:    false,
-		NotifyReturnedToTodo: true,
+		NotifyStatusChange:   false,
 		QuietHours:           &QuietHours{Start: "12:00", End: "13:00"},
 	}.Apply(base)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestApply_ValidInputKeepsMuteAndUserID(t *testing.T) {
 	if !reflect.DeepEqual(got.ReminderTiers, []string{"2h", "45m"}) || !reflect.DeepEqual(got.OverageTiers, []string{"1h", "15m"}) {
 		t.Errorf("tiers = %v / %v", got.ReminderTiers, got.OverageTiers)
 	}
-	if got.OverageRepeatMinutes != nil || got.NotifyEarlyFinish || !got.NotifyReturnedToTodo || got.QuietHours.Start != "12:00" {
+	if got.OverageRepeatMinutes != nil || got.NotifyStatusChange || got.QuietHours.Start != "12:00" {
 		t.Errorf("unexpected result %+v", got)
 	}
 }
@@ -236,5 +236,49 @@ func TestMuteForever_SilencesAndIsDetected(t *testing.T) {
 	s.MutedUntil = &oneHour
 	if s.IsMutedForever() {
 		t.Error("a regular mute must not count as forever")
+	}
+}
+
+// Tech Spec "Notifikasi Perubahan Status Tiket".
+func TestNormalizeStatuses_TrimsAndDropsDuplicates(t *testing.T) {
+	got, err := NormalizeStatuses([]string{" Code Review ", "", "code review", "Done"})
+	if err != nil || !reflect.DeepEqual(got, []string{"Code Review", "Done"}) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if _, err := NormalizeStatuses([]string{"A,B"}); err == nil {
+		t.Fatal("a comma must be rejected (stored as CSV)")
+	}
+}
+
+func TestWantsStatusChange(t *testing.T) {
+	all := UserSetting{NotifyStatusChange: true}
+	if !all.WantsStatusChange("SIT") {
+		t.Error("an empty filter means every status")
+	}
+	some := UserSetting{NotifyStatusChange: true, StatusChangeStatuses: []string{"Code Review"}}
+	if !some.WantsStatusChange("CODE REVIEW") || some.WantsStatusChange("To Do") {
+		t.Error("the filter matches destination statuses case-insensitively")
+	}
+	off := UserSetting{NotifyStatusChange: false}
+	if off.WantsStatusChange("Done") {
+		t.Error("the toggle off means nothing")
+	}
+}
+
+func TestApply_RejectsInvalidStatusFilter(t *testing.T) {
+	_, err := NotificationInput{StatusChangeStatuses: []string{"A,B"}}.Apply(Default())
+	var ve *ValidationError
+	if !errors.As(err, &ve) || ve.Field != "statusChangeStatuses" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNormalizeStatuses_RejectsAListLongerThanTheColumn(t *testing.T) {
+	var long []string
+	for i := 0; i < 20; i++ {
+		long = append(long, fmt.Sprintf("Status nomor %02d yang cukup panjang", i))
+	}
+	if _, err := NormalizeStatuses(long); err == nil {
+		t.Fatal("a filter longer than the column must be rejected")
 	}
 }

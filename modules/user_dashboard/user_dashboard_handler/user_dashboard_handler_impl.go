@@ -61,8 +61,8 @@ func notificationJSON(s user_setting_dto.UserSetting) gin.H {
 		"reminderTiers":        nonNil(s.ReminderTiers),
 		"overageTiers":         nonNil(s.OverageTiers),
 		"overageRepeatMinutes": s.OverageRepeatMinutes,
-		"notifyEarlyFinish":    s.NotifyEarlyFinish,
-		"notifyReturnedToTodo": s.NotifyReturnedToTodo,
+		"notifyStatusChange":   s.NotifyStatusChange,
+		"statusChangeStatuses": nonNil(s.StatusChangeStatuses),
 		"quietHours":           s.QuietHours,
 	}
 }

@@ -16,8 +16,8 @@ const NOTIFICATION: NotificationSettings = {
   reminderTiers: ['2h', '45m', '1m'],
   overageTiers: ['15m'],
   overageRepeatMinutes: 30,
-  notifyEarlyFinish: true,
-  notifyReturnedToTodo: false,
+  notifyStatusChange: false,
+  statusChangeStatuses: [],
   quietHours: null,
 };
 
@@ -114,11 +114,11 @@ describe('SettingsComponent', () => {
 
   it('saves the default scope without a board', () => {
     boardService.saveNotificationSettings.and.callFake((s) => of(s));
-    component().patch({ notifyReturnedToTodo: true });
+    component().patch({ notifyStatusChange: true });
 
     component().save('events');
 
-    expect(boardService.saveNotificationSettings).toHaveBeenCalledWith({ ...NOTIFICATION, notifyReturnedToTodo: true }, null);
+    expect(boardService.saveNotificationSettings).toHaveBeenCalledWith({ ...NOTIFICATION, notifyStatusChange: true }, null);
     expect(toast.success).toHaveBeenCalled();
   });
 
@@ -220,11 +220,11 @@ describe('SettingsComponent', () => {
   it('saves only the clicked card and keeps other cards as drafts (#5)', () => {
     boardService.saveNotificationSettings.and.callFake((s) => of(s));
     component().patch({ quietHours: { start: '09:00', end: '10:00' } }); // unsaved, quiet card
-    component().patch({ notifyReturnedToTodo: true });
+    component().patch({ notifyStatusChange: true });
 
     component().save('events');
 
-    expect(boardService.saveNotificationSettings).toHaveBeenCalledWith({ ...NOTIFICATION, notifyReturnedToTodo: true }, null);
+    expect(boardService.saveNotificationSettings).toHaveBeenCalledWith({ ...NOTIFICATION, notifyStatusChange: true }, null);
     // the quiet hours edit is still pending in the draft
     expect(component().draft().quietHours).toEqual({ start: '09:00', end: '10:00' });
   });
@@ -234,19 +234,49 @@ describe('SettingsComponent', () => {
     expect(component().draft().quietHours).toEqual({ start: '09:00', end: '10:00' });
   });
 
-  it('names Code Completed for a CORE board and both rules on the default scope (#3)', () => {
+  it('names the tracked statuses and offers the statuses of each project (#3)', () => {
     fixture.detectChanges();
-    expect(el().querySelector('[data-hint="early-finish"]')?.textContent).toContain('Code Completed untuk board CORE');
+    expect(el().querySelector('[data-hint="status-change"]')?.textContent).toContain('status yang dihitung waktunya');
 
     context.boards.set([OMS, { ...OMS, boardId: 26, name: 'ESB Core Board', projectKey: 'CORE', reviewTracked: true }]);
     context.selectedId.set(26);
     fixture.detectChanges();
-    expect(el().querySelector('[data-hint="early-finish"]')?.textContent).toContain('pindah ke Code Completed');
-    expect(el().querySelector('[data-hint="returned-to-todo"]')?.textContent).toContain('CODE REVIEW');
+    expect(el().querySelector('[data-hint="status-change"]')?.textContent).toContain('Code Process atau CODE REVIEW');
+    expect(component().statusOptions()).toContain('Code Completed');
 
     context.selectedId.set(28);
     fixture.detectChanges();
-    expect(el().querySelector('[data-hint="early-finish"]')?.textContent).toContain('pindah ke Code Review');
+    expect(component().statusOptions()).toContain('Testing & Review');
+  });
+
+  it('picks destination statuses for the status-change notice', () => {
+    component().patch({ notifyStatusChange: true });
+    fixture.detectChanges();
+    const box = (status: string) => el().querySelector(`[data-status-filter] input[data-status="${status}"]`) as HTMLInputElement;
+    expect(box('Done').checked).toBeTrue(); // empty filter = every status
+
+    box('Done').click();
+    fixture.detectChanges();
+    const picked = component().draft().statusChangeStatuses;
+    expect(picked).not.toContain('Done');
+    expect(picked.length).toBe(component().statusOptions().length - 1);
+    expect(box('Done').checked).toBeFalse();
+
+    (el().querySelector('[data-pick-all]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(component().draft().statusChangeStatuses).toEqual([]);
+  });
+
+  it('keeps at least one status picked', () => {
+    component().patch({ notifyStatusChange: true, statusChangeStatuses: ['Done'] });
+    fixture.detectChanges();
+    (el().querySelector('[data-status-filter] input[data-status="Done"]') as HTMLInputElement).click();
+    expect(component().draft().statusChangeStatuses).toEqual(['Done']);
+  });
+
+  it('hides the status filter while the notice is off', () => {
+    fixture.detectChanges();
+    expect(el().querySelector('[data-status-filter]')).toBeNull();
   });
 
   it('lists boards outside the active sprints and can reset or unmute them (#7)', async () => {

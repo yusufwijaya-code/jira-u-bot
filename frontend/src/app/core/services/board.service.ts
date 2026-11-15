@@ -16,8 +16,10 @@ export interface NotificationSettings {
   overageTiers: string[];
   /** Repeat every N minutes after the last overage tier; null = stop. */
   overageRepeatMinutes: number | null;
-  notifyEarlyFinish: boolean;
-  notifyReturnedToTodo: boolean;
+  /** DM when a ticket's status changes (Tech Spec "Notifikasi Perubahan Status Tiket"). */
+  notifyStatusChange: boolean;
+  /** Only moves INTO these statuses are sent; empty = every status. */
+  statusChangeStatuses: string[];
   quietHours: QuietHours | null;
 }
 

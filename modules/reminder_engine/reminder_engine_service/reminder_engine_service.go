@@ -2,7 +2,6 @@ package reminder_engine_service
 
 import (
 	"context"
-	"time"
 
 	"nudge/modules/issue_session/issue_session_dto"
 	"nudge/modules/jira_client/jira_client_dto"
@@ -14,18 +13,6 @@ type ReminderEngineService interface {
 	// fall at or before the ticket's entire budget never fires).
 	ApplicableTiers(budgetSeconds int64) []string
 	EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error
-	// NotifyIfEarlyCompletion implements spec AC4.1/AC4.2/AC4.3: a ticket
-	// that left "Code Process" with time to spare (elapsed < budget) gets
-	// a one-off notice showing the unused time and what the deadline would
-	// have been. The Code Review status check (AC4.5) happens in the
-	// poller BEFORE this is called — by the time this method runs, that
-	// decision has already been made. codeProcessStartedAt/codeReviewEnteredAt
-	// let the message show both ends of the ticket's time in Code Process,
-	// not just the elapsed/remaining totals.
-	NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error
-	// NotifyReturnedToTodo sends a notice when a ticket leaves Code Process
-	// back to To Do — whether via /n-geser or a manual Jira change. Unlike
-	// NotifyIfEarlyCompletion, this always sends: there's no "early" or
-	// "late" framing for simply being pulled back to To Do.
-	NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error
+	// Status-change notices (finished early, back to To Do, ...) moved to
+	// status_watch (Tech Spec "Notifikasi Perubahan Status Tiket").
 }

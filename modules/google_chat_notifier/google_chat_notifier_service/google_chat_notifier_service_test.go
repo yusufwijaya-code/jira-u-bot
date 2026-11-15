@@ -196,55 +196,6 @@ func TestSendReminder_PropagatesErrorOnNon2xxResponse(t *testing.T) {
 	}
 }
 
-func TestSendReminder_EarlyCompletionMessageShowsUnusedBudgetAndWouldHaveBeenDeadline(t *testing.T) {
-	var gotBody map[string]string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&gotBody)
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{}`))
-	}))
-	defer server.Close()
-
-	cfg := &config.AppConfig{GoogleChatWebhookURL: server.URL}
-	svc := NewGoogleChatNotifierService(cfg)
-
-	loc, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		t.Fatalf("failed to load Asia/Jakarta location: %v", err)
-	}
-	deadline := time.Date(2026, 10, 27, 9, 0, 0, 0, loc) // Tuesday
-
-	msg := google_chat_notifier_dto.ReminderMessage{
-		IssueKey:          "OMS-1",
-		IssueURL:          "https://esb-id.atlassian.net/browse/OMS-1",
-		IssueSummary:      "Early finisher",
-		AssigneeName:      "Teammate",
-		StoryPoints:       3,
-		BudgetSeconds:     10800, // 3h
-		ElapsedSeconds:    5400,  // 1.5h -> remaining 5400s = 1h 30m
-		IsEarlyCompletion: true,
-		Deadline:          deadline,
-	}
-
-	if err := svc.SendReminder(context.Background(), msg); err != nil {
-		t.Fatalf("SendReminder returned error: %v", err)
-	}
-
-	text := gotBody["text"]
-	if !strings.Contains(text, "Selesai Lebih Awal") {
-		t.Errorf("message text %q does not contain the expected early-completion header", text)
-	}
-	if !strings.Contains(text, "*Sisa budget tidak terpakai:* 0 hari 1 jam 30 menit 0 detik") {
-		t.Errorf("message text %q does not contain the expected unused-budget line", text)
-	}
-	if !strings.Contains(text, "*Limit seharusnya selesai:* Selasa, 27 Okt 2026 09:00:00 WIB") {
-		t.Errorf("message text %q does not contain the expected would-have-been-deadline line", text)
-	}
-	if strings.Contains(text, "Harus Selesai Pass:") {
-		t.Error("early-completion message must not show the tier-reminder 'Harus Selesai Pass' line")
-	}
-}
-
 func TestBuildMessageText_UsesPlainURLNotMaskedHyperlink(t *testing.T) {
 	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
 		IssueKey:     "OMS-1",
@@ -276,31 +227,6 @@ func TestBuildMessageText_IncludesBoldCodeProcessStartedAt(t *testing.T) {
 	}
 }
 
-func TestBuildMessageText_EarlyCompletionIncludesCodeReviewEnteredAt(t *testing.T) {
-	enteredAt := time.Date(2026, 10, 27, 11, 0, 0, 0, time.FixedZone("WIB", 7*3600))
-	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
-		IssueKey:            "OMS-1",
-		AssigneeName:        "Anwar",
-		IsEarlyCompletion:   true,
-		CodeReviewEnteredAt: enteredAt,
-	})
-
-	if !strings.Contains(text, "*Pindah ke Code Review:* Selasa, 27 Okt 2026 11:00:00 WIB") {
-		t.Errorf("message text %q does not contain the expected bold Code Review transition line", text)
-	}
-}
-
-func TestBuildMessageText_TierAndOverageOmitCodeReviewEnteredAt(t *testing.T) {
-	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
-		{IssueKey: "OMS-1", Tier: "30m"},
-		{IssueKey: "OMS-1", IsOverage: true},
-	} {
-		if text := BuildMessageText(msg); strings.Contains(text, "Pindah ke Code Review") {
-			t.Errorf("message text %q must not show 'Pindah ke Code Review' — ticket hasn't left Code Process yet", text)
-		}
-	}
-}
-
 func TestBuildMessageText_IncludesStoryPointCalculationExplanation(t *testing.T) {
 	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
 		IssueKey:      "OMS-1",
@@ -319,7 +245,6 @@ func TestBuildMessageText_EndsWithHelpHintAndNoOKRHashtag(t *testing.T) {
 	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
 		{IssueKey: "OMS-1", Tier: "30m"},
 		{IssueKey: "OMS-1", IsOverage: true},
-		{IssueKey: "OMS-1", IsEarlyCompletion: true},
 	} {
 		text := BuildMessageText(msg)
 		if !strings.HasSuffix(text, helpHint) {
@@ -331,27 +256,10 @@ func TestBuildMessageText_EndsWithHelpHintAndNoOKRHashtag(t *testing.T) {
 	}
 }
 
-func TestBuildMessageText_ReturnedToTodoHasOwnHeaderAndBody(t *testing.T) {
-	text := BuildMessageText(google_chat_notifier_dto.ReminderMessage{
-		IssueKey: "OMS-1", IssueSummary: "Fix bug", AssigneeName: "Benni",
-		StoryPoints: 1.5, BudgetSeconds: 5400, ElapsedSeconds: 1800,
-		IsReturnedToTodo: true,
-	})
-
-	if !strings.Contains(text, "Dikembalikan ke To Do") {
-		t.Errorf("text = %q, want it to mention being returned to To Do", text)
-	}
-	if strings.Contains(text, "Sisa waktu") || strings.Contains(text, "Harus Selesai Pass") {
-		t.Errorf("text = %q, want it NOT to show a remaining-time/deadline framing — the ticket is back in To Do, not being tracked anymore", text)
-	}
-}
-
 func TestBuildMessageText_NeverIncludesGeserHint(t *testing.T) {
 	for name, msg := range map[string]google_chat_notifier_dto.ReminderMessage{
 		"tier reminder":    {IssueKey: "OMS-1", Tier: "30m"},
 		"overage":          {IssueKey: "OMS-1", IsOverage: true},
-		"early completion": {IssueKey: "OMS-1", IsEarlyCompletion: true},
-		"returned to todo": {IssueKey: "OMS-1", IsReturnedToTodo: true},
 	} {
 		text := BuildMessageText(msg)
 		if strings.Contains(text, "/n-geser") {
@@ -367,7 +275,6 @@ func TestBuildMessageText_IncludesHelpHint(t *testing.T) {
 	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
 		{IssueKey: "OMS-1", Tier: "30m"},
 		{IssueKey: "OMS-1", IsOverage: true},
-		{IssueKey: "OMS-1", IsEarlyCompletion: true},
 	} {
 		text := BuildMessageText(msg)
 		if !strings.Contains(text, "/n-help") {
@@ -403,9 +310,10 @@ func TestBuildMessageText_ShowsReviewStatusLine(t *testing.T) {
 	}
 }
 
-func TestBuildMessageText_EarlyCompletionUsesTheProjectsDoneStatus(t *testing.T) {
-	msg := google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IsEarlyCompletion: true}
-	if text := BuildMessageText(msg); !strings.Contains(text, "*Pindah ke Code Completed:*") {
-		t.Errorf("CORE early completion must mention Code Completed: %s", text)
+// Tech Spec "Notifikasi Perubahan Status Tiket": a ready-made text is sent as-is.
+func TestBuildMessageText_UsesTextAsIs(t *testing.T) {
+	got := BuildMessageText(google_chat_notifier_dto.ReminderMessage{Text: "halo", IssueKey: "OMS-1", Tier: "1h"})
+	if got != "halo" {
+		t.Fatalf("got %q", got)
 	}
 }

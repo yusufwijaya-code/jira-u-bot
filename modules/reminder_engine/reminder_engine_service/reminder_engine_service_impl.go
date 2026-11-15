@@ -77,10 +77,7 @@ func NewReminderEngineService(
 // which case every reminder falls back to the webhook, matching pre-this-
 // enhancement behavior exactly.
 func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_chat_notifier_service.GoogleChatNotifierService {
-	if assigneeEmail == e.selfEmail || e.dmNotifier == nil {
-		return e.webhookNotifier
-	}
-	return e.dmNotifier
+	return google_chat_notifier_service.PickNotifier(assigneeEmail, e.selfEmail, e.webhookNotifier, e.dmNotifier)
 }
 
 // settingsFor returns the assignee's effective settings for boardID. The
@@ -104,16 +101,6 @@ func boardOf(session issue_session_dto.IssueSession) int64 {
 		return user_setting_dto.DefaultBoardID
 	}
 	return *session.BoardID
-}
-
-// boardOfIssue looks the ticket's board up from its tracked session — the
-// early-completion / returned-to-todo notices only get the issue key.
-func (e *reminderEngineServiceImpl) boardOfIssue(ctx context.Context, issueKey string) int64 {
-	session, found, err := e.issueSession.GetSessionByIssueKey(ctx, issueKey)
-	if err != nil || !found || session == nil {
-		return user_setting_dto.DefaultBoardID
-	}
-	return boardOf(*session)
 }
 
 // ApplicableTiers returns, largest-first, the DEFAULT tiers strictly shorter
@@ -401,66 +388,4 @@ func (e *reminderEngineServiceImpl) sendOverage(ctx context.Context, issue jira_
 	}
 	// Every overage send (T+0, tier, repeat) restarts the repeat interval.
 	return e.issueSession.UpdateLastOverageReminder(ctx, issue.Key)
-}
-
-func (e *reminderEngineServiceImpl) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {
-	if elapsedSeconds >= budgetSeconds {
-		return nil
-	}
-	setting := e.settingsFor(ctx, assigneeEmail, e.boardOfIssue(ctx, issueKey))
-	if !setting.NotifyEarlyFinish || setting.IsSilenced(time.Now()) {
-		return nil // AC3.1, AC4.3
-	}
-
-	remaining := budgetSeconds - elapsedSeconds
-	deadline := e.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remaining, e.holidayCalendar.ForEmail(ctx, assigneeEmail))
-
-	assigneeName := assigneeEmail
-	if user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail); err == nil && found {
-		assigneeName = user.UserName
-	}
-
-	msg := google_chat_notifier_dto.ReminderMessage{
-		IssueKey:             issueKey,
-		IssueURL:             fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issueKey),
-		IssueSummary:         issueSummary,
-		AssigneeName:         assigneeName,
-		AssigneeEmail:        assigneeEmail,
-		StoryPoints:          float64(budgetSeconds) / 3600,
-		BudgetSeconds:        budgetSeconds,
-		ElapsedSeconds:       elapsedSeconds,
-		IsEarlyCompletion:    true,
-		Deadline:             deadline,
-		CodeProcessStartedAt: codeProcessStartedAt,
-		CodeReviewEnteredAt:  codeReviewEnteredAt,
-	}
-
-	return e.pickNotifier(assigneeEmail).SendReminder(ctx, msg)
-}
-
-func (e *reminderEngineServiceImpl) NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error {
-	setting := e.settingsFor(ctx, assigneeEmail, e.boardOfIssue(ctx, issueKey))
-	if !setting.NotifyReturnedToTodo || setting.IsSilenced(time.Now()) {
-		return nil // AC3.2, AC4.3
-	}
-
-	assigneeName := assigneeEmail
-	if user, found, err := e.registrationRepo.FindUserByEmail(ctx, assigneeEmail); err == nil && found {
-		assigneeName = user.UserName
-	}
-
-	msg := google_chat_notifier_dto.ReminderMessage{
-		IssueKey:             issueKey,
-		IssueURL:             fmt.Sprintf("%s/browse/%s", e.jiraBaseURL, issueKey),
-		IssueSummary:         issueSummary,
-		AssigneeName:         assigneeName,
-		AssigneeEmail:        assigneeEmail,
-		StoryPoints:          float64(budgetSeconds) / 3600,
-		BudgetSeconds:        budgetSeconds,
-		ElapsedSeconds:       elapsedSeconds,
-		IsReturnedToTodo:     true,
-		CodeProcessStartedAt: codeProcessStartedAt,
-	}
-
-	return e.pickNotifier(assigneeEmail).SendReminder(ctx, msg)
 }

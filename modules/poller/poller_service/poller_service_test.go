@@ -3,7 +3,6 @@ package poller_service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"nudge/modules/board/board_dto"
 	"testing"
 	"time"
@@ -155,11 +154,7 @@ func (f *fakeIssueSessionServiceForPoller) UpdateLastOverageReminder(ctx context
 }
 
 type fakeReminderEngineService struct {
-	evaluateCalls              []string
-	notifyEarlyCompletionCalls []string
-	notifyEarlyCompletionErr   error
-	notifyReturnedToTodoCalls  []string
-	notifyReturnedToTodoErr    error
+	evaluateCalls []string
 }
 
 func (f *fakeReminderEngineService) ApplicableTiers(budgetSeconds int64) []string { return nil }
@@ -167,16 +162,6 @@ func (f *fakeReminderEngineService) ApplicableTiers(budgetSeconds int64) []strin
 func (f *fakeReminderEngineService) EvaluateAndSend(ctx context.Context, issue jira_client_dto.Issue, session issue_session_dto.IssueSession) error {
 	f.evaluateCalls = append(f.evaluateCalls, issue.Key)
 	return nil
-}
-
-func (f *fakeReminderEngineService) NotifyIfEarlyCompletion(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt, codeReviewEnteredAt time.Time) error {
-	f.notifyEarlyCompletionCalls = append(f.notifyEarlyCompletionCalls, issueKey)
-	return f.notifyEarlyCompletionErr
-}
-
-func (f *fakeReminderEngineService) NotifyReturnedToTodo(ctx context.Context, issueKey, assigneeEmail, issueSummary string, elapsedSeconds, budgetSeconds int64, codeProcessStartedAt time.Time) error {
-	f.notifyReturnedToTodoCalls = append(f.notifyReturnedToTodoCalls, issueKey)
-	return f.notifyReturnedToTodoErr
 }
 
 // fakeRegistrationRepositoryForPoller backs the poller's eligibility filter
@@ -222,7 +207,6 @@ func (f *fakeRegistrationRepositoryForPoller) FindUserByJiraAccountID(ctx contex
 func (f *fakeRegistrationRepositoryForPoller) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
 	return nil
 }
-
 
 func (f *fakeRegistrationRepositoryForPoller) FindAll(ctx context.Context) ([]registration_dto.User, error) {
 	return nil, nil
@@ -597,140 +581,6 @@ func TestBackfillActiveSessions_SkipsDeactivatedUser(t *testing.T) {
 	}
 }
 
-func TestPollOnce_ExitToCodeReviewWithRemainingBudgetTriggersEarlyCompletion(t *testing.T) {
-	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "Code Review"} // ticket left Code Process entirely
-	issueSession := newFakeIssueSessionServiceForPoller()
-	start := time.Now().Add(-10 * time.Minute)
-	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
-		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
-	}
-	reminderEngine := &fakeReminderEngineService{}
-	registrationRepo := newFakeRegistrationRepositoryForPoller()
-	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce returned error: %v", err)
-	}
-
-	if len(reminderEngine.notifyEarlyCompletionCalls) != 1 || reminderEngine.notifyEarlyCompletionCalls[0] != "OMS-1" {
-		t.Errorf("notifyEarlyCompletionCalls = %v, want [OMS-1] (AC4.1)", reminderEngine.notifyEarlyCompletionCalls)
-	}
-}
-
-func TestPollOnce_ExitToOtherStatusSkipsEarlyCompletion(t *testing.T) {
-	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "Done"}
-	issueSession := newFakeIssueSessionServiceForPoller()
-	start := time.Now().Add(-10 * time.Minute)
-	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
-		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
-	}
-	reminderEngine := &fakeReminderEngineService{}
-	registrationRepo := newFakeRegistrationRepositoryForPoller()
-	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce returned error: %v", err)
-	}
-
-	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
-		t.Errorf("notifyEarlyCompletionCalls = %v, want none — destination status is Done, not Code Review (AC4.5)", reminderEngine.notifyEarlyCompletionCalls)
-	}
-	if len(reminderEngine.notifyReturnedToTodoCalls) != 0 {
-		t.Errorf("notifyReturnedToTodoCalls = %v, want none — destination status is Done, not To Do", reminderEngine.notifyReturnedToTodoCalls)
-	}
-}
-
-func TestPollOnce_ExitToTodoTriggersReturnedToTodoNotice(t *testing.T) {
-	// Covers both /n-geser<X>:todo and a manual Jira change — the poller
-	// can't tell them apart, and shouldn't need to.
-	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "To Do"}
-	issueSession := newFakeIssueSessionServiceForPoller()
-	start := time.Now().Add(-10 * time.Minute)
-	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
-		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
-	}
-	reminderEngine := &fakeReminderEngineService{}
-	registrationRepo := newFakeRegistrationRepositoryForPoller()
-	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce returned error: %v", err)
-	}
-
-	if len(reminderEngine.notifyReturnedToTodoCalls) != 1 || reminderEngine.notifyReturnedToTodoCalls[0] != "OMS-1" {
-		t.Errorf("notifyReturnedToTodoCalls = %v, want [OMS-1]", reminderEngine.notifyReturnedToTodoCalls)
-	}
-	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
-		t.Errorf("notifyEarlyCompletionCalls = %v, want none — destination is To Do, not Code Review", reminderEngine.notifyEarlyCompletionCalls)
-	}
-}
-
-func TestPollOnce_NotifyReturnedToTodoErrorIsLoggedNotPropagated(t *testing.T) {
-	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "To Do"}
-	issueSession := newFakeIssueSessionServiceForPoller()
-	start := time.Now().Add(-10 * time.Minute)
-	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
-		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
-	}
-	reminderEngine := &fakeReminderEngineService{notifyReturnedToTodoErr: errors.New("send failed")}
-	registrationRepo := newFakeRegistrationRepositoryForPoller()
-	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce returned error: %v, want nil — NotifyReturnedToTodo failures are best-effort", err)
-	}
-}
-
-func TestPollOnce_GetIssueStatusErrorSkipsEarlyCompletionAndContinuesCycle(t *testing.T) {
-	jiraClient := &fakeJiraClientService{
-		issues:         []jira_client_dto.Issue{assignedIssue("OMS-2", "other@esb.co.id", 2)},
-		issueStatusErr: errors.New("jira api timeout"),
-	}
-	issueSession := newFakeIssueSessionServiceForPoller()
-	start := time.Now().Add(-10 * time.Minute)
-	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
-		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
-	}
-	reminderEngine := &fakeReminderEngineService{}
-	registrationRepo := newFakeRegistrationRepositoryForPoller("other@esb.co.id")
-	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce returned error: %v, want nil — a GetIssueStatus failure must be logged and skipped, not fail the whole cycle (AC4.4)", err)
-	}
-
-	if len(reminderEngine.notifyEarlyCompletionCalls) != 0 {
-		t.Errorf("notifyEarlyCompletionCalls = %v, want none when GetIssueStatus failed", reminderEngine.notifyEarlyCompletionCalls)
-	}
-	// OMS-2 is still active and eligible this cycle — confirms the cycle
-	// kept processing other tickets after OMS-1's early-completion check failed.
-	if len(reminderEngine.evaluateCalls) != 1 || reminderEngine.evaluateCalls[0] != "OMS-2" {
-		t.Errorf("evaluateCalls = %v, want [OMS-2] — cycle must continue past the GetIssueStatus error", reminderEngine.evaluateCalls)
-	}
-}
-
-func TestPollOnce_NotifyIfEarlyCompletionErrorIsLoggedNotPropagated(t *testing.T) {
-	jiraClient := &fakeJiraClientService{issues: nil, issueStatus: "Code Review"}
-	issueSession := newFakeIssueSessionServiceForPoller()
-	start := time.Now().Add(-10 * time.Minute)
-	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
-		IssueKey: "OMS-1", StoryPoints: 3, FlagActive: true,
-		CurrentSessionStartedDate: &start, AssigneeEmail: "teammate@esb.co.id", IssueSummary: "Test ticket",
-	}
-	reminderEngine := &fakeReminderEngineService{notifyEarlyCompletionErr: errors.New("send failed")}
-	registrationRepo := newFakeRegistrationRepositoryForPoller()
-	poller := newTestPoller(jiraClient, issueSession, reminderEngine, registrationRepo)
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce returned error: %v, want nil — NotifyIfEarlyCompletion failures are best-effort (AC4.4)", err)
-	}
-}
-
 func TestPollOnce_SteadyStateRefreshesAssigneeEmailAndIssueSummary(t *testing.T) {
 	jiraClient := &fakeJiraClientService{
 		issues: []jira_client_dto.Issue{
@@ -933,20 +783,6 @@ func activeSession(key string) *issue_session_dto.IssueSession {
 	}
 }
 
-func TestPollOnce_CoreExitToCodeCompletedTriggersEarlyCompletion(t *testing.T) {
-	issueSession := newFakeIssueSessionServiceForPoller()
-	issueSession.sessions["CORE-1"] = activeSession("CORE-1")
-	reminderEngine := &fakeReminderEngineService{}
-	poller := newTestPoller(&fakeJiraClientService{issueStatus: "Code Completed"}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller())
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce: %v", err)
-	}
-	if len(reminderEngine.notifyEarlyCompletionCalls) != 1 || reminderEngine.notifyEarlyCompletionCalls[0] != "CORE-1" {
-		t.Errorf("notifyEarlyCompletionCalls = %v, want [CORE-1]", reminderEngine.notifyEarlyCompletionCalls)
-	}
-}
-
 func TestPollOnce_CoreExitToFeedbackStopsSilently(t *testing.T) {
 	issueSession := newFakeIssueSessionServiceForPoller()
 	issueSession.sessions["CORE-1"] = activeSession("CORE-1")
@@ -959,22 +795,8 @@ func TestPollOnce_CoreExitToFeedbackStopsSilently(t *testing.T) {
 	if issueSession.closeCalls["CORE-1"] == 0 && issueSession.sessions["CORE-1"].FlagActive {
 		t.Error("the session must be closed")
 	}
-	if len(reminderEngine.notifyEarlyCompletionCalls)+len(reminderEngine.notifyReturnedToTodoCalls) != 0 {
-		t.Error("leaving to Feedback must not send any notice")
-	}
-}
-
-func TestPollOnce_OmsDoneStatusIsMatchedCaseInsensitively(t *testing.T) {
-	issueSession := newFakeIssueSessionServiceForPoller()
-	issueSession.sessions["OMS-1"] = activeSession("OMS-1")
-	reminderEngine := &fakeReminderEngineService{}
-	poller := newTestPoller(&fakeJiraClientService{issueStatus: "CODE REVIEW"}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller())
-
-	if err := poller.pollOnce(context.Background()); err != nil {
-		t.Fatalf("pollOnce: %v", err)
-	}
-	if len(reminderEngine.notifyEarlyCompletionCalls) != 1 {
-		t.Errorf("notifyEarlyCompletionCalls = %v, want OMS-1 even with different casing", reminderEngine.notifyEarlyCompletionCalls)
+	if len(reminderEngine.evaluateCalls) != 0 {
+		t.Error("leaving to Feedback must not evaluate reminders")
 	}
 }
 
@@ -1089,8 +911,27 @@ func TestPollOnce_ClosesStaleSessionWithoutTimeOrNotice(t *testing.T) {
 	if !closed || added != 0 {
 		t.Errorf("CloseSession(CORE-8033) closed=%v added=%d, want closed with 0 seconds", closed, added)
 	}
-	if len(reminderEngine.evaluateCalls)+len(reminderEngine.notifyEarlyCompletionCalls)+len(reminderEngine.notifyReturnedToTodoCalls) != 0 {
-		t.Errorf("reminder engine called (%v / %v / %v), want nothing for a stale ticket",
-			reminderEngine.evaluateCalls, reminderEngine.notifyEarlyCompletionCalls, reminderEngine.notifyReturnedToTodoCalls)
+	if len(reminderEngine.evaluateCalls) != 0 {
+		t.Errorf("reminder engine called (%v), want nothing for a stale ticket", reminderEngine.evaluateCalls)
+	}
+}
+
+// Tech Spec "Notifikasi Perubahan Status Tiket": leaving the tracked
+// statuses only closes the session — the notice is status_watch's job.
+func TestPollOnce_ExitClosesSessionWithoutNotice(t *testing.T) {
+	issueSession := newFakeIssueSessionServiceForPoller()
+	issueSession.sessions["OMS-1"] = activeSession("OMS-1")
+	jira := &fakeJiraClientService{issueStatus: "Code Review"}
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(jira, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller())
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if _, closed := issueSession.closeCalls["OMS-1"]; !closed {
+		t.Error("the session must be closed")
+	}
+	if len(reminderEngine.evaluateCalls) != 0 {
+		t.Errorf("reminder engine called %v, want nothing", reminderEngine.evaluateCalls)
 	}
 }

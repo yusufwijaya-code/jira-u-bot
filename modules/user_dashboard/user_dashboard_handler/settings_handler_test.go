@@ -30,7 +30,7 @@ func TestSettingsHandler_UsesResolvedTargetNotSession(t *testing.T) {
 	var changes []recordedChange
 	h := newTargetSettingsHandler(settings, &fakeJiraCredentialForHandler{}, &fakeUserDashboardService{}, &changes)
 
-	w, c := newTestContextWithUser("PUT", "/x?board=28", `{"reminderTiers":["1h"],"overageTiers":[],"overageRepeatMinutes":5,"notifyEarlyFinish":true,"notifyReturnedToTodo":true,"quietHours":null}`)
+	w, c := newTestContextWithUser("PUT", "/x?board=28", `{"reminderTiers":["1h"],"overageTiers":[],"overageRepeatMinutes":5,"notifyStatusChange":true,"quietHours":null}`)
 	h.UpdateNotification(c)
 
 	if w.Code != http.StatusOK {

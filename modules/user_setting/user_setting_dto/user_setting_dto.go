@@ -78,8 +78,11 @@ type UserSetting struct {
 	ReminderTiers        []string
 	OverageTiers         []string
 	OverageRepeatMinutes *int
-	NotifyEarlyFinish    bool
-	NotifyReturnedToTodo bool
+	// NotifyStatusChange: DM when a ticket's status changes (Tech Spec
+	// "Notifikasi Perubahan Status Tiket"); StatusChangeStatuses limits it
+	// to moves INTO these statuses (empty = every status).
+	NotifyStatusChange   bool
+	StatusChangeStatuses []string
 	MutedUntil           *time.Time
 	BoardMutedUntil      *time.Time
 	QuietHours           *QuietHours
@@ -103,8 +106,8 @@ func Default() UserSetting {
 		ReminderTiers:        append([]string(nil), DefaultReminderTiers...),
 		OverageTiers:         []string{},
 		OverageRepeatMinutes: &repeat,
-		NotifyEarlyFinish:    true,
-		NotifyReturnedToTodo: true,
+		NotifyStatusChange:   true,
+		StatusChangeStatuses: []string{},
 	}
 }
 
@@ -344,8 +347,8 @@ type NotificationInput struct {
 	ReminderTiers        []string    `json:"reminderTiers"`
 	OverageTiers         []string    `json:"overageTiers"`
 	OverageRepeatMinutes *int        `json:"overageRepeatMinutes"`
-	NotifyEarlyFinish    bool        `json:"notifyEarlyFinish"`
-	NotifyReturnedToTodo bool        `json:"notifyReturnedToTodo"`
+	NotifyStatusChange   bool        `json:"notifyStatusChange"`
+	StatusChangeStatuses []string    `json:"statusChangeStatuses"`
 	QuietHours           *QuietHours `json:"quietHours"`
 }
 
@@ -372,8 +375,75 @@ func (in NotificationInput) Apply(base UserSetting) (UserSetting, error) {
 	out.ReminderTiers = reminderTiers
 	out.OverageTiers = overageTiers
 	out.OverageRepeatMinutes = in.OverageRepeatMinutes
-	out.NotifyEarlyFinish = in.NotifyEarlyFinish
-	out.NotifyReturnedToTodo = in.NotifyReturnedToTodo
+	out.NotifyStatusChange = in.NotifyStatusChange
+	statuses, err := NormalizeStatuses(in.StatusChangeStatuses)
+	if err != nil {
+		return UserSetting{}, &ValidationError{Field: "statusChangeStatuses", Message: err.Error()}
+	}
+	out.StatusChangeStatuses = statuses
 	out.QuietHours = quiet
 	return out, nil
+}
+
+// MaxStatusChangeStatuses caps the destination-status filter;
+// MaxStatusChangeCSV is the statusChangeStatuses column size.
+const (
+	MaxStatusChangeStatuses = 30
+	MaxStatusChangeCSV      = 500
+)
+
+// NormalizeStatuses trims, drops empties and case-insensitive duplicates of
+// the destination-status filter (empty result = every status).
+func NormalizeStatuses(in []string) ([]string, error) {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, raw := range in {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		if strings.ContainsAny(name, ",") || len(name) > 60 {
+			return nil, fmt.Errorf("status %q tidak valid", name)
+		}
+		key := strings.ToLower(name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, name)
+	}
+	if len(out) > MaxStatusChangeStatuses {
+		return nil, fmt.Errorf("maksimal %d status", MaxStatusChangeStatuses)
+	}
+	if len(strings.Join(out, ",")) > MaxStatusChangeCSV {
+		return nil, fmt.Errorf("daftar status terlalu panjang (maks %d karakter)", MaxStatusChangeCSV)
+	}
+	return out, nil
+}
+
+// WantsStatusChange reports whether a move into status should be DM'd.
+func (s UserSetting) WantsStatusChange(status string) bool {
+	if !s.NotifyStatusChange {
+		return false
+	}
+	if len(s.StatusChangeStatuses) == 0 {
+		return true
+	}
+	for _, want := range s.StatusChangeStatuses {
+		if strings.EqualFold(want, status) {
+			return true
+		}
+	}
+	return false
+}
+
+// SplitStatusCSV parses the stored destination-status filter.
+func SplitStatusCSV(csv string) []string {
+	out := []string{}
+	for _, part := range strings.Split(csv, ",") {
+		if name := strings.TrimSpace(part); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }

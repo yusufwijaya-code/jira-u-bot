@@ -49,8 +49,8 @@ func TestUpsertNotification_RoundTripsEveryFieldPerBoard(t *testing.T) {
 		ReminderTiers:        []string{"2h", "45m"},
 		OverageTiers:         []string{"1h", "15m"},
 		OverageRepeatMinutes: &repeat,
-		NotifyEarlyFinish:    false,
-		NotifyReturnedToTodo: true,
+		NotifyStatusChange:   false,
+		StatusChangeStatuses: []string{"Code Review", "Done"},
 		QuietHours:           &user_setting_dto.QuietHours{Start: "22:00", End: "06:00"},
 	}
 	if err := repo.UpsertNotification(ctx, def); err != nil {
@@ -70,7 +70,7 @@ func TestUpsertNotification_RoundTripsEveryFieldPerBoard(t *testing.T) {
 		t.Fatalf("FindRow(default) = found %v, err %v", found, err)
 	}
 	if !reflect.DeepEqual(got.ReminderTiers, def.ReminderTiers) || !reflect.DeepEqual(got.OverageTiers, def.OverageTiers) ||
-		got.OverageRepeatMinutes == nil || *got.OverageRepeatMinutes != 30 || got.NotifyEarlyFinish || !got.NotifyReturnedToTodo ||
+		got.OverageRepeatMinutes == nil || *got.OverageRepeatMinutes != 30 || got.NotifyStatusChange || !reflect.DeepEqual(got.StatusChangeStatuses, []string{"Code Review", "Done"}) ||
 		got.QuietHours == nil || got.QuietHours.Start != "22:00" || got.UseDefault {
 		t.Errorf("default row = %+v", got)
 	}
