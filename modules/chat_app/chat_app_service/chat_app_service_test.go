@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/registration/registration_dto"
 )
 
@@ -185,5 +188,69 @@ func TestCommandText_SlashCommands(t *testing.T) {
 		if got != c.want || hint != c.hint {
 			t.Errorf("commandText(%+v) = %q, %q; want %q, %q", c.msg, got, hint, c.want, c.hint)
 		}
+	}
+}
+
+func (f *fakeCommands) Geser(context.Context, string, string, string) chat_interactive_service.GeserResult {
+	return chat_interactive_service.GeserResult{}
+}
+
+type fakeGeser struct {
+	fakeCommands
+	result chat_interactive_service.GeserResult
+	got    string
+}
+
+func (f *fakeGeser) Geser(_ context.Context, email, key, target string) chat_interactive_service.GeserResult {
+	f.got = email + "|" + key + "|" + target
+	return f.result
+}
+
+func clickEvent(email string) chat_app_dto.Event {
+	_, cards := chat_app_card.Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueURL: "u"})
+	return chat_app_dto.Event{
+		Type:    "CARD_CLICKED",
+		Space:   chat_app_dto.Space{Name: "spaces/DM", Type: "DM"},
+		User:    chat_app_dto.ChatUser{Name: "users/9", Email: email, DisplayName: "Dev"},
+		Message: &chat_app_dto.Message{CardsV2: cards},
+		Action: &chat_app_dto.Action{ActionMethodName: "geser", Parameters: []chat_app_dto.ActionParameter{
+			{Key: "issueKey", Value: "CORE-1"}, {Key: "target", Value: "code-review"},
+		}},
+	}
+}
+
+func TestHandle_CardClickMovesAndUpdatesTheCard(t *testing.T) {
+	g := &fakeGeser{result: chat_interactive_service.GeserResult{OK: true, StatusName: "Code Review"}}
+	svc := New(Deps{Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{dev: {SpaceID: "spaces/DM"}}}, Commands: g})
+	res := svc.Handle(context.Background(), clickEvent(dev))
+	if g.got != dev+"|CORE-1|code-review" {
+		t.Errorf("Geser call = %q", g.got)
+	}
+	if res.ActionResponse == nil || res.ActionResponse.Type != "UPDATE_MESSAGE" || len(res.CardsV2) != 1 {
+		t.Fatalf("response = %+v", res)
+	}
+	secs := res.CardsV2[0].Card.Sections
+	status := secs[len(secs)-1].Widgets[0].TextParagraph.Text
+	if !strings.Contains(status, "Digeser ke Code Review oleh Dev") {
+		t.Errorf("status line = %q", status)
+	}
+}
+
+func TestHandle_CardClickFailureUpdatesWithReason(t *testing.T) {
+	g := &fakeGeser{result: chat_interactive_service.GeserResult{Message: "Nggak ada jalur langsung"}}
+	svc := New(Deps{Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{}}, Commands: g})
+	res := svc.Handle(context.Background(), clickEvent(dev))
+	secs := res.CardsV2[0].Card.Sections
+	if !strings.Contains(secs[len(secs)-1].Widgets[0].TextParagraph.Text, "Tidak bisa digeser: Nggak ada jalur langsung") {
+		t.Errorf("response = %+v", res)
+	}
+}
+
+func TestHandle_CardClickByNonOwnerIsPrivateAndLeavesCard(t *testing.T) {
+	g := &fakeGeser{result: chat_interactive_service.GeserResult{NotOwner: true, Message: "bukan tiket kamu"}}
+	svc := New(Deps{Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{}}, Commands: g})
+	res := svc.Handle(context.Background(), clickEvent(dev))
+	if res.ActionResponse == nil || res.ActionResponse.Type != "NEW_MESSAGE" || res.PrivateMessageViewer == nil || res.Text != "bukan tiket kamu" || len(res.CardsV2) != 0 {
+		t.Errorf("response = %+v", res)
 	}
 }

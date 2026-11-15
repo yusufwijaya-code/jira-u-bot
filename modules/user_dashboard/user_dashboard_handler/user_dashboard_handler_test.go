@@ -17,6 +17,7 @@ import (
 
 	"nudge/modules/auth/auth_dto"
 	"nudge/modules/auth/auth_middleware"
+	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/jira_credential/jira_credential_service"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
@@ -944,4 +945,8 @@ func TestListBoards_ReportsOtherBoardsWithCustomSettingsOrMute(t *testing.T) {
 	if o := res.OtherBoards[1]; o.BoardID != 41 || o.HasCustomSettings || !o.Muted.Active {
 		t.Errorf("otherBoards[1] = %+v", o)
 	}
+}
+
+func (f *fakeChatInteractiveForHandler) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) chat_interactive_service.GeserResult {
+	return chat_interactive_service.GeserResult{}
 }

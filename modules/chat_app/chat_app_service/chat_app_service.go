@@ -9,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/registration/registration_dto"
+	"nudge/modules/user_setting/user_setting_dto"
 )
 
 const (
@@ -38,6 +41,7 @@ type StateStore interface {
 
 type CommandRouter interface {
 	RouteCommand(ctx context.Context, senderEmail, messageText string) string
+	Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) chat_interactive_service.GeserResult
 }
 
 type AppSender interface {
@@ -82,6 +86,8 @@ func (s *service) Handle(ctx context.Context, ev chat_app_dto.Event) chat_app_dt
 		return chat_app_dto.Response{}
 	case chat_app_dto.EventMessage:
 		return s.message(ctx, ev)
+	case chat_app_dto.EventCardClicked:
+		return s.cardClicked(ctx, ev)
 	}
 	return chat_app_dto.Response{}
 }
@@ -198,5 +204,45 @@ func (s *service) runCommand(email, space, text string) string {
 			}
 		}()
 		return processingText
+	}
+}
+
+// cardClicked handles the reminder card's move buttons (AC6.3, AC6.4). It
+// acts only as the clicking user (ev.User.Email), never a card parameter.
+func (s *service) cardClicked(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
+	if ev.Action == nil || ev.Action.ActionMethodName != chat_app_card.GeserFunction {
+		return chat_app_dto.Response{}
+	}
+	if reply, ok := s.checkUser(ctx, ev.User.Email); !ok {
+		return s.private(ev, reply)
+	}
+	res := s.d.Commands.Geser(ctx, ev.User.Email, ev.Action.Param("issueKey"), ev.Action.Param("target"))
+	if res.NotOwner {
+		return s.private(ev, res.Message)
+	}
+	var status string
+	if res.OK {
+		now := time.Now().In(user_setting_dto.Jakarta)
+		status = fmt.Sprintf("✅ Digeser ke %s oleh %s · %s WIB", res.StatusName, ev.User.DisplayName, now.Format("15:04"))
+	} else {
+		status = "⚠️ Tidak bisa digeser: " + res.Message
+	}
+	if ev.Message == nil || len(ev.Message.CardsV2) == 0 {
+		return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseNewMessage}, Text: status}
+	}
+	cards := make([]chat_app_dto.CardWithID, 0, len(ev.Message.CardsV2))
+	for _, c := range ev.Message.CardsV2 {
+		cards = append(cards, chat_app_dto.CardWithID{CardID: c.CardID, Card: chat_app_card.StripActions(c.Card, chat_app_card.ToCardHTML(status))})
+	}
+	return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseUpdateMessage}, CardsV2: cards}
+}
+
+// private answers only the clicking user, leaving the card as it is.
+func (s *service) private(ev chat_app_dto.Event, text string) chat_app_dto.Response {
+	viewer := ev.User
+	return chat_app_dto.Response{
+		ActionResponse:       &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseNewMessage},
+		Text:                 text,
+		PrivateMessageViewer: &viewer,
 	}
 }
