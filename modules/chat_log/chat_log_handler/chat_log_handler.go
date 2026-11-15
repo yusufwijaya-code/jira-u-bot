@@ -17,6 +17,24 @@ import (
 
 type Lister interface {
 	List(ctx context.Context, f chat_log_dto.Filter) (chat_log_dto.Page, error)
+	Conversations(ctx context.Context) ([]chat_log_dto.Conversation, error)
+}
+
+var knownKinds = map[string]bool{
+	chat_log_dto.KindReminder: true, chat_log_dto.KindMessage: true, chat_log_dto.KindReply: true,
+	chat_log_dto.KindCommand: true, chat_log_dto.KindClick: true, chat_log_dto.KindAdded: true, chat_log_dto.KindRemoved: true,
+}
+
+// Conversations answers GET /api/dashboard/admin/chat-logs/conversations
+// (admin only): one row per user, most recent first.
+func (h *Handler) Conversations(c *gin.Context) {
+	list, err := h.logs.Conversations(c.Request.Context())
+	if err != nil {
+		log.Printf("chat_log_handler: conversations failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal memuat percakapan"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"conversations": list})
 }
 
 type Handler struct {
@@ -48,6 +66,21 @@ func (h *Handler) List(c *gin.Context) {
 		if f.BeforeID, err = strconv.ParseInt(v, 10, 64); err != nil || f.BeforeID < 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "beforeID tidak valid"})
 			return
+		}
+	}
+	if v := c.Query("afterID"); v != "" {
+		if f.AfterID, err = strconv.ParseInt(v, 10, 64); err != nil || f.AfterID < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "afterID tidak valid"})
+			return
+		}
+	}
+	if v := c.Query("kind"); v != "" {
+		for _, k := range strings.Split(v, ",") {
+			if !knownKinds[k] {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "kind tidak valid"})
+				return
+			}
+			f.Kinds = append(f.Kinds, k)
 		}
 	}
 	if v := c.Query("limit"); v != "" {

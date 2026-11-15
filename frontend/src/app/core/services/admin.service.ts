@@ -30,7 +30,7 @@ export interface BroadcastResponse {
   skippedEmails?: string[] | null;
 }
 
-/** One "Riwayat pesan" entry (a message Nudge sent or an event it got). */
+/** One "Pesan" entry (a message Nudge sent or an event it got). */
 export interface ChatLogEntry {
   id: number;
   email: string;
@@ -55,7 +55,22 @@ export interface ChatLogQuery {
   from?: string;
   to?: string;
   beforeID?: number;
+  /** Only entries newer than this ID (live updates). */
+  afterID?: number;
+  /** Comma list of kinds; '' = all. */
+  kind?: string;
   limit?: number;
+}
+
+/** One user's thread with Nudge in the "Pesan". */
+export interface ChatConversation {
+  email: string;
+  total: number;
+  lastDirection: 'in' | 'out';
+  lastKind: string;
+  lastStatus: string;
+  lastBody: string;
+  lastDate: string;
 }
 
 /** A Nudge App activation date as "15 Nov 2026" (WIB), or "—" (AC4.1). */
@@ -106,8 +121,14 @@ export class AdminService {
     if (q.from) params['from'] = q.from;
     if (q.to) params['to'] = q.to;
     if (q.beforeID) params['beforeID'] = String(q.beforeID);
+    if (q.afterID) params['afterID'] = String(q.afterID);
+    if (q.kind) params['kind'] = q.kind;
     if (q.limit) params['limit'] = String(q.limit);
     return this.http.get<ChatLogPage>(`${environment.apiBasePath}/api/dashboard/admin/chat-logs`, { params });
+  }
+
+  chatConversations(): Observable<{ conversations: ChatConversation[] }> {
+    return this.http.get<{ conversations: ChatConversation[] }>(`${environment.apiBasePath}/api/dashboard/admin/chat-logs/conversations`);
   }
 
   broadcast(message: string): Observable<BroadcastResponse> {
