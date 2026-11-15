@@ -3,13 +3,14 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { ToastService } from '../../../core/ui/toast.service';
-import { BoardPageComponent, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
+import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
 
 describe('BoardPageComponent', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
     localStorage.removeItem(COLLAPSED_STORAGE_KEY);
+    localStorage.removeItem(BRANCHES_STORAGE_KEY);
     TestBed.configureTestingModule({
       imports: [BoardPageComponent],
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
@@ -219,14 +220,14 @@ describe('BoardPageComponent', () => {
     return fixture;
   }
 
-  it('hangs out-of-sprint subtasks under their parent row with a read-only status', () => {
+  it('hangs out-of-sprint subtasks under their parent row with a movable status', () => {
     const el: HTMLElement = renderWithBranches().nativeElement;
     const branch = el.querySelector('[data-branch="CORE-10924"]') as HTMLElement;
     expect(branch.getAttribute('data-branch-of')).toBe('CORE-10923');
     expect(branch.previousElementSibling?.getAttribute('data-card')).toBe('CORE-10923');
     expect(branch.textContent).toContain('subtask');
     expect(branch.textContent).toContain('30m / 1j');
-    expect(branch.querySelector('[data-status-chip]')).toBeNull();
+    expect(branch.querySelector('[data-status-chip]')).not.toBeNull();
     expect(el.querySelector('[data-branch="CORE-777"]')).toBeNull();
     expect(el.querySelector('.tb-hint')?.textContent).toContain('+ 1 subtask');
     // branches are not counted per status
@@ -357,6 +358,59 @@ describe('BoardPageComponent', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     fixture.detectChanges();
     expect(input.value).toBe('');
+  });
+
+  function renderWithBranch() {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
+      columns: [{ status: 'Code Process', cards: [
+        { issueKey: 'CORE-1', summary: 'Parent', status: 'Code Process', issueURL: 'https://x/browse/CORE-1', boardId: 26, storyPoints: 5 },
+      ] }],
+      related: [
+        { issueKey: 'CORE-2', summary: 'Child A', status: 'Done', issueURL: 'https://x/browse/CORE-2', boardId: 26, storyPoints: 1, parentKey: 'CORE-1', relation: 'subtask' },
+        { issueKey: 'CORE-3', summary: 'Child B', status: 'Code Process', issueURL: 'https://x/browse/CORE-3', boardId: 26, storyPoints: 1, parentKey: 'CORE-1', relation: 'subtask' },
+      ],
+    });
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('lets a branch row open the status menu', () => {
+    const fixture = renderWithBranch();
+    const chip = fixture.nativeElement.querySelector('[data-branch="CORE-3"] [data-status-chip]') as HTMLButtonElement;
+    chip.click();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/tickets/CORE-3/transitions')).flush({ transitions: [{ id: '31', name: 'Review', toStatus: 'Code Review' }] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-transition="31"]')).not.toBeNull();
+  });
+
+  it('shows subtask progress on the parent and collapses its branches', () => {
+    const fixture = renderWithBranch();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-branch-progress="CORE-1"]')?.textContent).toContain('1/2');
+    (el.querySelector('[data-branch-toggle="CORE-1"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-branch="CORE-2"]')).toBeNull();
+  });
+
+  it('copies a key and offers + Subtask only on non-branch rows', () => {
+    const fixture = renderWithBranch();
+    const el: HTMLElement = fixture.nativeElement;
+    const clip = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+    spyOnProperty(navigator, 'clipboard').and.returnValue({ writeText: clip } as unknown as Clipboard);
+    (el.querySelector('[data-card="CORE-1"] [data-copy]') as HTMLButtonElement).click();
+    expect(clip).toHaveBeenCalledWith('CORE-1');
+    expect(el.querySelector('[data-branch="CORE-2"] [data-add-subtask]')).toBeNull();
+  });
+
+  it('explains the time bar in a tooltip', () => {
+    const fixture = render();
+    const time = fixture.nativeElement.querySelector('[data-card="OMS-2"] [data-time]') as HTMLElement;
+    expect(time.getAttribute('title')).toContain('Dipakai 1j 15m');
+    expect(time.getAttribute('title')).toContain('Budget 1j');
+    expect(time.getAttribute('title')).toContain('Lewat 15m');
   });
 });
 

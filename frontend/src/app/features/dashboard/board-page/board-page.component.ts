@@ -26,6 +26,7 @@ export type StatusTone = 'todo' | 'process' | 'review' | 'done' | 'other';
 export type BoardFilter = 'all' | 'over' | 'nosp';
 
 export const COLLAPSED_STORAGE_KEY = 'nudge.board.collapsed';
+export const BRANCHES_STORAGE_KEY = 'nudge.board.branches';
 
 export function statusTone(status: string): StatusTone {
   const s = status.toLowerCase();
@@ -75,8 +76,8 @@ export class BoardPageComponent {
    * The caller's subtasks / linked items of their sprint tickets that aren't
    * in the sprint themselves (GET /board → related). They hang under their
    * parent's row as branches and aren't counted per status, like on the
-   * dashboard. Their status is read-only: moves are limited to sprint
-   * tickets (Tech Spec "Papan Tiket & Cuti", AC1.6).
+   * dashboard. Their status is movable like a sprint ticket's; the server
+   * enforces ownership of out-of-sprint subtasks.
    */
   protected related = signal<TicketCard[]>([]);
   protected loading = signal(true);
@@ -95,7 +96,9 @@ export class BoardPageComponent {
   protected moving = signal<string | null>(null);
   protected query = signal('');
   /** Statuses the user collapsed (true) or expanded (false) themselves. */
-  private collapsedChoice = signal<Record<string, boolean>>(readCollapsed());
+  private collapsedChoice = signal<Record<string, boolean>>(readJson(COLLAPSED_STORAGE_KEY));
+  /** Parents whose branches the user closed (true = closed). Default open. */
+  private branchClosed = signal<Record<string, boolean>>(readJson(BRANCHES_STORAGE_KEY));
 
   protected readonly statusTone = statusTone;
   protected readonly shortDuration = shortDuration;
@@ -182,6 +185,7 @@ export class BoardPageComponent {
 
   /** The branches under a row; while searching, all of them when the parent matches, else only the matching ones. */
   protected branchesOf(card: TicketCard): TicketCard[] {
+    if (!this.isBranchOpen(card.issueKey)) return [];
     const branches = this.branchMap().get(card.issueKey) ?? [];
     const q = this.query().trim().toLowerCase();
     if (!q || matches(card, q)) return branches;
@@ -250,11 +254,43 @@ export class BoardPageComponent {
 
   private saveCollapsed(next: Record<string, boolean>): void {
     this.collapsedChoice.set(next);
-    try {
-      localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      /* storage unavailable — the choice lasts for this visit only */
+    writeJson(COLLAPSED_STORAGE_KEY, next);
+  }
+
+  protected branchProgress(card: TicketCard): { total: number; done: number } {
+    const all = this.branchMap().get(card.issueKey) ?? [];
+    return { total: all.length, done: all.filter((b) => statusTone(b.status) === 'done').length };
+  }
+
+  protected isBranchOpen(key: string): boolean {
+    return !!this.query().trim() || !this.branchClosed()[key];
+  }
+
+  protected toggleBranches(key: string): void {
+    const next = { ...this.branchClosed(), [key]: this.isBranchOpen(key) };
+    this.branchClosed.set(next);
+    writeJson(BRANCHES_STORAGE_KEY, next);
+  }
+
+  protected copyKey(card: TicketCard): void {
+    navigator.clipboard?.writeText(card.issueKey).then(
+      () => this.toast.success('Disalin', card.issueKey),
+      () => this.toast.error('Gagal menyalin', card.issueKey),
+    );
+  }
+
+  protected addSubtask(card: TicketCard): void {
+    this.setTab('create', { mode: 'bulk', parent: card.issueKey });
+  }
+
+  protected timeTooltip(card: TicketCard): string {
+    const parts = [`Dipakai ${shortDuration(card.elapsedSeconds)}`, `Budget ${shortDuration(card.budgetSeconds)}`];
+    const diff = shortDuration(card.budgetSeconds - card.elapsedSeconds);
+    parts.push(this.isOverBudget(card) ? `Lewat ${diff}` : `Sisa ${diff}`);
+    if (card.startedAt) {
+      parts.push(`Mulai ${new Date(card.startedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Jakarta' })}`);
     }
+    return parts.join(' · ');
   }
 
   protected jumpTo(col: Column): void {
@@ -372,11 +408,19 @@ function sectionId(status: string): string {
   return 'status-' + status.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
-function readCollapsed(): Record<string, boolean> {
+function readJson(key: string): Record<string, boolean> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY) ?? '{}');
+    const parsed = JSON.parse(localStorage.getItem(key) ?? '{}');
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+function writeJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable — the choice lasts for this visit only */
   }
 }

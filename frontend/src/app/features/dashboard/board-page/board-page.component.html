@@ -88,7 +88,7 @@
   </div>
   <p class="tb-hint">
     {{ total() }} tiket di sprint aktif{{ branchTotal() ? ' + ' + branchTotal() + ' subtask/linked item di luar sprint' : '' }}.
-    Klik status di baris tiket untuk memindahkannya sesuai workflow Jira.
+    Klik status di baris tiket atau subtask untuk memindahkannya sesuai workflow Jira.
   </p>
 
   @for (col of visible(); track col.status) {
@@ -127,10 +127,24 @@
                 <tr [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey" [class.just-moved]="justMoved() === card.issueKey">
                   <td data-label="Tiket">
                     <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
+                    <span class="tb-row-actions">
+                      <a class="tb-act" [href]="card.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
+                      <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(card)"><app-icon name="copy" [size]="13" /></button>
+                      @if (createCardEnabled) {
+                        <button type="button" class="tb-act" data-add-subtask title="Tambah subtask" aria-label="Tambah subtask" (click)="addSubtask(card)"><app-icon name="plus" [size]="13" /></button>
+                      }
+                    </span>
                   </td>
                   <td data-label="Ringkasan">
                     <div class="tb-summary-cell">
                       <span class="tb-summary-text">{{ card.summary }}</span>
+                      @if (branchProgress(card).total) {
+                        <button type="button" class="tb-branch-toggle" [attr.data-branch-toggle]="card.issueKey" [attr.aria-expanded]="isBranchOpen(card.issueKey)" (click)="toggleBranches(card.issueKey)">
+                          <app-icon name="chevron-down" [size]="12" [class.open]="isBranchOpen(card.issueKey)" />
+                          <span [attr.data-branch-progress]="card.issueKey">{{ branchProgress(card).total }} subtask · {{ branchProgress(card).done }}/{{ branchProgress(card).total }} selesai</span>
+                          <span class="tb-mini-bar"><span [style.width.%]="(branchProgress(card).done / branchProgress(card).total) * 100"></span></span>
+                        </button>
+                      }
                       @if (card.parentKey) {
                         <span class="tb-parent">↳ {{ card.parentKey }} · {{ card.parentSummary }}</span>
                       }
@@ -139,55 +153,20 @@
                   <td data-label="SP" class="tb-num">{{ card.storyPoints ? card.storyPoints : '—' }}</td>
                   <td data-label="Waktu"><ng-container *ngTemplateOutlet="timeCell; context: { $implicit: card }" /></td>
                   <td data-label="Status" class="tb-status-col">
-                    <div class="status-menu">
-                      <button
-                        type="button"
-                        class="status-chip status-trigger"
-                        data-status-chip
-                        aria-haspopup="menu"
-                        [attr.aria-expanded]="menu()?.key === card.issueKey"
-                        [disabled]="moving() === card.issueKey"
-                        (click)="toggleMenu(card)"
-                      >
-                        @if (moving() === card.issueKey) {
-                          <span class="tb-spin" aria-hidden="true"></span> Memindah…
-                        } @else {
-                          {{ card.status }}
-                        }
-                        <app-icon name="chevron-down" [size]="12" />
-                      </button>
-                      @if (menu()?.key === card.issueKey) {
-                        <div class="status-dropdown" role="menu">
-                          @if (menu()!.loading) {
-                            <div class="tb-menu-loading" aria-busy="true" data-menu-loading>
-                              <span class="status-dropdown-note"><span class="tb-spin" aria-hidden="true"></span> Memuat transisi dari Jira…</span>
-                              <span class="skeleton tb-sk-option"></span>
-                              <span class="skeleton tb-sk-option"></span>
-                            </div>
-                          } @else if (menu()!.error) {
-                            <span class="status-dropdown-note">{{ menu()!.error }}</span>
-                          } @else if (menu()!.options.length === 0) {
-                            <span class="status-dropdown-note">Tidak ada transisi</span>
-                          } @else {
-                            @for (opt of menu()!.options; track opt.id) {
-                              <button type="button" role="menuitem" [attr.data-transition]="opt.id" (click)="move(card, opt)">
-                                <span class="status-dropdown-name">{{ optionLabel(opt) }}</span>
-                                <span class="status-chip">→ {{ opt.toStatus }}</span>
-                              </button>
-                            }
-                          }
-                        </div>
-                      }
-                    </div>
+                    <ng-container *ngTemplateOutlet="statusCell; context: { $implicit: card }" />
                   </td>
                 </tr>
-                <!-- Subtasks / linked items outside the sprint hang under their parent (read-only status). -->
+                <!-- Subtasks / linked items outside the sprint hang under their parent . -->
                 @for (b of branchesOf(card); track b.issueKey) {
                   <tr class="tb-branch" [attr.data-branch]="b.issueKey" [attr.data-branch-of]="card.issueKey">
                     <td data-label="Tiket">
                       <span class="tb-branch-key">
                         <span class="tb-elbow" aria-hidden="true"></span>
                         <a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a>
+                      <span class="tb-row-actions">
+                        <a class="tb-act" [href]="b.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
+                        <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(b)"><app-icon name="copy" [size]="13" /></button>
+                      </span>
                       </span>
                     </td>
                     <td data-label="Ringkasan">
@@ -199,7 +178,7 @@
                     <td data-label="SP" class="tb-num">{{ b.storyPoints ? b.storyPoints : '—' }}</td>
                     <td data-label="Waktu"><ng-container *ngTemplateOutlet="timeCell; context: { $implicit: b }" /></td>
                     <td data-label="Status" class="tb-status-col">
-                      <span class="status-chip" title="Status cabang dipindah dari Jira">{{ b.status }}</span>
+                      <ng-container *ngTemplateOutlet="statusCell; context: { $implicit: b }" />
                     </td>
                   </tr>
                 }
@@ -222,7 +201,7 @@
 
 <ng-template #timeCell let-card>
   @if (hasTime(card)) {
-    <div class="tb-time" [class.over]="isOverBudget(card)" [class.stopped]="!card.hasBudgetDetail" data-time>
+    <div class="tb-time" [class.over]="isOverBudget(card)" [class.stopped]="!card.hasBudgetDetail" [attr.title]="timeTooltip(card)" data-time>
       <span>{{ shortDuration(card.elapsedSeconds) }} / {{ shortDuration(card.budgetSeconds) }}</span>
       <span class="tb-bar"><span [style.width.%]="budgetPercent(card)"></span></span>
       <small>{{ timeNote(card) }}</small>
@@ -230,4 +209,47 @@
   } @else {
     <span class="tb-muted">—</span>
   }
+</ng-template>
+
+<ng-template #statusCell let-card>
+    <div class="status-menu">
+      <button
+        type="button"
+        class="status-chip status-trigger"
+        data-status-chip
+        aria-haspopup="menu"
+        [attr.aria-expanded]="menu()?.key === card.issueKey"
+        [disabled]="moving() === card.issueKey"
+        (click)="toggleMenu(card)"
+      >
+        @if (moving() === card.issueKey) {
+          <span class="tb-spin" aria-hidden="true"></span> Memindah…
+        } @else {
+          {{ card.status }}
+        }
+        <app-icon name="chevron-down" [size]="12" />
+      </button>
+      @if (menu()?.key === card.issueKey) {
+        <div class="status-dropdown" role="menu">
+          @if (menu()!.loading) {
+            <div class="tb-menu-loading" aria-busy="true" data-menu-loading>
+              <span class="status-dropdown-note"><span class="tb-spin" aria-hidden="true"></span> Memuat transisi dari Jira…</span>
+              <span class="skeleton tb-sk-option"></span>
+              <span class="skeleton tb-sk-option"></span>
+            </div>
+          } @else if (menu()!.error) {
+            <span class="status-dropdown-note">{{ menu()!.error }}</span>
+          } @else if (menu()!.options.length === 0) {
+            <span class="status-dropdown-note">Tidak ada transisi</span>
+          } @else {
+            @for (opt of menu()!.options; track opt.id) {
+              <button type="button" role="menuitem" [attr.data-transition]="opt.id" (click)="move(card, opt)">
+                <span class="status-dropdown-name">{{ optionLabel(opt) }}</span>
+                <span class="status-chip">→ {{ opt.toStatus }}</span>
+              </button>
+            }
+          }
+        </div>
+      }
+    </div>
 </ng-template>
