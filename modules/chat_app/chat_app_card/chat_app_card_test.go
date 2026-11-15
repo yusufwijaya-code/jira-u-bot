@@ -86,21 +86,25 @@ func TestBuild_OverageReminderAlsoGetsTheButtons(t *testing.T) {
 	}
 }
 
-func TestBuild_HeaderIsIssueKeyDashReminderTitle(t *testing.T) {
-	_, cards := Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueSummary: "S", IsOverage: true})
-	h := cards[0].Card.Header
-	if h.Title != "CORE-1 — SUDAH LEWAT BUDGET" || h.Subtitle != "S" {
+// The title line goes as message text (Home / notification preview); the
+// card header is the ticket summary, so nothing is said twice.
+func TestBuild_TitleLineIsTheTextAndTheHeaderIsTheSummary(t *testing.T) {
+	text, cards := Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueSummary: "S", IsOverage: true})
+	if text != "🔴 *CORE-1* — SUDAH LEWAT BUDGET" {
+		t.Errorf("overage text = %q", text)
+	}
+	if h := cards[0].Card.Header; h.Title != "S" || h.Subtitle != "" {
 		t.Errorf("overage header = %+v", h)
 	}
-	_, cards = Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", Tier: "5m"})
-	if title := cards[0].Card.Header.Title; !strings.HasPrefix(title, "CORE-1 — Reminder") || strings.Contains(title, "*") {
-		t.Errorf("tier header = %q", title)
+	text, cards = Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", Tier: "5m"})
+	if !strings.HasPrefix(text, "⏰ *CORE-1* — Reminder") || cards[0].Card.Header.Title != "CORE-1" {
+		t.Errorf("tier text = %q header = %q (no summary → key)", text, cards[0].Card.Header.Title)
 	}
 }
 
 func TestBuild_StatusNoticeAlsoGetsTheButtons(t *testing.T) {
 	text, cards := Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "CORE-1", IssueURL: "u", Text: "🔀 *CORE-1* — X\n*To Do* → *Code Process*"})
-	if text != "🔀 *CORE-1* — X" {
+	if text != "🔀 *CORE-1* — Status berubah" {
 		t.Errorf("text=%q", text)
 	}
 	assertTicketButtons(t, cards[0].Card, "CORE-1", "u")
@@ -127,7 +131,8 @@ func TestTextCard_HelpHintBecomesAMenuButton(t *testing.T) {
 	if !ok || short != "🎉 Halo! Registrasi berhasil." || len(cards) != 1 {
 		t.Fatalf("ok=%v short=%q cards=%d", ok, short, len(cards))
 	}
-	if txt := cardText(cards[0].Card); strings.Contains(txt, "n-help") || !strings.HasSuffix(txt, "isi") {
+	// The first line is the message text; the card holds the rest.
+	if txt := cardText(cards[0].Card); txt != "isi" {
 		t.Errorf("card text = %q", txt)
 	}
 	if bs := buttons(cards[0].Card); len(bs) != 1 || param(bs[0], "cmd") != "/n-help" {
@@ -160,7 +165,7 @@ func TestBuild_CardBodyHasOnlyTheDetails(t *testing.T) {
 		t.Errorf("reminder body repeats the header/link:\n%s", body)
 	}
 	_, cards = Build(google_chat_notifier_dto.ReminderMessage{IssueKey: "OMS-7", IssueURL: "https://jira/browse/OMS-7", IssueSummary: "S", Text: "🔀 *OMS-7* — S\n*To Do* → *Code Process* · 10:15 WIB\nhttps://jira/browse/OMS-7"})
-	if h := cards[0].Card.Header.Title; h != "OMS-7 — Status berubah" {
+	if h := cards[0].Card.Header.Title; h != "S" {
 		t.Errorf("status title = %q", h)
 	}
 	if body := cardText(cards[0].Card); body != "<b>To Do</b> → <b>Code Process</b> · 10:15 WIB" {

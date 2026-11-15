@@ -96,9 +96,10 @@ func (r *Router) SendReminder(ctx context.Context, msg google_chat_notifier_dto.
 	text := google_chat_notifier_service.BuildMessageText(msg)
 	appMsg := chat_app_dto.OutgoingMessage{Text: text}
 	if r.d.Cards != nil {
-		// The short line is the notification preview; the card shows the rest.
-		appMsg.Text = ""
-		appMsg.FallbackText, appMsg.CardsV2 = r.d.Cards(msg)
+		// The short line goes as message text above the card: Home and
+		// notifications show it (a card-only message reads "Sent an attachment").
+		appMsg.Text, appMsg.CardsV2 = r.d.Cards(msg)
+		appMsg.FallbackText = appMsg.Text
 	}
 	return r.logged(ctx, chat_log_dto.KindReminder, msg.AssigneeEmail, text, appMsg)
 }
@@ -118,7 +119,7 @@ func (r *Router) SendAdminMessage(ctx context.Context, email, text string) error
 func (r *Router) textMessage(text string) chat_app_dto.OutgoingMessage {
 	if r.d.TextCards != nil {
 		if short, cards, ok := r.d.TextCards(text); ok {
-			return chat_app_dto.OutgoingMessage{FallbackText: short, CardsV2: cards}
+			return chat_app_dto.OutgoingMessage{Text: short, FallbackText: short, CardsV2: cards}
 		}
 	}
 	return chat_app_dto.OutgoingMessage{Text: text}

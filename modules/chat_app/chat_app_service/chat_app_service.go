@@ -191,7 +191,7 @@ func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto
 	}
 	// The "/n-help" hint becomes a menu button.
 	if short, cards, ok := chat_app_card.TextCard(welcomeText); ok {
-		return chat_app_dto.Response{CardsV2: cards, FallbackText: short, LogText: welcomeText}
+		return chat_app_dto.Response{Text: short, CardsV2: cards, FallbackText: short, LogText: welcomeText}
 	}
 	return chat_app_dto.Response{Text: welcomeText}
 }
@@ -251,7 +251,9 @@ func commandText(msg *chat_app_dto.Message) string {
 func replyResponse(r chat_interactive_service.Reply, update bool) chat_app_dto.Response {
 	resp := chat_app_dto.Response{LogText: r.Text}
 	if len(r.Cards) > 0 {
-		resp.CardsV2, resp.FallbackText = r.Cards, r.Title
+		// The title line is real text: Home and notifications show it
+		// (a card-only message reads "Sent an attachment" there).
+		resp.CardsV2, resp.Text, resp.FallbackText = r.Cards, r.Title, r.Title
 	} else {
 		resp.Text = r.Text
 	}
@@ -300,7 +302,7 @@ func (s *service) lateReply(email, space string, wait func() chat_interactive_se
 		}
 		msg := chat_app_dto.OutgoingMessage{Text: out.Text}
 		if len(out.Cards) > 0 {
-			msg = chat_app_dto.OutgoingMessage{FallbackText: out.Title, CardsV2: out.Cards}
+			msg = chat_app_dto.OutgoingMessage{Text: out.Title, FallbackText: out.Title, CardsV2: out.Cards}
 		}
 		if err := s.d.App.CreateMessage(ctx, space, msg); err != nil {
 			log.Printf("chat_app_service: late reply to %s failed: %v", email, err)

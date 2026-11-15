@@ -89,7 +89,9 @@ func (b button) widget() chat_app_dto.Button {
 }
 
 func (v view) card() chat_app_dto.CardWithID {
-	c := chat_app_dto.Card{Header: &chat_app_dto.CardHeader{Title: v.title, Subtitle: v.subtitle}}
+	// No card header: the message text above the card (Reply.Title) is the
+	// title line, so the Home preview and notifications show it too.
+	c := chat_app_dto.Card{}
 	for _, s := range v.sections {
 		out := chat_app_dto.Section{Header: cardHTML(s.header)}
 		visible := 0 // widgets shown before "Show more"
@@ -199,7 +201,17 @@ func (v view) text() string {
 }
 
 func (v view) reply() Reply {
-	return Reply{Text: v.text(), Cards: []chat_app_dto.CardWithID{v.card()}, Title: v.title}
+	return Reply{Text: v.text(), Cards: []chat_app_dto.CardWithID{v.card()}, Title: v.titleLine()}
+}
+
+// titleLine is the one line sent as message text above the card:
+// "*📋 Tiket Saya* — ESB Core Board · 18 tiket".
+func (v view) titleLine() string {
+	line := "*" + v.title + "*"
+	if v.subtitle != "" {
+		line += " — " + v.subtitle
+	}
+	return line
 }
 
 // note is a short reply without buttons (errors, confirmations).

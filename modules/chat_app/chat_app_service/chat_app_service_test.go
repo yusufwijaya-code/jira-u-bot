@@ -103,8 +103,9 @@ func TestHandle_AddedRegisteredStoresSpaceAndWelcomes(t *testing.T) {
 	if len(states.set) != 1 || states.set[0] != dev+"|spaces/DM|users/9" {
 		t.Errorf("SetSpace calls = %v", states.set)
 	}
-	if res.Text != "" || len(res.CardsV2) != 1 || !strings.HasPrefix(res.FallbackText, "✅ App Nudge aktif") {
-		t.Fatalf("welcome = %+v, want a card", res)
+	// The first line is real text (Home / notification preview), plus a card.
+	if !strings.HasPrefix(res.Text, "✅ App Nudge aktif") || len(res.CardsV2) != 1 || res.FallbackText != res.Text {
+		t.Fatalf("welcome = %+v, want a preview line and a card", res)
 	}
 	var menu bool
 	for _, w := range res.CardsV2[0].Card.Sections[0].Widgets {
@@ -224,8 +225,10 @@ func TestHandle_CommandCardIsSentAsCardWithFallbackAndLoggedAsText(t *testing.T)
 	cmds := &cardCommands{}
 	svc := New(Deps{Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{dev: {Email: dev, SpaceID: "spaces/DM"}}}, Commands: cmds, Log: rec})
 	res := svc.Handle(context.Background(), dmEvent("MESSAGE", dev, &chat_app_dto.Message{Text: "/n-dashboard"}))
-	if len(res.CardsV2) != 1 || res.Text != "" || res.FallbackText != "📊 Dashboard" {
-		t.Fatalf("response = %+v, want a card with fallback text", res)
+	// A card-only message reads "Sent an attachment" in Home: the title line
+	// must go as text too.
+	if len(res.CardsV2) != 1 || res.Text != "📊 Dashboard" || res.FallbackText != "📊 Dashboard" {
+		t.Fatalf("response = %+v, want a card with its title line as text", res)
 	}
 	entries := rec.all()
 	if out := entries[len(entries)-1]; out.Body != "*📊 Dashboard*\nisi" {

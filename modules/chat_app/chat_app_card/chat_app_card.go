@@ -57,12 +57,15 @@ func TextCard(text string) (string, []chat_app_dto.CardWithID, bool) {
 	if !helpHintPattern.MatchString(text) {
 		return text, nil, false
 	}
-	body := WithoutHelpHint(text)
-	short, _, _ := strings.Cut(body, "\n")
-	card := chat_app_dto.Card{Sections: []chat_app_dto.Section{{Widgets: []chat_app_dto.Widget{
-		{TextParagraph: &chat_app_dto.TextParagraph{Text: ToCardHTML(body)}},
-		{ButtonList: &chat_app_dto.ButtonList{Buttons: []chat_app_dto.Button{MenuButton()}}},
-	}}}}
+	// The first line goes as message text (the Home / notification
+	// preview); the card holds the rest and the menu button.
+	short, rest, _ := strings.Cut(WithoutHelpHint(text), "\n")
+	var widgets []chat_app_dto.Widget
+	if rest = cardBody(rest); rest != "" {
+		widgets = append(widgets, chat_app_dto.Widget{TextParagraph: &chat_app_dto.TextParagraph{Text: ToCardHTML(rest)}})
+	}
+	widgets = append(widgets, chat_app_dto.Widget{ButtonList: &chat_app_dto.ButtonList{Buttons: []chat_app_dto.Button{MenuButton()}}})
+	card := chat_app_dto.Card{Sections: []chat_app_dto.Section{{Widgets: widgets}}}
 	return short, []chat_app_dto.CardWithID{{CardID: "nudge-notice", Card: card}}, true
 }
 
@@ -87,30 +90,31 @@ func ToCardHTML(chatText string) string {
 	return strings.ReplaceAll(s, "\n", "<br>")
 }
 
-// Build is a chat_delivery.CardBuilder: the short text shown in
-// notifications plus one card. Every card about a ticket (reminder,
-// overage, status change) gets "Geser status" — it opens the ticket with a
-// button per status its Jira workflow allows — plus Jira and the menu.
+// Build is a chat_delivery.CardBuilder: the title line sent as message text
+// (what Home and notifications show, e.g. "⏰ *CORE-1* — Reminder T-1 jam")
+// plus one card headed by the ticket summary. Every card about a ticket
+// (reminder, overage, status change) gets "Geser status" — it opens the
+// ticket with a button per status its Jira workflow allows — plus Jira and
+// the menu.
 func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto.CardWithID) {
 	var short, body string
-	header := &chat_app_dto.CardHeader{Title: msg.IssueKey, Subtitle: msg.IssueSummary}
+	title := msg.IssueSummary
+	if title == "" {
+		title = msg.IssueKey
+	}
+	header := &chat_app_dto.CardHeader{Title: title}
 	if msg.Text != "" {
 		// Status change notice (AC6.2).
 		short, body, _ = strings.Cut(msg.Text, "\n")
 		if body == "" {
 			body = short
 		}
-		if strings.HasPrefix(short, "🔀") {
-			header.Title = msg.IssueKey + " — Status berubah"
+		if strings.HasPrefix(short, "🔀") && msg.IssueKey != "" {
+			short = "🔀 *" + msg.IssueKey + "* — Status berubah"
 		}
 	} else {
 		short = google_chat_notifier_service.MessageHeader(msg)
 		body = google_chat_notifier_service.BuildMessageText(msg)
-		// AC6.1: header "<issueKey> — <judul reminder>". Card headers show
-		// plain text, so the title drops the *bold* markup of short.
-		if _, title, ok := strings.Cut(short, " — "); ok {
-			header.Title = msg.IssueKey + " — " + strings.ReplaceAll(title, "*", "")
-		}
 	}
 	// The header already names the ticket and "Buka di Jira" links it: the
 	// card body keeps only the details.
