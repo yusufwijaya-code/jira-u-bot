@@ -11,67 +11,130 @@
   @if (menu()) {
     <div class="status-backdrop" (click)="closeMenu()"></div>
   }
-  <p class="kanban-hint">Klik status di card untuk memindahkan tiket. Pilihan mengikuti workflow Jira tiket itu.</p>
-  <div class="kanban">
-    @for (col of columns(); track col.status) {
-      <section class="kanban-col" data-column>
-        <header class="kanban-col-head">
-          <span>{{ col.status }}</span>
-          <span class="sub-count">{{ col.cards.length }}</span>
-        </header>
-        @for (card of col.cards; track card.issueKey) {
-          <article class="kanban-card" [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey">
-            <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
-            <p class="kanban-summary">{{ card.summary }}</p>
-            @if (card.parentKey) {
-              <p class="kanban-parent">↳ {{ card.parentKey }} · {{ card.parentSummary }}</p>
-            }
-            <div class="kanban-foot">
-              @if (card.storyPoints) {
-                <span class="kanban-sp">{{ card.storyPoints }} SP</span>
-              }
-              <div class="status-menu">
-                <button
-                  type="button"
-                  class="status-chip status-trigger"
-                  data-status-chip
-                  aria-haspopup="menu"
-                  [attr.aria-expanded]="menu()?.key === card.issueKey"
-                  [disabled]="moving() === card.issueKey"
-                  (click)="toggleMenu(card)"
-                >
-                  @if (moving() === card.issueKey) {
-                    Memindah…
-                  } @else {
-                    {{ card.status }}
-                  }
-                  <app-icon name="chevron-down" [size]="12" />
-                </button>
-                @if (menu()?.key === card.issueKey) {
-                  <div class="status-dropdown" role="menu">
-                    @if (menu()!.loading) {
-                      <span class="status-dropdown-note">Memuat transisi…</span>
-                    } @else if (menu()!.error) {
-                      <span class="status-dropdown-note">{{ menu()!.error }}</span>
-                    } @else if (menu()!.options.length === 0) {
-                      <span class="status-dropdown-note">Tidak ada transisi</span>
-                    } @else {
-                      @for (opt of menu()!.options; track opt.id) {
-                        <button type="button" role="menuitem" [attr.data-transition]="opt.id" (click)="move(card, opt)">
-                          <span class="status-dropdown-name">{{ optionLabel(opt) }}</span>
-                          <span class="status-chip">→ {{ opt.toStatus }}</span>
-                        </button>
-                      }
-                    }
-                  </div>
-                }
-              </div>
-            </div>
-          </article>
-        } @empty {
-          <p class="kanban-empty">Kosong</p>
-        }
-      </section>
-    }
+
+  <div class="tb-toolbar">
+    <nav class="tb-summary" aria-label="Ringkasan status">
+      @for (col of columns(); track col.status) {
+        <button type="button" class="tb-pill" [attr.data-tone]="statusTone(col.status)" [attr.data-jump]="col.status" (click)="jumpTo(col)">
+          <span class="tb-dot"></span>{{ col.status }} <strong>{{ col.cards.length }}</strong>
+        </button>
+      }
+    </nav>
+    <label class="tb-search">
+      <app-icon name="search" [size]="16" />
+      <input
+        type="search"
+        placeholder="Cari key atau judul tiket"
+        aria-label="Cari tiket"
+        data-search
+        [value]="query()"
+        (input)="setQuery($any($event.target).value)"
+      />
+    </label>
   </div>
+  <p class="tb-hint">{{ total() }} tiket di sprint aktif. Klik status di baris tiket untuk memindahkannya sesuai workflow Jira.</p>
+
+  @for (col of visible(); track col.status) {
+    <section class="tb-section" data-column [attr.data-status]="col.status" [attr.data-tone]="statusTone(col.status)" [id]="sectionId(col.status)">
+      <button
+        type="button"
+        class="tb-head"
+        data-section-toggle
+        [attr.aria-expanded]="!isCollapsed(col)"
+        (click)="toggleSection(col)"
+      >
+        <span class="tb-dot"></span>
+        <span class="tb-title">{{ col.status }}</span>
+        <span class="tb-count">{{ col.cards.length }}</span>
+        <app-icon class="tb-chevron" [class.open]="!isCollapsed(col)" name="chevron-down" [size]="16" />
+      </button>
+
+      @if (!isCollapsed(col)) {
+        @if (col.cards.length === 0) {
+          <p class="tb-empty">Tidak ada tiket di status ini.</p>
+        } @else {
+          <table class="tb-table">
+            <thead>
+              <tr>
+                <th scope="col">Tiket</th>
+                <th scope="col">Ringkasan</th>
+                <th scope="col" class="tb-num">SP</th>
+                <th scope="col">Waktu</th>
+                <th scope="col" class="tb-status-col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (card of col.cards; track card.issueKey) {
+                <tr [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey">
+                  <td data-label="Tiket">
+                    <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
+                  </td>
+                  <td data-label="Ringkasan" class="tb-summary-cell">
+                    <span class="tb-summary-text">{{ card.summary }}</span>
+                    @if (card.parentKey) {
+                      <span class="tb-parent">↳ {{ card.parentKey }} · {{ card.parentSummary }}</span>
+                    }
+                  </td>
+                  <td data-label="SP" class="tb-num">{{ card.storyPoints ? card.storyPoints : '—' }}</td>
+                  <td data-label="Waktu">
+                    @if (card.hasBudgetDetail) {
+                      <div class="tb-time" [class.over]="isOverBudget(card)" data-time>
+                        <span>{{ shortDuration(card.elapsedSeconds) }} / {{ shortDuration(card.budgetSeconds) }}</span>
+                        <span class="tb-bar"><span [style.width.%]="budgetPercent(card)"></span></span>
+                        <small>
+                          {{ isOverBudget(card) ? 'lewat ' : 'sisa ' }}{{ shortDuration(card.budgetSeconds - card.elapsedSeconds) }}
+                        </small>
+                      </div>
+                    } @else {
+                      <span class="tb-muted">—</span>
+                    }
+                  </td>
+                  <td data-label="Status" class="tb-status-col">
+                    <div class="status-menu">
+                      <button
+                        type="button"
+                        class="status-chip status-trigger"
+                        data-status-chip
+                        aria-haspopup="menu"
+                        [attr.aria-expanded]="menu()?.key === card.issueKey"
+                        [disabled]="moving() === card.issueKey"
+                        (click)="toggleMenu(card)"
+                      >
+                        @if (moving() === card.issueKey) {
+                          Memindah…
+                        } @else {
+                          {{ card.status }}
+                        }
+                        <app-icon name="chevron-down" [size]="12" />
+                      </button>
+                      @if (menu()?.key === card.issueKey) {
+                        <div class="status-dropdown" role="menu">
+                          @if (menu()!.loading) {
+                            <span class="status-dropdown-note">Memuat transisi…</span>
+                          } @else if (menu()!.error) {
+                            <span class="status-dropdown-note">{{ menu()!.error }}</span>
+                          } @else if (menu()!.options.length === 0) {
+                            <span class="status-dropdown-note">Tidak ada transisi</span>
+                          } @else {
+                            @for (opt of menu()!.options; track opt.id) {
+                              <button type="button" role="menuitem" [attr.data-transition]="opt.id" (click)="move(card, opt)">
+                                <span class="status-dropdown-name">{{ optionLabel(opt) }}</span>
+                                <span class="status-chip">→ {{ opt.toStatus }}</span>
+                              </button>
+                            }
+                          }
+                        </div>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      }
+    </section>
+  } @empty {
+    <div class="empty-inline"><span>Tidak ada tiket yang cocok dengan "{{ query() }}".</span></div>
+  }
 }

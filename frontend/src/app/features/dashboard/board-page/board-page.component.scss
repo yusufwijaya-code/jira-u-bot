@@ -1,0 +1,91 @@
+// Papan Tiket — one table section per status. Shared bits (.status-chip,
+// .status-menu, .status-dropdown, .ticket-key) come from styles.scss.
+
+:host { display: flex; flex-direction: column; gap: 14px; }
+
+[data-tone='todo'] { --tone: var(--text-faint); }
+[data-tone='process'] { --tone: var(--primary); }
+[data-tone='review'] { --tone: var(--info); }
+[data-tone='done'] { --tone: var(--success); }
+[data-tone='other'] { --tone: var(--accent); }
+
+.tb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); flex-shrink: 0; }
+
+.tb-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+.tb-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.tb-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text-muted); font: inherit; font-size: 0.8rem; cursor: pointer;
+  transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+  strong { color: var(--text); }
+  &:hover { border-color: var(--tone); color: var(--text); }
+}
+.tb-search {
+  display: flex; align-items: center; gap: 8px; min-width: 240px;
+  padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text-faint);
+  &:focus-within { border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
+  input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 0.86rem; color: var(--text); }
+}
+.tb-hint { margin: -4px 0 0; font-size: 0.82rem; color: var(--text-muted); }
+
+.tb-section {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-xs); scroll-margin-top: calc(var(--topbar-h) + 12px);
+  border-left: 3px solid var(--tone);
+}
+.tb-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 12px 16px; border: 0; background: none; font: inherit; color: var(--text); cursor: pointer; text-align: left;
+  border-radius: var(--radius);
+}
+.tb-title { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.tb-count {
+  min-width: 22px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2);
+  border: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-align: center;
+}
+.tb-chevron { margin-left: auto; color: var(--text-faint); transform: rotate(-90deg); transition: transform var(--fast) var(--ease); }
+.tb-chevron.open { transform: none; }
+.tb-empty { margin: 0; padding: 0 16px 14px; font-size: 0.82rem; color: var(--text-faint); }
+
+.tb-table {
+  width: 100%; border-collapse: collapse; font-size: 0.86rem;
+  th {
+    padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface-2);
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-faint); text-align: left; white-space: nowrap;
+  }
+  td { padding: 12px 16px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tbody tr { transition: background var(--fast) var(--ease), opacity var(--fast) var(--ease); }
+  tbody tr:hover { background: var(--surface-2); }
+  tr.busy { opacity: 0.6; }
+}
+.tb-num { text-align: right; width: 56px; color: var(--text-muted); font-weight: 600; }
+.tb-status-col { text-align: right; width: 1%; white-space: nowrap; }
+.tb-summary-cell { display: flex; flex-direction: column; gap: 2px; }
+.tb-summary-text { color: var(--text); line-height: 1.35; }
+.tb-parent, .tb-muted { font-size: 0.76rem; color: var(--text-faint); }
+
+.tb-time {
+  display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-variant-numeric: tabular-nums;
+  small { font-size: 0.74rem; color: var(--text-muted); }
+  &.over small { color: var(--error); font-weight: 600; }
+}
+.tb-bar {
+  height: 4px; border-radius: 999px; background: var(--border); overflow: hidden;
+  > span { display: block; height: 100%; background: var(--primary); }
+}
+.tb-time.over .tb-bar > span { background: var(--error); }
+
+@media (max-width: 720px) {
+  .tb-search { min-width: 0; width: 100%; }
+  .tb-table {
+    thead { display: none; }
+    tr { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px 16px; border-top: 1px solid var(--border); }
+    td { padding: 0; border: 0; }
+    td[data-label='Ringkasan'], td[data-label='Waktu'] { grid-column: 1 / -1; }
+    td[data-label='SP'] { display: none; }
+  }
+  .tb-status-col { grid-column: 2; grid-row: 1; }
+}
