@@ -28,6 +28,29 @@ describe('CreateCardComponent', () => {
     expect(el.querySelector('[data-mode]')).toBeNull();
   });
 
+  it('shows a neutral error, not the token banner, when status fails', () => {
+    const f = render(26);
+    f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/create/status')).flush({}, { status: 500, statusText: 'x' });
+    http.match((r) => r.url.endsWith('/create/meta'));
+    f.detectChanges();
+    const el: HTMLElement = f.nativeElement;
+    expect(el.querySelector('[data-status-error]')?.textContent).toContain('Gagal memuat status');
+    expect(el.querySelector('[data-token-banner]')).toBeNull();
+    expect(el.querySelector('[data-mode]')).toBeNull();
+  });
+
+  it('cancels the in-flight meta request on a quick board switch', () => {
+    const f = render(26);
+    f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/create/status')).flush({ tokenReady: true, aiReady: true });
+    const a = http.expectOne((r) => r.url.endsWith('/create/meta') && r.params.get('boardId') === '26');
+    f.componentRef.setInput('boardId', 27);
+    f.detectChanges();
+    expect(a.cancelled).toBeTrue();
+    http.expectOne((r) => r.url.endsWith('/create/meta') && r.params.get('boardId') === '27').flush({ projectKey: 'OMS', types: [], subtaskTypeId: '' });
+  });
+
   it('asks to pick a board when the scope is all boards', () => {
     const f = render(null);
     TestBed.inject(BoardContextService).boards.set([{ boardId: 26, name: 'ESB Core Board', projectKey: 'CORE' } as BoardSummary]);

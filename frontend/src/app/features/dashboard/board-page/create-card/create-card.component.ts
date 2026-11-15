@@ -1,3 +1,4 @@
+import { Subscription } from 'rxjs';
 import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { BoardContextService } from '../../../../core/services/board-context.service';
@@ -26,10 +27,12 @@ export class CreateCardComponent {
   protected mode = signal<'single' | 'bulk'>('single');
   protected status = signal<CreateStatus | null>(null);
   protected meta = signal<CreateMeta | null>(null);
+  protected statusError = signal(false);
+  private metaSub?: Subscription;
   protected metaError = signal<string | null>(null);
 
   constructor() {
-    this.api.status().subscribe({ next: (s) => this.status.set(s), error: () => this.status.set({ tokenReady: false, aiReady: false }) });
+    this.api.status().subscribe({ next: (s) => this.status.set(s), error: () => this.statusError.set(true) });
     effect(() => {
       const id = this.boardId() ?? this.localBoard();
       untracked(() => { this.mode.set(this.initialMode()); this.loadMeta(id); });
@@ -37,11 +40,12 @@ export class CreateCardComponent {
   }
 
   protected loadMeta(id: number | null): void {
+    this.metaSub?.unsubscribe();
     this.board.set(id);
     this.meta.set(null);
     this.metaError.set(null);
     if (!id) return;
-    this.api.meta(id).subscribe({
+    this.metaSub = this.api.meta(id).subscribe({
       next: (m) => this.meta.set(m),
       error: (err) => this.metaError.set(err?.status === 412 ? null : err?.error?.error ?? 'Gagal memuat tipe card dari Jira'),
     });

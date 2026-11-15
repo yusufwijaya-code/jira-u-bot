@@ -32,12 +32,12 @@
         @switch (f.kind) {
           @case ('select') {
             <select [attr.data-field]="f.id" [multiple]="f.multi" (change)="f.multi ? onMulti(f.id, $event) : setValue(f.id, $any($event.target).value)">
-              @if (!f.multi) { <option value="">Pilih…</option> }
-              @for (o of f.options ?? []; track o.id) { <option [value]="o.id">{{ o.label }}</option> }
+              @if (!f.multi) { <option value="" [selected]="!values()[f.id]">Pilih…</option> }
+              @for (o of f.options ?? []; track o.id) { <option [value]="o.id" [selected]="isSelected(f.id, o.id)">{{ o.label }}</option> }
             </select>
           }
-          @case ('number') { <input type="number" [attr.data-field]="f.id" (input)="setValue(f.id, $any($event.target).value === '' ? null : +$any($event.target).value)" /> }
-          @default { <input [attr.data-field]="f.id" (input)="setValue(f.id, $any($event.target).value)" /> }
+          @case ('number') { <input type="number" [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value === '' ? null : +$any($event.target).value)" /> }
+          @default { <input [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value)" /> }
         }
         @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
       </label>

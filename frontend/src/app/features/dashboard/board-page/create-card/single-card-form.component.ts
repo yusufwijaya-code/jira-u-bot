@@ -30,13 +30,18 @@ export class SingleCardFormComponent {
 
   protected canSubmit = computed(() => {
     const t = this.type();
-    if (!t || !t.supported || this.saving() || !this.summary().trim()) return false;
+    if (!t || !t.supported || this.saving() || this.lastCreated() || !this.summary().trim()) return false;
     if (t.subtask && !this.parentKey().trim()) return false;
     return t.fields.every((f) => !f.required || this.filled(this.values()[f.id]));
   });
 
   private filled(v: unknown): boolean {
     return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '';
+  }
+
+  protected isSelected(fieldId: string, optionId: string): boolean {
+    const v = this.values()[fieldId];
+    return Array.isArray(v) ? v.includes(optionId) : v === optionId;
   }
 
   protected setType(id: string): void { this.typeId.set(id); this.values.set({}); this.errors.set({}); }
@@ -54,7 +59,7 @@ export class SingleCardFormComponent {
     this.api.createIssue({
       boardId: this.boardId(), typeId: t.id, summary: this.summary().trim(), description: this.description(),
       storyPoints: t.storyPointField ? this.sp() : null, assigneeAccountId: this.assignee(),
-      parentKey: this.parentKey().trim() || null, fields: this.values(),
+      parentKey: (t.subtask || t.parentAllowed) ? this.parentKey().trim() || null : null, fields: this.values(),
     }).subscribe({
       next: (res) => { this.saving.set(false); this.lastCreated.set(res); this.created.emit(res.key); },
       error: (err) => {

@@ -1,5 +1,7 @@
 <section class="cc">
-  @if (status() && !status()!.tokenReady) {
+  @if (statusError()) {
+    <p class="cc-err" data-status-error>Gagal memuat status, coba muat ulang</p>
+  } @else if (status() && !status()!.tokenReady) {
     <div class="cc-banner" data-token-banner>Untuk membuat card atas nama kamu, isi <strong>token Jira</strong> dulu di <a routerLink="/dashboard/settings">Pengaturan</a>.</div>
   } @else {
     @if (!boardId()) {

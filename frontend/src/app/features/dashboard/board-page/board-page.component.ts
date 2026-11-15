@@ -282,6 +282,12 @@ export class BoardPageComponent {
     );
   }
 
+  protected openCreate(): void {
+    this.createMode.set('single');
+    this.createParent.set(null);
+    this.setTab('create', { mode: null, parent: null });
+  }
+
   protected addSubtask(card: TicketCard): void {
     this.createMode.set('bulk');
     this.createParent.set(card.issueKey);

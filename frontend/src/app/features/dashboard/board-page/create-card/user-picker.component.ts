@@ -9,8 +9,8 @@ import { IssueCreateService, JiraUser } from '../../../../core/services/issue-cr
   standalone: true,
   template: `
     <div class="up">
-      <input type="search" [placeholder]="label()" [value]="text()" (input)="onInput($any($event.target).value)" (focus)="open.set(true)" data-user-input />
-      @if (open() && results().length) {
+      <input type="search" [placeholder]="label()" [value]="text()" (input)="onInput($any($event.target).value)" (focus)="open.set(true)" (blur)="onBlur()" data-user-input />
+      @if (open()) {
         <ul class="up-list" role="listbox">
           <li><button type="button" (click)="pick(null)">Saya</button></li>
           @for (u of results(); track u.accountId) {
@@ -39,7 +39,15 @@ export class UserPickerComponent {
     ).subscribe((u) => this.results.set(u));
   }
 
-  protected onInput(v: string): void { this.text.set(v); this.open.set(true); this.q.next(v); }
+  protected onInput(v: string): void {
+    this.text.set(v);
+    this.open.set(true);
+    this.q.next(v);
+    if (v === '') { this.label.set('Saya'); this.picked.emit(null); }
+  }
+
+  /** Delay so a click on an option registers before the list closes. */
+  protected onBlur(): void { setTimeout(() => this.open.set(false), 150); }
 
   protected pick(u: JiraUser | null): void {
     this.text.set(u ? u.displayName : '');

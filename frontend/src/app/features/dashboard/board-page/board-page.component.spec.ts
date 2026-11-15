@@ -489,6 +489,19 @@ describe('BoardPageComponent', () => {
     expect(spy).toHaveBeenCalledWith('create', { mode: 'bulk', parent: 'CORE-1' });
   });
 
+  it('the Buat Card tab resets mode and parent, unlike + Subtask', () => {
+    const fixture = renderWithBranch();
+    const cmp = fixture.componentInstance as any;
+    cmp.createCardEnabled = true;
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('[data-card="CORE-1"] [data-add-subtask]') as HTMLButtonElement).click();
+    expect(cmp.createMode()).toBe('bulk');
+    expect(cmp.createParent()).toBe('CORE-1');
+    (fixture.nativeElement.querySelector('[data-tab="create"]') as HTMLButtonElement).click();
+    expect(cmp.createMode()).toBe('single');
+    expect(cmp.createParent()).toBeNull();
+  });
+
   it('toasts an error when the clipboard is unavailable', () => {
     const fixture = renderWithBranch();
     spyOnProperty(navigator, 'clipboard').and.returnValue(undefined as unknown as Clipboard);

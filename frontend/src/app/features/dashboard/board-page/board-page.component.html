@@ -2,7 +2,7 @@
 @if (createCardEnabled) {
   <div class="settings-tabs tb-tabs" role="tablist" aria-label="Papan Tiket">
     <button type="button" role="tab" class="settings-tab" data-tab="board" [attr.aria-selected]="tab() === 'board'" [class.active]="tab() === 'board'" (click)="setTab('board')">Papan</button>
-    <button type="button" role="tab" class="settings-tab" data-tab="create" [attr.aria-selected]="tab() === 'create'" [class.active]="tab() === 'create'" (click)="setTab('create')">＋ Buat Card</button>
+    <button type="button" role="tab" class="settings-tab" data-tab="create" [attr.aria-selected]="tab() === 'create'" [class.active]="tab() === 'create'" (click)="openCreate()">＋ Buat Card</button>
   </div>
 }
 @if (tab() === 'board') {
