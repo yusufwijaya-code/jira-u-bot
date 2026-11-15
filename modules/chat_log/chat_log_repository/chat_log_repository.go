@@ -75,6 +75,16 @@ func (r *Repository) List(ctx context.Context, f chat_log_dto.Filter) (chat_log_
 		where = append(where, "chatLogID < ?")
 		args = append(args, f.BeforeID)
 	}
+	if f.AfterID > 0 {
+		where = append(where, "chatLogID > ?")
+		args = append(args, f.AfterID)
+	}
+	if len(f.Kinds) > 0 {
+		where = append(where, "kind IN (?"+strings.Repeat(", ?", len(f.Kinds)-1)+")")
+		for _, k := range f.Kinds {
+			args = append(args, k)
+		}
+	}
 	args = append(args, limit+1)
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT chatLogID, email, direction, kind, channel, status, body, errorText, createdDate
@@ -102,6 +112,33 @@ func (r *Repository) List(ctx context.Context, f chat_log_dto.Filter) (chat_log_
 	}
 	return page, nil
 }
+
+// Conversations lists every user with entries, most recent thread first,
+// with the last entry as a preview (shortened to previewRunes).
+func (r *Repository) Conversations(ctx context.Context) ([]chat_log_dto.Conversation, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT c.email, c.total, l.direction, l.kind, l.status, l.body, l.createdDate
+		  FROM (SELECT email, COUNT(*) AS total, MAX(chatLogID) AS lastID FROM tr_chatlog GROUP BY email) c
+		  JOIN tr_chatlog l ON l.chatLogID = c.lastID
+		 ORDER BY c.lastID DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []chat_log_dto.Conversation{}
+	for rows.Next() {
+		var c chat_log_dto.Conversation
+		if err := rows.Scan(&c.Email, &c.Total, &c.LastDirection, &c.LastKind, &c.LastStatus, &c.LastBody, &c.LastDate); err != nil {
+			return nil, err
+		}
+		c.LastBody = chat_log_dto.Truncate(strings.Join(strings.Fields(c.LastBody), " "), previewRunes)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+const previewRunes = 120
 
 // PurgeBefore deletes entries older than t and returns how many.
 func (r *Repository) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {

@@ -23,7 +23,7 @@ describe('AdminShellComponent', () => {
 
   it('renders the three admin menu items', () => {
     const links = Array.from(el().querySelectorAll('.sidebar-nav .nav-item')).map((a) => a.textContent!.trim());
-    expect(links).toEqual(['Dashboard', 'User', 'Broadcast Message', 'Riwayat Pesan']);
+    expect(links).toEqual(['Dashboard', 'User', 'Broadcast Message', 'Pesan']);
     const hrefs = Array.from(el().querySelectorAll('.sidebar-nav .nav-item')).map((a) => a.getAttribute('href'));
     expect(hrefs).toEqual(['/admin', '/admin/users', '/admin/broadcast', '/admin/chat-logs']);
   });

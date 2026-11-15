@@ -83,3 +83,34 @@ func TestPurgeBefore(t *testing.T) {
 		t.Fatalf("after purge = %+v", page)
 	}
 }
+
+func TestList_AfterIDAndKindsAndConversations(t *testing.T) {
+	r := setup(t)
+	ctx := context.Background()
+	r.Record(ctx, chat_log_dto.Entry{Email: testEmail, Direction: "in", Kind: "command", Status: "received", Body: "/n-help"})
+	first, _ := r.List(ctx, chat_log_dto.Filter{Email: testEmail})
+	r.Record(ctx, chat_log_dto.Entry{Email: testEmail, Direction: "out", Kind: "reply", Channel: "app", Status: "sent", Body: "bantuan\n  baris dua"})
+
+	page, err := r.List(ctx, chat_log_dto.Filter{Email: testEmail, AfterID: first.Items[0].ID})
+	if err != nil || len(page.Items) != 1 || page.Items[0].Kind != "reply" {
+		t.Fatalf("after: %+v %v", page, err)
+	}
+	page, _ = r.List(ctx, chat_log_dto.Filter{Email: testEmail, Kinds: []string{"command"}})
+	if len(page.Items) != 1 || page.Items[0].Kind != "command" {
+		t.Fatalf("kinds: %+v", page)
+	}
+
+	convs, err := r.Conversations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range convs {
+		if c.Email == testEmail {
+			if c.Total != 2 || c.LastKind != "reply" || c.LastBody != "bantuan baris dua" {
+				t.Errorf("conversation = %+v", c)
+			}
+			return
+		}
+	}
+	t.Fatalf("conversation of %s missing: %+v", testEmail, convs)
+}

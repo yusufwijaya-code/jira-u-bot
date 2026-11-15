@@ -1,93 +1,204 @@
-<div class="page-stack">
-  <section class="card chat-logs">
-    <header class="card-header">
-      <span class="card-icon accent"><app-icon name="clock" [size]="20" /></span>
-      <div>
-        <h2>Riwayat Pesan</h2>
-        <p>Semua pesan yang dikirim Nudge dan command/aksi user ke Nudge (disimpan 90 hari).</p>
-      </div>
-    </header>
-
-    <form class="log-filters" (ngSubmit)="apply()">
-      <div class="field">
-        <label for="log-user">User</label>
-        <select id="log-user" name="email" [(ngModel)]="email" data-filter-email>
-          <option value="">Semua user</option>
-          @for (u of users(); track u.userId) {
-            <option [value]="u.email">{{ u.userName ? u.userName + ' — ' : '' }}{{ u.email }}</option>
-          }
-        </select>
-      </div>
-      <div class="field">
-        <label for="log-from">Dari</label>
-        <input id="log-from" name="from" type="date" [(ngModel)]="from" />
-      </div>
-      <div class="field">
-        <label for="log-to">Sampai</label>
-        <input id="log-to" name="to" type="date" [(ngModel)]="to" />
-      </div>
-      <div class="filter-actions">
-        <button type="submit" class="btn btn-primary" [disabled]="loading()">
-          <app-icon name="search" [size]="16" /> Tampilkan
-        </button>
-        <button type="button" class="btn btn-ghost" (click)="reset()" [disabled]="loading()">Reset</button>
-      </div>
-    </form>
-
-    @if (error()) {
-      <div class="empty-state">
-        <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
-        <p class="msg error">{{ error() }}</p>
-      </div>
-    } @else if (!loading() && items().length === 0) {
-      <div class="empty-state">
-        <div class="empty-icon"><app-icon name="clock" [size]="24" /></div>
-        <p>Belum ada riwayat pesan untuk filter ini.</p>
-      </div>
-    } @else {
-      <ul class="log-list">
-        @for (e of items(); track e.id) {
-          <li class="log-item" [class.in]="e.direction === 'in'" [class.out]="e.direction === 'out'" [attr.data-log-id]="e.id">
-            <div class="log-meta">
-              <span class="log-dir" [attr.title]="e.direction === 'in' ? 'Dari user ke Nudge' : 'Dari Nudge ke user'">
-                <app-icon [name]="e.direction === 'in' ? 'arrow-left' : 'send'" [size]="14" />
-                {{ e.direction === 'in' ? 'Masuk' : 'Keluar' }}
-              </span>
-              <strong class="log-user">{{ userName(e.email) || e.email }}</strong>
-              @if (userName(e.email)) {
-                <span class="muted log-email">{{ e.email }}</span>
-              }
-              <span class="log-chip">{{ kindLabel[e.kind] || e.kind }}</span>
-              @if (e.channel) {
-                <span class="log-chip subtle">{{ channelLabel(e.channel) }}</span>
-              }
-              <span class="log-status" [attr.data-status]="e.status">{{ statusLabel[e.status] || e.status }}</span>
-              <span class="spacer"></span>
-              <time class="muted">{{ time(e.createdDate) }}</time>
-            </div>
-            <div class="log-body" [class.clamped]="isLong(e) && !expanded().has(e.id)">{{ e.body }}</div>
-            @if (isLong(e)) {
-              <button type="button" class="link-btn" (click)="toggle(e.id)">
-                {{ expanded().has(e.id) ? 'Tutup' : 'Lihat selengkapnya' }}
-              </button>
-            }
-            @if (e.error) {
-              <p class="msg error log-error"><app-icon name="alert-circle" [size]="14" /> {{ e.error }}</p>
-            }
-          </li>
+<section class="card chat-window">
+  <!-- Toolbar: one user, date range, kind -->
+  <header class="chat-toolbar">
+    <div class="chat-user-picker" [class.open]="pickerOpen()">
+      <button
+        type="button"
+        class="chat-user-trigger"
+        aria-haspopup="listbox"
+        [attr.aria-expanded]="pickerOpen()"
+        (click)="togglePicker()"
+        data-user-picker
+      >
+        @if (selected(); as u) {
+          <app-user-avatar [src]="u.userId ? avatarUrl(u.userId) : null" [name]="u.email" />
+          <span class="chat-user-trigger-text">
+            <strong>{{ displayName(u) }}</strong>
+            <small>{{ u.email }}</small>
+          </span>
+        } @else {
+          <span class="chat-user-trigger-text placeholder"><strong>Pilih user</strong><small>untuk melihat chat-nya dengan Nudge</small></span>
         }
-      </ul>
+        <app-icon class="ui-select-chevron" name="chevron-down" [size]="16" />
+      </button>
 
-      @if (loading()) {
-        <div class="table-skeleton" aria-busy="true">
-          <div class="skeleton skeleton-row"></div>
-          <div class="skeleton skeleton-row"></div>
-        </div>
-      } @else if (nextBeforeID()) {
-        <div class="load-more">
-          <button type="button" class="btn btn-ghost" (click)="load(true)" data-load-more>Muat lebih lama</button>
+      @if (pickerOpen()) {
+        <div class="chat-user-popup" role="listbox">
+          <label class="chat-user-search">
+            <app-icon name="search" [size]="15" />
+            <input
+              type="search"
+              placeholder="Cari nama atau email…"
+              [ngModel]="pickerQuery()"
+              (ngModelChange)="pickerQuery.set($event)"
+              aria-label="Cari user"
+            />
+          </label>
+          <ul>
+            @for (u of filteredUsers(); track u.email) {
+              <li
+                role="option"
+                class="chat-user-option"
+                [class.selected]="u.email === selected()?.email"
+                [attr.aria-selected]="u.email === selected()?.email"
+                [attr.data-email]="u.email"
+                (click)="select(u.email)"
+              >
+                <app-user-avatar [src]="u.userId ? avatarUrl(u.userId) : null" [name]="u.email" />
+                <span class="chat-user-option-text">
+                  <span class="row">
+                    <strong>{{ displayName(u) }}</strong>
+                    @if (u.conv) {
+                      <time>{{ when(u.conv.lastDate) }}</time>
+                    }
+                  </span>
+                  <small>{{ u.conv ? preview(u.conv) : 'Belum ada pesan' }}</small>
+                </span>
+                @if (u.conv) {
+                  <span class="chat-count">{{ u.conv.total }}</span>
+                }
+              </li>
+            } @empty {
+              <li class="chat-user-empty">Tidak ada user yang cocok.</li>
+            }
+          </ul>
         </div>
       }
+    </div>
+
+    <div class="chat-filters">
+      <div class="chat-range">
+        <app-date-range-picker
+          [from]="from()"
+          [to]="to() === from() ? '' : to()"
+          [max]="today"
+          placeholder="Semua tanggal"
+          ariaLabel="Filter tanggal"
+          (rangeChange)="setRange($event)"
+        />
+        @if (from()) {
+          <button type="button" class="icon-btn chat-range-clear" aria-label="Hapus filter tanggal" (click)="clearRange()" data-clear-range>
+            <app-icon name="x" [size]="14" />
+          </button>
+        }
+      </div>
+      <app-select
+        class="chat-kind"
+        [options]="kindFilters"
+        [ngModel]="kind"
+        (ngModelChange)="setKind($event)"
+        ariaLabel="Filter jenis pesan"
+      />
+    </div>
+  </header>
+
+  <!-- Conversation -->
+  <div class="chat-pane">
+    @if (selected(); as u) {
+      <div class="chat-head">
+        <img class="chat-head-nudge" src="favicon.svg" alt="" width="36" height="36" />
+        <div>
+          <strong>Nudge</strong> <span class="chat-app-tag">APP</span>
+          <small>DM dengan {{ displayName(u) }}</small>
+        </div>
+        <span class="spacer"></span>
+        @if (live()) {
+          <span class="chat-live" title="Pesan baru muncul otomatis"><span class="dot"></span> Live</span>
+        }
+      </div>
     }
-  </section>
-</div>
+
+    <div class="chat-scroll" #scroller (scroll)="onScroll()">
+      @if (!email()) {
+        <div class="chat-empty">
+          <app-icon name="users" [size]="28" />
+          <p>Pilih satu user di atas untuk melihat chat-nya dengan Nudge.</p>
+        </div>
+      } @else if (loading()) {
+        <div class="chat-empty"><span class="spinner dark" aria-hidden="true"></span><p>Memuat chat…</p></div>
+      } @else if (error()) {
+        <div class="chat-empty error"><app-icon name="alert-circle" [size]="28" /><p>{{ error() }}</p></div>
+      } @else if (!messages().length) {
+        <div class="chat-empty">
+          <app-icon name="clock" [size]="28" />
+          <p>Belum ada pesan untuk filter ini.</p>
+        </div>
+      } @else {
+        @if (hasOlder()) {
+          <div class="chat-older">
+            <button type="button" class="btn btn-ghost btn-sm" [disabled]="loadingOlder()" (click)="loadOlder()" data-load-older>
+              {{ loadingOlder() ? 'Memuat…' : 'Muat pesan lebih lama' }}
+            </button>
+          </div>
+        }
+        @for (r of rows(); track r.key) {
+          @if (r.type === 'day') {
+            <div class="chat-day"><span>{{ r.label }}</span></div>
+          } @else if (isEvent(r.e)) {
+            <div class="chat-event" [attr.data-log-id]="r.e.id">
+              <app-icon [name]="r.e.kind === 'added' ? 'check-circle' : 'x'" [size]="13" />
+              {{ eventText(r.e, displayName(selected())) }} · {{ clock(r.e.createdDate) }}
+            </div>
+          } @else {
+            <div
+              class="chat-msg"
+              [class.in]="r.e.direction === 'in'"
+              [class.out]="r.e.direction === 'out'"
+              [class.first]="r.first"
+              [class.failed]="r.e.status === 'failed'"
+              [class.skipped]="r.e.status === 'skipped'"
+              [attr.data-log-id]="r.e.id"
+            >
+              <div class="chat-avatar">
+                @if (r.first) {
+                  @if (r.e.direction === 'out') {
+                    <img src="favicon.svg" alt="" width="32" height="32" />
+                  } @else {
+                    <app-user-avatar [src]="selected()?.userId ? avatarUrl(selected()!.userId!) : null" [name]="email()" />
+                  }
+                }
+              </div>
+              <div class="chat-col">
+                @if (r.first) {
+                  <div class="chat-sender">
+                    @if (r.e.direction === 'out') {
+                      <strong>Nudge</strong> <span class="chat-app-tag" [class.operator]="r.e.channel !== 'app'">{{ senderLabel(r.e) }}</span>
+                    } @else {
+                      <strong>{{ displayName(selected()) }}</strong>
+                    }
+                  </div>
+                }
+                <div class="chat-bubble">
+                  @if (r.e.kind === 'click') {
+                    <span class="chat-click"><app-icon name="target" [size]="14" /></span>
+                  }
+                  <span class="chat-text" [innerHTML]="format(r.e.body)"></span>
+                </div>
+                <div class="chat-meta">
+                  <span class="chat-kind-tag">{{ kindLabel[r.e.kind] || r.e.kind }}</span>
+                  <time>{{ clock(r.e.createdDate) }}</time>
+                  @if (r.e.status === 'failed') {
+                    <span class="chat-status failed"><app-icon name="alert-circle" [size]="12" /> Gagal terkirim</span>
+                  } @else if (r.e.status === 'skipped') {
+                    <span class="chat-status skipped">Tidak terkirim (dilewati)</span>
+                  } @else if (r.e.direction === 'out') {
+                    <span class="chat-status sent"><app-icon name="check" [size]="12" /></span>
+                  }
+                </div>
+                @if (r.e.error) {
+                  <div class="chat-error">{{ r.e.error }}</div>
+                }
+              </div>
+            </div>
+          }
+        }
+      }
+    </div>
+
+    @if (newBelow()) {
+      <button type="button" class="chat-new-below" (click)="jumpToNew()" data-new-below>
+        {{ newBelow() }} pesan baru <app-icon name="chevron-down" [size]="14" />
+      </button>
+    }
+  </div>
+</section>

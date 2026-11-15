@@ -38,7 +38,7 @@
         </div>
         <span class="status-badge" [class.active]="u.flagActive">{{ u.flagActive ? 'Aktif' : 'Nonaktif' }}</span>
         <a class="btn btn-ghost btn-sm" routerLink="/admin/chat-logs" [queryParams]="{ email: u.email }" data-chat-logs-link>
-          <app-icon name="clock" [size]="14" /> Riwayat pesan
+          <app-icon name="send" [size]="14" /> Lihat pesan
         </a>
       </div>
 

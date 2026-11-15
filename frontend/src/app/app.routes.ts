@@ -76,8 +76,8 @@ export const routes: Routes = [
       {
         path: 'chat-logs',
         loadComponent: () => import('./features/admin/chat-logs/chat-logs.component').then((m) => m.ChatLogsComponent),
-        title: 'Riwayat Pesan · Admin · Nudge',
-        data: { heading: 'Riwayat Pesan', subheading: 'Pesan Nudge dan aksi user di Google Chat', crumbs: ['Admin', 'Riwayat Pesan'] },
+        title: 'Pesan · Admin · Nudge',
+        data: { heading: 'Pesan', subheading: 'Chat tiap user dengan Nudge di Google Chat', crumbs: ['Admin', 'Pesan'] },
       },
     ],
   },

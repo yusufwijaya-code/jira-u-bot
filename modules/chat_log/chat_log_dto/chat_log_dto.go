@@ -59,7 +59,22 @@ type Filter struct {
 	From     time.Time
 	To       time.Time
 	BeforeID int64
-	Limit    int
+	// AfterID keeps only entries newer than this ID (live polling).
+	AfterID int64
+	Limit   int
+	// Kinds keeps only these kinds; empty = all.
+	Kinds []string
+}
+
+// Conversation is one user's thread with Nudge: its size and last entry.
+type Conversation struct {
+	Email         string    `json:"email"`
+	Total         int       `json:"total"`
+	LastDirection string    `json:"lastDirection"`
+	LastKind      string    `json:"lastKind"`
+	LastStatus    string    `json:"lastStatus"`
+	LastBody      string    `json:"lastBody"`
+	LastDate      time.Time `json:"lastDate"`
 }
 
 type Page struct {
