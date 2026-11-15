@@ -568,3 +568,21 @@ func TestMatchStatus_FollowsEachProjectsStatusNames(t *testing.T) {
 		t.Error("an ambiguous word must not pick a status")
 	}
 }
+
+func TestView_RowsAreSeparatedByDividersAndFoldCountsThem(t *testing.T) {
+	var items []item
+	for i := 0; i < 5; i++ {
+		items = append(items, item{row: &row{main: "T"}})
+	}
+	c := view{title: "x", sections: []section{{collapseAfter: 2, items: items}}}.card()
+	s := c.Card.Sections[0]
+	if len(s.Widgets) != 9 {
+		t.Fatalf("widgets = %d, want 5 rows + 4 dividers", len(s.Widgets))
+	}
+	if s.Widgets[1].Divider == nil || s.Widgets[2].DecoratedText == nil {
+		t.Errorf("expected row, divider, row: %+v", s.Widgets[:3])
+	}
+	if !s.Collapsible || s.UncollapsibleWidgetsCount != 3 {
+		t.Errorf("collapsible=%v visible=%d, want the first 2 rows (3 widgets)", s.Collapsible, s.UncollapsibleWidgetsCount)
+	}
+}
