@@ -4,6 +4,7 @@ package chat_app_service
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -129,11 +130,42 @@ func (s *service) message(ctx context.Context, ev chat_app_dto.Event) chat_app_d
 	return chat_app_dto.Response{Text: s.runCommand(email, ev.Space.Name, text)}
 }
 
+const geserUsage = "Format: */n-geser <issueKey> <todo|code-review>*, contoh */n-geser CORE-123 code-review*"
+
+// slashCommands maps the Command IDs registered in the Chat App
+// configuration to the /n-* text chat_interactive understands (AC5.1).
+var slashCommands = map[string]string{
+	"1": "/n-mytickets",
+	"2": "/n-budget",
+	"3": "/n-overdue",
+	"4": "/n-team",
+	"5": "/n-help",
+	"6": "/n-geser",
+}
+
 // commandText is the /n-* text a message stands for; a non-empty second
-// value is a usage hint to reply with instead (slash commands, Task 13).
+// value is a usage hint to reply with instead.
 func commandText(msg *chat_app_dto.Message) (string, string) {
 	if msg == nil {
 		return "", ""
+	}
+	if msg.SlashCommand != nil {
+		name, ok := slashCommands[string(msg.SlashCommand.CommandID)]
+		if !ok {
+			return "/n-help", ""
+		}
+		args := strings.TrimSpace(msg.ArgumentText)
+		if name == "/n-geser" {
+			fields := strings.Fields(args)
+			if len(fields) != 2 {
+				return "", geserUsage
+			}
+			return fmt.Sprintf("/n-geser<%s>:%s", strings.ToUpper(fields[0]), strings.ToLower(fields[1])), ""
+		}
+		if args != "" {
+			return name + " " + args, ""
+		}
+		return name, ""
 	}
 	if arg := strings.TrimSpace(msg.ArgumentText); arg != "" {
 		return arg, ""

@@ -162,8 +162,9 @@ func (s *chatInteractiveServiceImpl) handleHelp() string {
 		"*/n-budget <issueKey>* — detail budget satu tiket\n" +
 		"*/n-overdue* — semua tiket yang lewat budget\n" +
 		"*/n-team* — ringkasan semua tiket aktif per orang\n" +
-		"*/n-geser<issueKey>:todo* — geser tiket kamu balik ke To Do\n" +
-		"*/n-geser<issueKey>:code-review* — geser tiket kamu ke Code Review"
+		"*/n-geser <issueKey> todo* — geser tiket kamu balik ke To Do (di app Nudge)\n" +
+		"*/n-geser <issueKey> code-review* — geser tiket kamu ke Code Review (di app Nudge)\n" +
+		"*/n-geser<issueKey>:todo* / *:code-review* — format lama, tetap bisa"
 }
 
 func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {

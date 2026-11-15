@@ -163,3 +163,27 @@ func TestHandle_NonDMIsIgnored(t *testing.T) {
 		t.Errorf("non-DM reply = %+v", res)
 	}
 }
+
+func TestCommandText_SlashCommands(t *testing.T) {
+	slash := func(id, args string) *chat_app_dto.Message {
+		return &chat_app_dto.Message{Text: "/x " + args, ArgumentText: args, SlashCommand: &chat_app_dto.SlashCommand{CommandID: chat_app_dto.FlexString(id)}}
+	}
+	cases := []struct {
+		msg        *chat_app_dto.Message
+		want, hint string
+	}{
+		{slash("1", ""), "/n-mytickets", ""},
+		{slash("2", " CORE-12 "), "/n-budget CORE-12", ""},
+		{slash("5", ""), "/n-help", ""},
+		{slash("6", "core-123 Code-Review"), "/n-geser<CORE-123>:code-review", ""},
+		{slash("6", "CORE-123"), "", geserUsage},
+		{slash("99", ""), "/n-help", ""},
+		{&chat_app_dto.Message{Text: "/n-geser<CORE-1>:todo", ArgumentText: "/n-geser<CORE-1>:todo"}, "/n-geser<CORE-1>:todo", ""},
+	}
+	for _, c := range cases {
+		got, hint := commandText(c.msg)
+		if got != c.want || hint != c.hint {
+			t.Errorf("commandText(%+v) = %q, %q; want %q, %q", c.msg, got, hint, c.want, c.hint)
+		}
+	}
+}
