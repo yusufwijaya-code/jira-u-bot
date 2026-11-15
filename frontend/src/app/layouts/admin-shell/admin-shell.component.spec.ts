@@ -23,9 +23,9 @@ describe('AdminShellComponent', () => {
 
   it('renders the three admin menu items', () => {
     const links = Array.from(el().querySelectorAll('.sidebar-nav .nav-item')).map((a) => a.textContent!.trim());
-    expect(links).toEqual(['Dashboard', 'User', 'Broadcast Message']);
+    expect(links).toEqual(['Dashboard', 'User', 'Broadcast Message', 'Riwayat Pesan']);
     const hrefs = Array.from(el().querySelectorAll('.sidebar-nav .nav-item')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toEqual(['/admin', '/admin/users', '/admin/broadcast']);
+    expect(hrefs).toEqual(['/admin', '/admin/users', '/admin/broadcast', '/admin/chat-logs']);
   });
 
   it('has a Dashboard Utama button to the main dashboard', () => {

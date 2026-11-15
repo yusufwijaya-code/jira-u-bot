@@ -15,7 +15,7 @@ interface AdminPage {
 
 /**
  * Layout of the admin area (/admin, Tech Spec "Admin Panel Revamp"): its
- * own sidebar (Dashboard / User / Broadcast Message) and a top bar with a
+ * own sidebar (Dashboard / User / Broadcast Message / Riwayat Pesan) and a top bar with a
  * way back to the main dashboard. No board picker or mute badge — those
  * belong to the user's own dashboard.
  */

@@ -13,6 +13,7 @@ import (
 	"nudge/modules/auth/auth_middleware"
 	"nudge/modules/auth/auth_service"
 	"nudge/modules/chat_app_activation"
+	"nudge/modules/chat_log/chat_log_handler"
 	"nudge/modules/sprint_report"
 	"nudge/modules/sprint_report/sprint_report_handler"
 	"nudge/modules/user_avatar/user_avatar_handler"
@@ -105,6 +106,13 @@ type ChatAppRoutes struct {
 	Activation  *chat_app_activation.Handler
 	AdminTarget user_dashboard_handler.TargetResolver
 	AdminChange user_dashboard_handler.ChangeListener
+}
+
+// MountChatLog mounts the admin "Riwayat pesan" list (admin only).
+func MountChatLog(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.AuthService, h *chat_log_handler.Handler) {
+	admin := r.Group(cfg.BasePath + "/api/dashboard/admin")
+	admin.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg), auth_middleware.AdminMiddleware(cfg))
+	admin.GET("/chat-logs", h.List)
 }
 
 // MountChatApp mounts the Chat App routes next to SetupRouter's.

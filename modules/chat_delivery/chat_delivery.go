@@ -14,6 +14,7 @@ import (
 
 	"nudge/modules/chat_app/chat_app_client"
 	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/chat_log/chat_log_dto"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
 )
@@ -51,6 +52,8 @@ type Deps struct {
 	OperatorName  string
 	// Cards is nil until phase 3: the app then gets the plain text.
 	Cards CardBuilder
+	// Log records every send for the admin "Riwayat pesan" (nil = off).
+	Log chat_log_dto.Recorder
 }
 
 type Router struct {
@@ -92,36 +95,57 @@ func (r *Router) SendReminder(ctx context.Context, msg google_chat_notifier_dto.
 	if r.d.Cards != nil {
 		appMsg.Text, appMsg.CardsV2 = r.d.Cards(msg)
 	}
-	return r.deliver(ctx, msg.AssigneeEmail, text, appMsg)
+	return r.logged(ctx, chat_log_dto.KindReminder, msg.AssigneeEmail, text, appMsg)
 }
 
 func (r *Router) SendPlainTextDM(ctx context.Context, email, text string) error {
-	return r.deliver(ctx, email, text, chat_app_dto.OutgoingMessage{Text: text})
+	return r.logged(ctx, chat_log_dto.KindMessage, email, text, chat_app_dto.OutgoingMessage{Text: text})
 }
 
-func (r *Router) deliver(ctx context.Context, email, text string, appMsg chat_app_dto.OutgoingMessage) error {
+// logged delivers and records the outcome for the admin "Riwayat pesan".
+func (r *Router) logged(ctx context.Context, kind, email, text string, appMsg chat_app_dto.OutgoingMessage) error {
+	channel, err := r.deliver(ctx, email, text, appMsg)
+	if r.d.Log != nil {
+		e := chat_log_dto.Entry{
+			Email: email, Direction: chat_log_dto.DirectionOut, Kind: kind,
+			Channel: channel, Status: chat_log_dto.StatusSent, Body: text,
+		}
+		switch {
+		case errors.Is(err, ErrRecipientNotActivated):
+			e.Status = chat_log_dto.StatusSkipped
+		case err != nil:
+			e.Status, e.Error = chat_log_dto.StatusFailed, err.Error()
+		}
+		r.d.Log.Record(ctx, e)
+	}
+	return err
+}
+
+// deliver sends the message and reports the channel it went (or tried to
+// go) through: app, operator or fallback.
+func (r *Router) deliver(ctx context.Context, email, text string, appMsg chat_app_dto.OutgoingMessage) (string, error) {
 	isOp := IsOperator(email, r.d.OperatorEmail)
 	state, _, err := r.d.Store.FindByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("chat_delivery: load chat state of %s: %w", email, err)
+		return "", fmt.Errorf("chat_delivery: load chat state of %s: %w", email, err)
 	}
 	appEnabled := r.d.App != nil
 
 	if EffectiveSender(state, isOp, appEnabled) == chat_app_dto.SenderOperator {
 		if isOp || r.d.Legacy == nil {
-			return ErrRecipientNotActivated
+			return "", ErrRecipientNotActivated
 		}
 		if appEnabled && state.Sender == nil && !state.Activated() {
 			text += inviteFooter
 		}
-		return r.d.Legacy.SendPlainTextDM(ctx, email, text)
+		return chat_log_dto.ChannelOperator, r.d.Legacy.SendPlainTextDM(ctx, email, text)
 	}
 
 	appErr := ErrRecipientNotActivated
 	if state.Activated() {
 		err := r.d.App.CreateMessage(ctx, state.SpaceID, appMsg)
 		if err == nil {
-			return nil
+			return chat_log_dto.ChannelApp, nil
 		}
 		appErr = err
 		if chat_app_client.IsGone(err) {
@@ -131,16 +155,20 @@ func (r *Router) deliver(ctx context.Context, email, text string, appMsg chat_ap
 		}
 	}
 	if isOp || r.d.Legacy == nil {
-		return appErr
+		channel := ""
+		if state.Activated() {
+			channel = chat_log_dto.ChannelApp
+		}
+		return channel, appErr
 	}
 
 	log.Printf("chat_delivery: app send to %s failed, falling back to the operator DM: %v", email, appErr)
 	footer := fmt.Sprintf("\n\n_(dikirim lewat akun %s karena app Nudge sedang gangguan)_", r.d.OperatorName)
 	if err := r.d.Legacy.SendPlainTextDM(ctx, email, text+footer); err != nil {
 		if errors.Is(appErr, ErrRecipientNotActivated) {
-			return err
+			return chat_log_dto.ChannelFallback, err
 		}
-		return errors.Join(appErr, err)
+		return chat_log_dto.ChannelFallback, errors.Join(appErr, err)
 	}
-	return nil
+	return chat_log_dto.ChannelFallback, nil
 }

@@ -37,8 +37,8 @@ describe('app routes', () => {
     expect(await admin().loadComponent!()).toBe(AdminShellComponent);
   });
 
-  it('has the four admin pages', async () => {
-    expect(admin().children!.map((c) => c.path)).toEqual(['', 'users', 'users/:id', 'broadcast']);
+  it('has the five admin pages', async () => {
+    expect(admin().children!.map((c) => c.path)).toEqual(['', 'users', 'users/:id', 'broadcast', 'chat-logs']);
     const detail = admin().children!.find((c) => c.path === 'users/:id')!;
     expect(await detail.loadComponent!()).toBe(AdminUserDetailComponent);
   });
