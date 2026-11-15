@@ -273,3 +273,32 @@ func TestStateLookupErrorIsReturnedAndNothingIsSent(t *testing.T) {
 		t.Errorf("err=%v app=%d legacy=%d", err, len(app.sent), len(legacy.sent))
 	}
 }
+
+func TestSendPlainTextDM_TextCardsOnTheAppTextOnTheOperator(t *testing.T) {
+	cardFor := func(text string) (string, []chat_app_dto.CardWithID, bool) {
+		if !strings.Contains(text, "/n-help") {
+			return text, nil, false
+		}
+		return "short", []chat_app_dto.CardWithID{{CardID: "c"}}, true
+	}
+	store := &fakeStore{states: map[string]chat_app_dto.State{user: active(nil)}}
+	app := &fakeApp{}
+	r := New(Deps{Store: store, App: app, OperatorEmail: op, TextCards: cardFor})
+	_ = r.SendPlainTextDM(context.Background(), user, "halo\nKetik */n-help*")
+	_ = r.SendAdminMessage(context.Background(), user, "pesan biasa")
+	if len(app.sent) != 2 || len(app.sent[0].CardsV2) != 1 || app.sent[0].FallbackText != "short" || app.sent[0].Text != "" {
+		t.Fatalf("hinted notice = %+v", app.sent)
+	}
+	if app.sent[1].Text != "pesan biasa" || len(app.sent[1].CardsV2) != 0 {
+		t.Errorf("plain notice = %+v", app.sent[1])
+	}
+
+	op := &fakeLegacy{}
+	explicit := &fakeStore{states: map[string]chat_app_dto.State{user: active(ptr("operator"))}}
+	_ = New(Deps{Store: explicit, App: app, Legacy: op, OperatorEmail: op2, TextCards: cardFor}).SendPlainTextDM(context.Background(), user, "halo\nKetik */n-help*")
+	if op.sent[user] != "halo\nKetik */n-help*" {
+		t.Errorf("operator path must keep the text, got %q", op.sent[user])
+	}
+}
+
+const op2 = "bot@esb.co.id"

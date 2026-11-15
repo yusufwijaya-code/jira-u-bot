@@ -52,6 +52,9 @@ type Deps struct {
 	OperatorName  string
 	// Cards is nil until phase 3: the app then gets the plain text.
 	Cards CardBuilder
+	// TextCards (optional) turns a plain notice into a card on the app path
+	// (ok false = send the text as is), e.g. its /n-help hint as a button.
+	TextCards func(text string) (short string, cards []chat_app_dto.CardWithID, ok bool)
 	// Log records every send for the admin "Riwayat pesan" (nil = off).
 	Log chat_log_dto.Recorder
 }
@@ -99,13 +102,24 @@ func (r *Router) SendReminder(ctx context.Context, msg google_chat_notifier_dto.
 }
 
 func (r *Router) SendPlainTextDM(ctx context.Context, email, text string) error {
-	return r.logged(ctx, chat_log_dto.KindMessage, email, text, chat_app_dto.OutgoingMessage{Text: text})
+	return r.logged(ctx, chat_log_dto.KindMessage, email, text, r.textMessage(text))
 }
 
 // SendAdminMessage sends a message an admin typed on the Pesan page; it
 // goes like any notice but is recorded as kind "admin".
 func (r *Router) SendAdminMessage(ctx context.Context, email, text string) error {
-	return r.logged(ctx, chat_log_dto.KindAdmin, email, text, chat_app_dto.OutgoingMessage{Text: text})
+	return r.logged(ctx, chat_log_dto.KindAdmin, email, text, r.textMessage(text))
+}
+
+// textMessage is the app version of a plain notice (a card when TextCards
+// makes one); the operator path always gets the text.
+func (r *Router) textMessage(text string) chat_app_dto.OutgoingMessage {
+	if r.d.TextCards != nil {
+		if short, cards, ok := r.d.TextCards(text); ok {
+			return chat_app_dto.OutgoingMessage{FallbackText: short, CardsV2: cards}
+		}
+	}
+	return chat_app_dto.OutgoingMessage{Text: text}
 }
 
 // logged delivers and records the outcome for the admin "Riwayat pesan".

@@ -222,6 +222,7 @@ func main() {
 	operatorName := resolveOperatorName(context.Background(), registrationRepo, cfg.JiraEmail)
 	deliveryDeps := chat_delivery.Deps{Store: chatAppRepo, OperatorEmail: cfg.JiraEmail, OperatorName: operatorName, Log: chatLogRepo}
 	deliveryDeps.Cards = chat_app_card.Build // phase 3: cards with action buttons on the app path
+	deliveryDeps.TextCards = chat_app_card.TextCard // the "/n-help" hint of a notice becomes a menu button
 	if chatAppClient != nil {
 		deliveryDeps.App = chatAppClient
 	}

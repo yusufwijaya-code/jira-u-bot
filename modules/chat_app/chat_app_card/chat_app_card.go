@@ -13,8 +13,57 @@ import (
 	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
 )
 
-// GeserFunction is the action name of the move buttons (CARD_CLICKED).
+// GeserFunction is the action name of the old move buttons (CARD_CLICKED);
+// cards already in chats still send it.
 const GeserFunction = "geser"
+
+// Buttons answered by chat_interactive (its ActionPrefix "nudge." + name):
+// open one ticket with a button per Jira workflow status, or run a command.
+const (
+	ticketFunction  = "nudge.ticket"
+	commandFunction = "nudge.cmd"
+)
+
+// helpHintPattern matches the "💡 Ketik /n-help ..." line of a message;
+// cards show a menu button instead.
+var helpHintPattern = regexp.MustCompile(`(?m)^.*Ketik \*?/n-help\*?.*$\n?`)
+
+// MenuButton opens the Nudge menu (/n-help).
+func MenuButton() chat_app_dto.Button {
+	return actionButton("📋 Buka menu Nudge", commandFunction, "cmd", "/n-help")
+}
+
+func geserButton(issueKey string) chat_app_dto.Button {
+	return actionButton("🔀 Geser status", ticketFunction, "key", issueKey)
+}
+
+func actionButton(label, function string, kv ...string) chat_app_dto.Button {
+	params := []chat_app_dto.ActionParameter{{Key: "label", Value: label}}
+	for i := 0; i+1 < len(kv); i += 2 {
+		params = append(params, chat_app_dto.ActionParameter{Key: kv[i], Value: kv[i+1]})
+	}
+	return chat_app_dto.Button{Text: label, OnClick: chat_app_dto.OnClick{Action: &chat_app_dto.OnClickAction{Function: function, Parameters: params}}}
+}
+
+// WithoutHelpHint drops the "Ketik /n-help" line (and trailing blank lines).
+func WithoutHelpHint(text string) string {
+	return strings.TrimRight(helpHintPattern.ReplaceAllString(text, ""), "\n ")
+}
+
+// TextCard turns a plain notice into a card when it advertises /n-help: the
+// hint becomes a menu button. ok is false for any other text (sent as is).
+func TextCard(text string) (string, []chat_app_dto.CardWithID, bool) {
+	if !helpHintPattern.MatchString(text) {
+		return text, nil, false
+	}
+	body := WithoutHelpHint(text)
+	short, _, _ := strings.Cut(body, "\n")
+	card := chat_app_dto.Card{Sections: []chat_app_dto.Section{{Widgets: []chat_app_dto.Widget{
+		{TextParagraph: &chat_app_dto.TextParagraph{Text: ToCardHTML(body)}},
+		{ButtonList: &chat_app_dto.ButtonList{Buttons: []chat_app_dto.Button{MenuButton()}}},
+	}}}}
+	return short, []chat_app_dto.CardWithID{{CardID: "nudge-notice", Card: card}}, true
+}
 
 var boldPattern = regexp.MustCompile(`\*([^*\n]+)\*`)
 
@@ -26,18 +75,15 @@ func ToCardHTML(chatText string) string {
 	return strings.ReplaceAll(s, "\n", "<br>")
 }
 
-type move struct {
-	label, target string
-}
-
 // Build is a chat_delivery.CardBuilder: the short text shown in
-// notifications plus one card.
+// notifications plus one card. Every card about a ticket (reminder,
+// overage, status change) gets "Geser status" — it opens the ticket with a
+// button per status its Jira workflow allows — plus Jira and the menu.
 func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto.CardWithID) {
 	var short, body string
-	var moves []move
 	header := &chat_app_dto.CardHeader{Title: msg.IssueKey, Subtitle: msg.IssueSummary}
 	if msg.Text != "" {
-		// Status change notice (AC6.2): Jira link only.
+		// Status change notice (AC6.2).
 		short, body, _ = strings.Cut(msg.Text, "\n")
 		if body == "" {
 			body = short
@@ -50,26 +96,17 @@ func Build(msg google_chat_notifier_dto.ReminderMessage) (string, []chat_app_dto
 		if _, title, ok := strings.Cut(short, " — "); ok {
 			header.Title = msg.IssueKey + " — " + strings.ReplaceAll(title, "*", "")
 		}
-		// Same targets /n-geser supports; a ticket in review only goes back.
-		if !msg.InReview {
-			moves = append(moves, move{"Geser ke Code Review", "code-review"})
-		}
-		moves = append(moves, move{"Geser ke To Do", "todo"})
 	}
+	body = WithoutHelpHint(body)
 
 	var bs []chat_app_dto.Button
-	for _, m := range moves {
-		bs = append(bs, chat_app_dto.Button{Text: m.label, OnClick: chat_app_dto.OnClick{Action: &chat_app_dto.OnClickAction{
-			Function: GeserFunction,
-			Parameters: []chat_app_dto.ActionParameter{
-				{Key: "issueKey", Value: msg.IssueKey},
-				{Key: "target", Value: m.target},
-			},
-		}}})
+	if msg.IssueKey != "" {
+		bs = append(bs, geserButton(msg.IssueKey))
 	}
 	if msg.IssueURL != "" {
 		bs = append(bs, chat_app_dto.Button{Text: "Buka di Jira", OnClick: chat_app_dto.OnClick{OpenLink: &chat_app_dto.OpenLink{URL: msg.IssueURL}}})
 	}
+	bs = append(bs, MenuButton())
 
 	widgets := []chat_app_dto.Widget{{TextParagraph: &chat_app_dto.TextParagraph{Text: ToCardHTML(body)}}}
 	if len(bs) > 0 {
