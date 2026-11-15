@@ -120,3 +120,34 @@ func TestGet_ReturnsSameInstanceAcrossCalls(t *testing.T) {
 		t.Error("Get() returned different instances across calls, want singleton")
 	}
 }
+
+func TestLoadConfig_ChatAppSettings(t *testing.T) {
+	t.Setenv("GOOGLE_CHAT_APP_CREDENTIALS_FILE", "/var/www/nudge/shared/data/chat-app-sa.json")
+	t.Setenv("GOOGLE_CHAT_APP_PROJECT_NUMBER", "275006361614")
+	t.Setenv("GOOGLE_CHAT_APP_ACTIVATION_REDIRECT_URL", "https://nudge.labcup.tech/auth/chat-app/callback")
+
+	var cfg AppConfig
+	if err := LoadConfig(&cfg); err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.GoogleChatAppCredentialsFile != "/var/www/nudge/shared/data/chat-app-sa.json" {
+		t.Errorf("GoogleChatAppCredentialsFile = %q", cfg.GoogleChatAppCredentialsFile)
+	}
+	if cfg.GoogleChatAppProjectNumber != "275006361614" {
+		t.Errorf("GoogleChatAppProjectNumber = %q", cfg.GoogleChatAppProjectNumber)
+	}
+	if cfg.GoogleChatAppActivationRedirectURL != "https://nudge.labcup.tech/auth/chat-app/callback" {
+		t.Errorf("GoogleChatAppActivationRedirectURL = %q", cfg.GoogleChatAppActivationRedirectURL)
+	}
+	if !cfg.GoogleChatAppOneClick {
+		t.Error("GoogleChatAppOneClick = false, want true by default")
+	}
+
+	t.Setenv("GOOGLE_CHAT_APP_ONE_CLICK", "false")
+	if err := LoadConfig(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GoogleChatAppOneClick {
+		t.Error("GoogleChatAppOneClick = true, want false when GOOGLE_CHAT_APP_ONE_CLICK=false")
+	}
+}
