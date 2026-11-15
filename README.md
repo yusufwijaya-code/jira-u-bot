@@ -66,7 +66,7 @@ Produksi: `https://labcup.tech/nudge/` (Ubuntu, nginx, systemd unit `nudge`, MyS
 
 - **CI** (`.github/workflows/ci.yml`) — tiap PR dan push ke `feat/**`: `go vet`, `go test` (MySQL 8 service), build backend; `ng test` (ChromeHeadless) dan `ng build` frontend.
 - **Deploy** (`.github/workflows/deploy.yml`) — push ke `main` atau manual (*Run workflow*): jalankan CI → build binary Linux + bundle Angular jadi satu `nudge.tar.gz` → `scp` ke server → `deploy/remote-deploy.sh` membuka release baru, memindah symlink `current`, restart service, dan **rollback otomatis** kalau `/nudge/ping` tidak menjawab. Lima release terakhir disimpan.
-- **Secrets GitHub** (environment `production`): `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS` (output `ssh-keyscan <host>`), opsional `SSH_PORT` (default 22).
+- **Secrets GitHub** (environment `production`): `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, opsional `SSH_PORT` (default 22) dan `SSH_KNOWN_HOSTS` (override; default pakai host key yang di-pin di `deploy/known_hosts` — update file itu kalau server di-rebuild).
 
 Layout server:
 

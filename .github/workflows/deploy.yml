@@ -64,10 +64,17 @@ jobs:
       name: production
       url: https://labcup.tech/nudge/dashboard
     steps:
+      # Only the pinned host keys are needed from the repo here.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/known_hosts
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v4
         with:
           name: nudge-release
 
+      # Host keys: the SSH_KNOWN_HOSTS secret when set, else deploy/known_hosts.
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -76,7 +83,11 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            cp deploy/known_hosts ~/.ssh/known_hosts
+          fi
 
       - name: Upload and switch release
         env:
