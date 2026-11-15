@@ -7,623 +7,510 @@ import (
 	"testing"
 	"time"
 
-	"nudge/modules/business_hours/business_hours_dto"
-	"nudge/modules/business_hours/business_hours_service"
-	"nudge/modules/issue_session/issue_session_dto"
-	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/registration/registration_dto"
+	"nudge/modules/user_dashboard/user_dashboard_dto"
+	"nudge/modules/user_dashboard/user_dashboard_service"
+	"nudge/modules/user_leave/user_leave_dto"
+	"nudge/modules/user_leave/user_leave_service"
+	"nudge/modules/user_setting/user_setting_dto"
 )
 
-var errGeserTest = errors.New("jira api error")
+const dev = "dev@esb.co.id"
 
-type fakeJiraClientServiceForChat struct {
-	transitions     []jira_client_dto.Transition
-	transitionsErr  error
-	transitionErr   error
-	transitionCalls []string // "issueKey|transitionID"
+// Monday 16 Nov 2026, 10:00 WIB.
+var now = time.Date(2026, 11, 16, 10, 0, 0, 0, wib)
 
-	// lastTransitionsCred/lastTransitionCred capture whichever credential
-	// GetTransitionsAs/TransitionIssueAs were called with — nil means "the
-	// central credential" (Chapter 9d tests assert on these).
-	lastTransitionsCred *jira_client_dto.Credential
-	lastTransitionCred  *jira_client_dto.Credential
+type fakeUsers map[string]*registration_dto.User
+
+func (f fakeUsers) FindUserByEmail(_ context.Context, email string) (*registration_dto.User, bool, error) {
+	u, ok := f[email]
+	return u, ok, nil
 }
 
-func (f *fakeJiraClientServiceForChat) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
-	return nil, nil
-}
-func (f *fakeJiraClientServiceForChat) GetLatestCodeProcessEntryTime(ctx context.Context, issueKey string) (time.Time, bool, error) {
-	return time.Time{}, false, nil
-}
-
-func (f *fakeJiraClientServiceForChat) GetTrackedRunTimes(ctx context.Context, issueKey string) (time.Time, time.Time, bool, error) {
-	t, found, err := f.GetLatestCodeProcessEntryTime(ctx, issueKey)
-	return t, t, found, err
-}
-func (f *fakeJiraClientServiceForChat) LookupUserByEmail(ctx context.Context, email string) (string, bool, error) {
-	return "", false, nil
-}
-func (f *fakeJiraClientServiceForChat) GetIssueStatus(ctx context.Context, issueKey string) (string, error) {
-	return "", nil
-}
-func (f *fakeJiraClientServiceForChat) GetTransitions(ctx context.Context, issueKey string) ([]jira_client_dto.Transition, error) {
-	return f.transitions, f.transitionsErr
-}
-func (f *fakeJiraClientServiceForChat) TransitionIssue(ctx context.Context, issueKey, transitionID string) error {
-	f.transitionCalls = append(f.transitionCalls, issueKey+"|"+transitionID)
-	return f.transitionErr
+type fakeDashboard struct {
+	board       user_dashboard_dto.Board
+	boardErr    error
+	transitions map[string]user_dashboard_dto.TicketTransitions
+	moved       []string
+	moveErr     error
 }
 
-func (f *fakeJiraClientServiceForChat) SearchAllIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
-	return nil, nil
+func (f *fakeDashboard) GetMyBoard(context.Context, string, int64) (user_dashboard_dto.Board, error) {
+	return f.board, f.boardErr
 }
 
-func (f *fakeJiraClientServiceForChat) GetTransitionsAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) ([]jira_client_dto.Transition, error) {
-	f.lastTransitionsCred = cred
-	return f.transitions, f.transitionsErr
+func (f *fakeDashboard) DescribeBoard(_ context.Context, id int64) (string, string) {
+	return map[int64]string{1: "CORE Board", 2: "OMS Board"}[id], ""
 }
 
-func (f *fakeJiraClientServiceForChat) TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error {
-	f.lastTransitionCred = cred
-	f.transitionCalls = append(f.transitionCalls, issueKey+"|"+transitionID)
-	return f.transitionErr
-}
-
-type fakeRegistrationRepoForChat struct {
-	users map[string]registration_dto.User
-}
-
-func (f *fakeRegistrationRepoForChat) UpsertUser(ctx context.Context, name, email, jiraAccountID string) error {
-	return nil
-}
-func (f *fakeRegistrationRepoForChat) FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error) {
-	u, ok := f.users[email]
+func (f *fakeDashboard) ListTransitions(_ context.Context, _ string, key string) (user_dashboard_dto.TicketTransitions, error) {
+	t, ok := f.transitions[key]
 	if !ok {
-		return nil, false, nil
+		return t, user_dashboard_service.ErrNotOwnTicket
 	}
-	return &u, true, nil
+	return t, nil
 }
-func (f *fakeRegistrationRepoForChat) FindUserByJiraAccountID(ctx context.Context, jiraAccountID string) (*registration_dto.User, bool, error) {
-	return nil, false, nil
+
+func (f *fakeDashboard) Transition(_ context.Context, _ string, key, id string) (string, error) {
+	if f.moveErr != nil {
+		return "", f.moveErr
+	}
+	f.moved = append(f.moved, key+">"+id)
+	for _, tr := range f.transitions[key].Transitions {
+		if tr.ID == id {
+			return tr.ToStatus, nil
+		}
+	}
+	return "", user_dashboard_service.ErrTransitionUnavailable
 }
-func (f *fakeRegistrationRepoForChat) UpdateGoogleChatDMSpaceID(ctx context.Context, email, spaceID string) error {
+
+type fakeLeaves struct {
+	leaves  []user_leave_dto.Leave
+	added   []string
+	removed []string
+	addErr  error
+}
+
+func (f *fakeLeaves) List(context.Context, string) ([]user_leave_dto.Leave, error) {
+	return f.leaves, nil
+}
+
+func (f *fakeLeaves) Add(_ context.Context, _ string, from, to, note string) (user_leave_dto.AddResult, error) {
+	if f.addErr != nil {
+		return user_leave_dto.AddResult{}, f.addErr
+	}
+	f.added = append(f.added, from+".."+to+"|"+note)
+	return user_leave_dto.AddResult{Added: []string{from}}, nil
+}
+
+func (f *fakeLeaves) Remove(_ context.Context, _ string, date string) (bool, error) {
+	f.removed = append(f.removed, date)
+	return false, nil
+}
+
+type fakeSettings struct {
+	mutedUntil *time.Time
+	switchOff  bool
+	unmuted    int
+}
+
+func (f *fakeSettings) GetEffective(context.Context, int64, int64) (user_setting_dto.UserSetting, error) {
+	return user_setting_dto.UserSetting{MutedUntil: f.mutedUntil}, nil
+}
+
+func (f *fakeSettings) MuteUntil(_ context.Context, _, _ int64, until time.Time) error {
+	f.mutedUntil = &until
 	return nil
 }
 
-
-func (f *fakeRegistrationRepoForChat) FindAll(ctx context.Context) ([]registration_dto.User, error) {
-	return nil, nil
-}
-
-func (f *fakeRegistrationRepoForChat) UpdateFlagActive(ctx context.Context, userID int64, active bool) error {
+func (f *fakeSettings) Unmute(context.Context, int64, int64) error {
+	f.mutedUntil = nil
+	f.unmuted++
 	return nil
 }
 
-func (f *fakeRegistrationRepoForChat) UpdateJiraAccountID(ctx context.Context, userID int64, jiraAccountID string) error {
-	return nil
+func (f *fakeSettings) NotificationSwitch(context.Context, int64) (user_setting_dto.NotificationSwitch, error) {
+	return user_setting_dto.NotificationSwitch{Enabled: !f.switchOff, Chosen: true}, nil
 }
 
-func (f *fakeRegistrationRepoForChat) DeleteByID(ctx context.Context, userID int64) error {
-	return nil
-}
-func (f *fakeRegistrationRepoForChat) FindAllWithGoogleChatDMSpaceID(ctx context.Context) ([]registration_dto.User, error) {
-	return nil, nil
-}
-
-type fakeIssueSessionRepoForChat struct {
-	byAssignee map[string][]issue_session_dto.IssueSession
-	all        []issue_session_dto.IssueSession
-	byKey      map[string]issue_session_dto.IssueSession
+type fixture struct {
+	dash     *fakeDashboard
+	leaves   *fakeLeaves
+	settings *fakeSettings
+	svc      ChatInteractiveService
 }
 
-func (f *fakeIssueSessionRepoForChat) OpenOrResumeSession(ctx context.Context, issueKey, projectKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
-	return nil
-}
-func (f *fakeIssueSessionRepoForChat) OpenOrResumeSessionAt(ctx context.Context, issueKey, projectKey string, sp float64, startedAt time.Time, assigneeEmail, issueSummary, sprintName string) error {
-	return nil
-}
-func (f *fakeIssueSessionRepoForChat) UpdateStoryPoints(ctx context.Context, issueKey string, sp float64, assigneeEmail, issueSummary, sprintName string) error {
-	return nil
-}
-func (f *fakeIssueSessionRepoForChat) CloseSession(ctx context.Context, issueKey string, additionalSeconds int64) error {
-	return nil
-}
-func (f *fakeIssueSessionRepoForChat) GetActiveSessions(ctx context.Context) ([]issue_session_dto.IssueSession, error) {
-	return f.all, nil
-}
-func (f *fakeIssueSessionRepoForChat) GetSessionByIssueKey(ctx context.Context, issueKey string) (*issue_session_dto.IssueSession, bool, error) {
-	s, ok := f.byKey[issueKey]
-	if !ok {
-		return nil, false, nil
-	}
-	return &s, true, nil
-}
-func (f *fakeIssueSessionRepoForChat) UpdateLastOverageReminder(ctx context.Context, issueKey string) error {
-	return nil
-}
-func (f *fakeIssueSessionRepoForChat) FindActiveByAssigneeEmail(ctx context.Context, email string) ([]issue_session_dto.IssueSession, error) {
-	return f.byAssignee[email], nil
+func newFixture() fixture {
+	f := fixture{dash: &fakeDashboard{transitions: map[string]user_dashboard_dto.TicketTransitions{}}, leaves: &fakeLeaves{}, settings: &fakeSettings{}}
+	f.svc = New(Deps{
+		Users:     fakeUsers{dev: {UserID: 7, UserName: "Yusuf Wijaya", Email: dev, FlagActive: true}},
+		Dashboard: f.dash, Leaves: f.leaves, Settings: f.settings,
+		WebURL: "https://nudge.test", Now: func() time.Time { return now },
+	})
+	return f
 }
 
-func (f *fakeIssueSessionRepoForChat) FindBySprintNames(ctx context.Context, sprintNames []string) ([]issue_session_dto.IssueSession, error) {
-	return nil, nil
+func codeReviewCORE() user_dashboard_dto.Card {
+	// CORE counts Code Review time too: the dashboard service attaches the
+	// budget (HasBudgetDetail) to a CORE ticket in CODE REVIEW.
+	return user_dashboard_dto.Card{IssueKey: "CORE-2", Summary: "Voucher API", Status: "CODE REVIEW", BoardID: 1,
+		HasBudgetDetail: true, StoryPoints: 2, ElapsedSeconds: 3 * 3600, BudgetSeconds: 2 * 3600}
 }
 
-func (f *fakeIssueSessionRepoForChat) ListDistinctSprintNames(ctx context.Context) ([]string, error) {
-	return nil, nil
-}
-
-// fakeJiraCredentialServiceForChat backs Chapter 9d tests — Credential !=
-// nil for every email simulates "this user has a personal key set up".
-type fakeJiraCredentialServiceForChat struct {
-	credByEmail map[string]*jira_client_dto.Credential
-}
-
-func (f *fakeJiraCredentialServiceForChat) ResolveCredential(ctx context.Context, email string) (*jira_client_dto.Credential, error) {
-	return f.credByEmail[email], nil
-}
-func (f *fakeJiraCredentialServiceForChat) UpsertCredential(ctx context.Context, userID int64, jiraEmail, apiToken string) error {
-	return nil
-}
-func (f *fakeJiraCredentialServiceForChat) DeleteCredential(ctx context.Context, userID int64) error {
-	return nil
-}
-func (f *fakeJiraCredentialServiceForChat) MaskedPreview(ctx context.Context, userID int64) (string, bool, error) {
-	return "", false, nil
-}
-
-func newTestService(registered map[string]registration_dto.User, issueRepo *fakeIssueSessionRepoForChat) ChatInteractiveService {
-	return newTestServiceWithJira(registered, issueRepo, &fakeJiraClientServiceForChat{})
-}
-
-func newTestServiceWithJira(registered map[string]registration_dto.User, issueRepo *fakeIssueSessionRepoForChat, jiraClient *fakeJiraClientServiceForChat) ChatInteractiveService {
-	return newTestServiceWithCredential(registered, issueRepo, jiraClient, &fakeJiraCredentialServiceForChat{})
-}
-
-func newTestServiceWithCredential(registered map[string]registration_dto.User, issueRepo *fakeIssueSessionRepoForChat, jiraClient *fakeJiraClientServiceForChat, jiraCredential *fakeJiraCredentialServiceForChat) ChatInteractiveService {
-	if issueRepo == nil {
-		issueRepo = &fakeIssueSessionRepoForChat{byAssignee: map[string][]issue_session_dto.IssueSession{}, byKey: map[string]issue_session_dto.IssueSession{}}
-	}
-	return NewChatInteractiveService(
-		&fakeRegistrationRepoForChat{users: registered},
-		issueRepo,
-		business_hours_service.NewBusinessHoursService(),
-		business_hours_dto.HolidayCalendar{},
-		jiraClient,
-		jiraCredential,
-	)
-}
-
-func TestRouteCommand_UnregisteredUserGetsInviteToRegister(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{}, nil)
-
-	got := svc.RouteCommand(context.Background(), "ghost@esb.co.id", "/n-mytickets")
-
-	if !strings.Contains(got, "https://nudge.labcup.tech/") {
-		t.Errorf("RouteCommand() = %q, want it to contain the registration link", got)
-	}
-}
-
-func TestRouteCommand_UnknownTextFallsBackToHelp(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "woi kapan deploy")
-
-	if !strings.Contains(got, "/n-mytickets") || !strings.Contains(got, "/n-budget") || !strings.Contains(got, "/n-overdue") || !strings.Contains(got, "/n-team") || !strings.Contains(got, "/n-geser") {
-		t.Errorf("RouteCommand() = %q, want help text listing all 5 commands including /n-geser", got)
-	}
-}
-
-func TestRouteCommand_UHelpShowsHelp(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-help")
-
-	if !strings.Contains(got, "/n-mytickets") {
-		t.Errorf("RouteCommand() = %q, want help text for /n-help", got)
-	}
-}
-
-func TestRouteCommand_MyTicketsListsActiveTicketsForInvoker(t *testing.T) {
-	started := time.Now().Add(-30 * time.Minute)
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{
-			"dev@esb.co.id": {
-				{IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 600, CurrentSessionStartedDate: &started, IssueSummary: "Fix bug"},
-			},
-		},
-		byKey: map[string]issue_session_dto.IssueSession{},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
-
-	if !strings.Contains(got, "OMS-1") {
-		t.Errorf("RouteCommand() = %q, want it to mention OMS-1", got)
-	}
-	if !strings.Contains(got, "Fix bug") {
-		t.Errorf("RouteCommand() = %q, want it to mention the issue summary", got)
-	}
-}
-
-func TestRouteCommand_MyTicketsSeparatesMultipleTicketsWithBlankLine(t *testing.T) {
-	started := time.Now().Add(-30 * time.Minute)
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{
-			"dev@esb.co.id": {
-				{IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 600, CurrentSessionStartedDate: &started, IssueSummary: "Fix bug"},
-				{IssueKey: "OMS-2", StoryPoints: 1, AccumulatedSeconds: 300, CurrentSessionStartedDate: &started, IssueSummary: "Fix another bug"},
-			},
-		},
-		byKey: map[string]issue_session_dto.IssueSession{},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
-
-	if !strings.Contains(got, "OMS-1") || !strings.Contains(got, "OMS-2") {
-		t.Fatalf("RouteCommand() = %q, want it to mention both tickets", got)
-	}
-	// Each card ends with a "Harus Selesai Pass" line — the next card
-	// (starting with the bold-markdown issue key) must not start
-	// immediately on the following line.
-	if !strings.Contains(got, "\n\n*OMS-2*") {
-		t.Errorf("RouteCommand() = %q, want a blank line separating the two ticket cards", got)
-	}
-}
-
-func TestRouteCommand_MyTicketsIncludesDeadline(t *testing.T) {
-	started := time.Now().Add(-30 * time.Minute)
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{
-			"dev@esb.co.id": {
-				{IssueKey: "OMS-1", StoryPoints: 2, AccumulatedSeconds: 600, CurrentSessionStartedDate: &started, IssueSummary: "Fix bug"},
-			},
-		},
-		byKey: map[string]issue_session_dto.IssueSession{},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
-
-	if !strings.Contains(got, "Harus Selesai Pass") {
-		t.Errorf("RouteCommand() = %q, want it to include the Harus Selesai Pass deadline", got)
-	}
-}
-
-func TestRouteCommand_MyTicketsNoActiveTicketsIsFriendly(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-mytickets")
-
-	if strings.Contains(got, "error") || got == "" {
-		t.Errorf("RouteCommand() = %q, want a friendly no-tickets message, not empty/error", got)
-	}
-}
-
-func TestRouteCommand_BudgetFoundTicketShowsDetail(t *testing.T) {
-	started := time.Now().Add(-15 * time.Minute)
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"CORE-99": {IssueKey: "CORE-99", StoryPoints: 2, AccumulatedSeconds: 1800, CurrentSessionStartedDate: &started, IssueSummary: "Audit screen", FlagActive: true},
-		},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-budget CORE-99")
-
-	if !strings.Contains(got, "CORE-99") || !strings.Contains(got, "Audit screen") {
-		t.Errorf("RouteCommand() = %q, want ticket detail for CORE-99", got)
-	}
-}
-
-func TestRouteCommand_BudgetTicketNotFound(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-budget CORE-404")
-
-	if !strings.Contains(got, "tidak ditemukan") {
-		t.Errorf("RouteCommand() = %q, want a not-found message", got)
-	}
-}
-
-func TestRouteCommand_BudgetWithoutArgumentShowsUsage(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-budget")
-
-	if !strings.Contains(got, "/n-budget") {
-		t.Errorf("RouteCommand() = %q, want usage instructions mentioning /n-budget", got)
-	}
-}
-
-func TestRouteCommand_OverdueListsOnlyOverBudgetTickets(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey:      map[string]issue_session_dto.IssueSession{},
-		all: []issue_session_dto.IssueSession{
-			{IssueKey: "OVER-1", StoryPoints: 1, AccumulatedSeconds: 7200, CurrentSessionStartedDate: nil, AssigneeEmail: "a@esb.co.id", IssueSummary: "Over budget"},
-			{IssueKey: "UNDER-1", StoryPoints: 100, AccumulatedSeconds: 60, CurrentSessionStartedDate: nil, AssigneeEmail: "b@esb.co.id", IssueSummary: "Plenty of budget"},
-		},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-overdue")
-
-	if !strings.Contains(got, "OVER-1") {
-		t.Errorf("RouteCommand() = %q, want it to list OVER-1", got)
-	}
-	if strings.Contains(got, "UNDER-1") {
-		t.Errorf("RouteCommand() = %q, must not list UNDER-1 which is within budget", got)
-	}
-}
-
-func TestRouteCommand_OverdueNoneIsPositiveMessage(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey:      map[string]issue_session_dto.IssueSession{},
-		all: []issue_session_dto.IssueSession{
-			{IssueKey: "UNDER-1", StoryPoints: 100, AccumulatedSeconds: 60, AssigneeEmail: "b@esb.co.id", IssueSummary: "Plenty of budget"},
-		},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-overdue")
-
-	if strings.Contains(got, "UNDER-1") {
-		t.Error("RouteCommand() should not list any tickets when none are overdue")
-	}
-	if got == "" {
-		t.Error("RouteCommand() must return a friendly message, not empty")
-	}
-}
-
-func TestRouteCommand_TeamGroupsTicketsByAssignee(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey:      map[string]issue_session_dto.IssueSession{},
-		all: []issue_session_dto.IssueSession{
-			{IssueKey: "A-1", StoryPoints: 1, AccumulatedSeconds: 10, AssigneeEmail: "alice@esb.co.id", IssueSummary: "Alice ticket 1"},
-			{IssueKey: "B-1", StoryPoints: 1, AccumulatedSeconds: 10, AssigneeEmail: "bob@esb.co.id", IssueSummary: "Bob ticket"},
-		},
-	}
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-team")
-
-	if !strings.Contains(got, "alice@esb.co.id") || !strings.Contains(got, "bob@esb.co.id") {
-		t.Errorf("RouteCommand() = %q, want it to mention both assignees", got)
-	}
-	if !strings.Contains(got, "A-1") || !strings.Contains(got, "B-1") {
-		t.Errorf("RouteCommand() = %q, want it to mention both ticket keys", got)
-	}
-}
-
-func TestRouteCommand_TeamNoActivityMessage(t *testing.T) {
-	svc := newTestService(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-team")
-
-	if got == "" {
-		t.Error("RouteCommand() must return a friendly no-activity message, not empty")
-	}
-}
-
-func TestRouteCommand_GeserTransitionsToMatchingStatus(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
-	}
-	jiraClient := &fakeJiraClientServiceForChat{
-		transitions: []jira_client_dto.Transition{
-			{ID: "5", To: jira_client_dto.Status{Name: "To Do"}},
-			{ID: "9", To: jira_client_dto.Status{Name: "Code Review"}},
-		},
-	}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
-
-	if len(jiraClient.transitionCalls) != 1 || jiraClient.transitionCalls[0] != "OMS-12561|5" {
-		t.Fatalf("TransitionIssue calls = %v, want [OMS-12561|5]", jiraClient.transitionCalls)
-	}
-	if !strings.Contains(got, "OMS-12561") || !strings.Contains(got, "To Do") {
-		t.Errorf("RouteCommand() = %q, want confirmation mentioning OMS-12561 and To Do", got)
-	}
-}
-
-func TestRouteCommand_GeserUsesPersonalCredentialWhenSet(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
-	}
-	jiraClient := &fakeJiraClientServiceForChat{
-		transitions: []jira_client_dto.Transition{{ID: "5", To: jira_client_dto.Status{Name: "To Do"}}},
-	}
-	personalCred := &jira_client_dto.Credential{Email: "dev@esb.co.id", APIToken: "personal-token"}
-	jiraCredential := &fakeJiraCredentialServiceForChat{credByEmail: map[string]*jira_client_dto.Credential{
-		"dev@esb.co.id": personalCred,
+func sampleBoard() user_dashboard_dto.Board {
+	return user_dashboard_dto.Board{Columns: []user_dashboard_dto.BoardColumn{
+		{Status: "To Do", Cards: []user_dashboard_dto.Card{{IssueKey: "CORE-3", Summary: "Report", Status: "To Do", BoardID: 1}}},
+		{Status: "Code Process", Cards: []user_dashboard_dto.Card{{IssueKey: "CORE-1", Summary: "Fix login", Status: "Code Process", BoardID: 1,
+			HasBudgetDetail: true, StoryPoints: 3, ElapsedSeconds: 3600, BudgetSeconds: 3 * 3600, DeadlineAt: now.Add(4 * time.Hour).Format(time.RFC3339)}}},
+		{Status: "CODE REVIEW", Cards: []user_dashboard_dto.Card{codeReviewCORE()}},
+		{Status: "Done", Cards: []user_dashboard_dto.Card{{IssueKey: "OMS-9", Summary: "Old", Status: "Done", BoardID: 2}}},
 	}}
-	svc := newTestServiceWithCredential(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient, jiraCredential)
+}
 
-	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
-
-	if jiraClient.lastTransitionsCred != personalCred {
-		t.Errorf("GetTransitionsAs called with cred=%v, want the sender's personal credential (spec AC5.3)", jiraClient.lastTransitionsCred)
+func TestParseCommand_AcceptsNewOldAndBareNames(t *testing.T) {
+	cases := map[string][2]string{
+		"/n-dashboard":           {cmdDashboard, ""},
+		"/N-TIKET core-1 review": {cmdTiket, "core-1 review"},
+		"tiket":                  {cmdTiket, ""},
+		"/n-mytickets":           {cmdTiket, ""},
+		"/n-budget CORE-1":       {cmdTiket, "CORE-1"},
+		"/n-overdue":             {cmdDashboard, ""},
+		"/n-team":                {cmdDashboard, ""},
+		"/n-geser CORE-1 todo":   {cmdTiket, "CORE-1 todo"},
+		"/n-geser<CORE-1>:todo":  {cmdTiket, "CORE-1 todo"},
+		"cuti besok":             {cmdCuti, "besok"},
+		"/n-mute 1 jam":          {cmdMute, "1 jam"},
+		"/n-unmute":              {cmdUnmute, ""},
+		"menu":                   {cmdHelp, ""},
 	}
-	if jiraClient.lastTransitionCred != personalCred {
-		t.Errorf("TransitionIssueAs called with cred=%v, want the sender's personal credential (spec AC4.3)", jiraClient.lastTransitionCred)
+	for in, want := range cases {
+		name, args, ok := parseCommand(in)
+		if !ok || name != want[0] || args != want[1] {
+			t.Errorf("parseCommand(%q) = %q %q %v, want %q %q", in, name, args, ok, want[0], want[1])
+		}
+	}
+	if _, _, ok := parseCommand("halo nudge"); ok {
+		t.Error("plain chat must not be a command")
 	}
 }
 
-func TestRouteCommand_GeserFallsBackToCentralCredentialWhenNotSet(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
+func TestCommand_UnknownTextShowsTheMenuWithAButtonPerFeature(t *testing.T) {
+	r := newFixture().svc.Command(context.Background(), dev, "halo")
+	if !strings.Contains(r.Text, "Hai Yusuf") {
+		t.Errorf("menu text = %q", r.Text)
 	}
-	jiraClient := &fakeJiraClientServiceForChat{
-		transitions: []jira_client_dto.Transition{{ID: "5", To: jira_client_dto.Status{Name: "To Do"}}},
+	if len(r.Cards) != 1 {
+		t.Fatalf("cards = %d", len(r.Cards))
 	}
-	svc := newTestServiceWithCredential(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient, &fakeJiraCredentialServiceForChat{})
-
-	svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
-
-	if jiraClient.lastTransitionCred != nil {
-		t.Errorf("TransitionIssueAs called with cred=%v, want nil (fallback to central credential, spec AC5.4)", jiraClient.lastTransitionCred)
+	var fns []string
+	for _, s := range r.Cards[0].Card.Sections {
+		for _, w := range s.Widgets {
+			if w.DecoratedText != nil && w.DecoratedText.Button != nil {
+				for _, p := range w.DecoratedText.Button.OnClick.Action.Parameters {
+					if p.Key == "cmd" {
+						fns = append(fns, p.Value)
+					}
+				}
+			}
+		}
 	}
-}
-
-func TestRouteCommand_GeserMatchesCaseInsensitiveTargetStatus(t *testing.T) {
-	// CORE uses "CODE REVIEW" (all caps) while OMS uses "Code Review" — the
-	// command must match regardless of casing.
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"CORE-10841": {IssueKey: "CORE-10841", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
-	}
-	jiraClient := &fakeJiraClientServiceForChat{
-		transitions: []jira_client_dto.Transition{
-			{ID: "22", To: jira_client_dto.Status{Name: "CODE REVIEW"}},
-		},
-	}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<CORE-10841>:code-review")
-
-	if len(jiraClient.transitionCalls) != 1 || jiraClient.transitionCalls[0] != "CORE-10841|22" {
-		t.Fatalf("TransitionIssue calls = %v, want [CORE-10841|22]", jiraClient.transitionCalls)
-	}
-	if strings.Contains(got, "tidak dikenali") {
-		t.Errorf("RouteCommand() = %q, want it to recognize CODE REVIEW as a case-insensitive match for code-review", got)
+	if strings.Join(fns, ",") != "/n-dashboard,/n-tiket,/n-cuti,/n-mute" {
+		t.Errorf("menu buttons = %v", fns)
 	}
 }
 
-func TestRouteCommand_GeserRejectsTicketNotOwnedBySender(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "someoneelse@esb.co.id", FlagActive: true},
-		},
-	}
-	jiraClient := &fakeJiraClientServiceForChat{}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
-
-	if len(jiraClient.transitionCalls) != 0 {
-		t.Errorf("TransitionIssue calls = %v, want none — ticket is not the sender's own", jiraClient.transitionCalls)
-	}
-	if got == "" {
-		t.Error("RouteCommand() must return a rejection message, not empty")
+func TestCommand_UnregisteredUserIsAskedToSignIn(t *testing.T) {
+	r := newFixture().svc.Command(context.Background(), "x@esb.co.id", "/n-dashboard")
+	if !strings.Contains(r.Text, "belum terdaftar") || !strings.Contains(r.Text, "https://nudge.test/") {
+		t.Errorf("reply = %q", r.Text)
 	}
 }
 
-func TestRouteCommand_GeserRejectsUnknownOrUntrackedTicket(t *testing.T) {
-	jiraClient := &fakeJiraClientServiceForChat{}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, nil, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-99999>:todo")
-
-	if len(jiraClient.transitionCalls) != 0 {
-		t.Errorf("TransitionIssue calls = %v, want none", jiraClient.transitionCalls)
+func TestDashboard_ShowsOnlyWorkingTicketsWithBudgetAndCountsCOREReviewAsWorking(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	r := f.svc.Command(context.Background(), dev, "/n-dashboard")
+	for _, want := range []string{
+		"*4 tiket* di sprint aktif",
+		"To Do *1* · Code Process *1* · CODE REVIEW *1* · Done *1*",
+		"🔴 *1 tiket lewat budget*",
+		"*CORE-2* Voucher API", // CORE in Code Review is still counted
+		"🔴 Lewat budget 1 jam",
+		"*CORE-1* Fix login",
+		"⏱ Sisa 2 jam",
+		"🔔 Notifikasi aktif",
+	} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("dashboard missing %q:\n%s", want, r.Text)
+		}
 	}
-	if !strings.Contains(got, "OMS-99999") {
-		t.Errorf("RouteCommand() = %q, want it to mention the issue key in the not-found message", got)
+	if strings.Contains(r.Text, "CORE-3") || strings.Contains(r.Text, "OMS-9") {
+		t.Errorf("tickets not being worked on must not be listed:\n%s", r.Text)
 	}
-}
-
-func TestRouteCommand_GeserRejectsUnrecognizedTarget(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
-	}
-	jiraClient := &fakeJiraClientServiceForChat{}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:bukan-target-valid")
-
-	if len(jiraClient.transitionCalls) != 0 {
-		t.Errorf("TransitionIssue calls = %v, want none", jiraClient.transitionCalls)
-	}
-	if got == "" {
-		t.Error("RouteCommand() must return a message explaining the valid targets, not empty")
+	if strings.Index(r.Text, "CORE-2") > strings.Index(r.Text, "CORE-1") {
+		t.Error("overdue ticket should come first")
 	}
 }
 
-func TestRouteCommand_GeserReturnsFriendlyMessageWhenWorkflowHasNoSuchTransition(t *testing.T) {
-	// Reproduces OMS-12546: from Code Review, only Done/Feedback transitions
-	// exist — no path back to To Do.
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12546": {IssueKey: "OMS-12546", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
+func TestDashboard_ShowsMuteAndNextLeave(t *testing.T) {
+	f := newFixture()
+	until := now.Add(time.Hour)
+	f.settings.mutedUntil = &until
+	f.leaves.leaves = []user_leave_dto.Leave{{Date: "2026-11-01"}, {Date: "2026-11-20"}}
+	r := f.svc.Command(context.Background(), dev, "/n-dashboard")
+	if !strings.Contains(r.Text, "🔕 Notifikasi di-mute sampai 11:00 WIB") {
+		t.Errorf("mute line missing:\n%s", r.Text)
 	}
-	jiraClient := &fakeJiraClientServiceForChat{
-		transitions: []jira_client_dto.Transition{
-			{ID: "2", To: jira_client_dto.Status{Name: "Done"}},
-			{ID: "13", To: jira_client_dto.Status{Name: "Feedback"}},
-		},
-	}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12546>:todo")
-
-	if len(jiraClient.transitionCalls) != 0 {
-		t.Errorf("TransitionIssue calls = %v, want none — no matching transition available", jiraClient.transitionCalls)
-	}
-	if !strings.Contains(got, "OMS-12546") {
-		t.Errorf("RouteCommand() = %q, want it to mention the issue key", got)
+	if !strings.Contains(r.Text, "Cuti berikutnya: Jum, 20 Nov 2026") {
+		t.Errorf("next leave missing (past leave must be skipped):\n%s", r.Text)
 	}
 }
 
-func TestRouteCommand_GeserReturnsFriendlyMessageWhenGetTransitionsFails(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
-	}
-	jiraClient := &fakeJiraClientServiceForChat{transitionsErr: errGeserTest}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
-
-	if got == "" {
-		t.Error("RouteCommand() must return a friendly error message, not empty")
+func TestDashboard_JiraDownIsAFriendlyNote(t *testing.T) {
+	f := newFixture()
+	f.dash.boardErr = errors.New("boom")
+	if r := f.svc.Command(context.Background(), dev, "/n-dashboard"); !strings.Contains(r.Text, "Jira lagi nggak bisa dihubungi") {
+		t.Errorf("reply = %q", r.Text)
 	}
 }
 
-func TestRouteCommand_GeserReturnsFriendlyMessageWhenTransitionIssueFails(t *testing.T) {
-	repo := &fakeIssueSessionRepoForChat{
-		byAssignee: map[string][]issue_session_dto.IssueSession{},
-		byKey: map[string]issue_session_dto.IssueSession{
-			"OMS-12561": {IssueKey: "OMS-12561", AssigneeEmail: "dev@esb.co.id", FlagActive: true},
-		},
+func TestTiket_ListGroupsByBoardWithAGeserButtonPerTicket(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	r := f.svc.Command(context.Background(), dev, "/n-tiket")
+	if !strings.Contains(r.Text, "*CORE Board (3)*") || !strings.Contains(r.Text, "*OMS Board (1)*") {
+		t.Errorf("board groups missing:\n%s", r.Text)
 	}
-	jiraClient := &fakeJiraClientServiceForChat{
-		transitions:   []jira_client_dto.Transition{{ID: "5", To: jira_client_dto.Status{Name: "To Do"}}},
-		transitionErr: errGeserTest,
+	buttons := 0
+	for _, s := range r.Cards[0].Card.Sections {
+		for _, w := range s.Widgets {
+			if w.DecoratedText != nil && w.DecoratedText.Button != nil && w.DecoratedText.Button.OnClick.Action.Function == "nudge.ticket" {
+				buttons++
+			}
+		}
 	}
-	svc := newTestServiceWithJira(map[string]registration_dto.User{"dev@esb.co.id": {Email: "dev@esb.co.id"}}, repo, jiraClient)
-
-	got := svc.RouteCommand(context.Background(), "dev@esb.co.id", "/n-geser<OMS-12561>:todo")
-
-	if got == "" {
-		t.Error("RouteCommand() must return a friendly error message, not empty")
+	if buttons != 4 {
+		t.Errorf("Geser buttons = %d, want one per ticket (4)", buttons)
 	}
 }
 
-func (f *fakeIssueSessionRepoForChat) UpdateActiveSprint(ctx context.Context, issueKey string, boardID, sprintID *int64) error {
-	return nil
+func TestTiket_EmptySprint(t *testing.T) {
+	if r := newFixture().svc.Command(context.Background(), dev, "/n-tiket"); !strings.Contains(r.Text, "belum punya tiket") {
+		t.Errorf("reply = %q", r.Text)
+	}
+}
+
+func coreTransitions() user_dashboard_dto.TicketTransitions {
+	return user_dashboard_dto.TicketTransitions{IssueKey: "CORE-1", CurrentStatus: "Code Process", Transitions: []user_dashboard_dto.TransitionOption{
+		{ID: "11", Name: "Back", ToStatus: "To Do"},
+		{ID: "21", Name: "Review", ToStatus: "CODE REVIEW"},
+		{ID: "31", Name: "Stay", ToStatus: "Code Process"},
+	}}
+}
+
+func TestTiket_DetailHasAButtonPerWorkflowStatusExceptTheCurrentOne(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	r := f.svc.Command(context.Background(), dev, "/n-tiket core-1")
+	var labels []string
+	for _, s := range r.Cards[0].Card.Sections {
+		for _, w := range s.Widgets {
+			if w.ButtonList == nil {
+				continue
+			}
+			for _, b := range w.ButtonList.Buttons {
+				if b.OnClick.Action != nil && b.OnClick.Action.Function == "nudge.move" {
+					labels = append(labels, b.Text)
+				}
+			}
+		}
+	}
+	if strings.Join(labels, ",") != "→ To Do,→ CODE REVIEW" {
+		t.Errorf("move buttons = %v", labels)
+	}
+	if !strings.Contains(r.Text, "*Sisa waktu:* 2 jam") || !strings.Contains(r.Text, "Fix login") {
+		t.Errorf("detail text:\n%s", r.Text)
+	}
+}
+
+func TestTiket_TypedStatusMovesRightAway(t *testing.T) {
+	f := newFixture()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	r := f.svc.Command(context.Background(), dev, "/n-tiket CORE-1 review")
+	if len(f.dash.moved) != 1 || f.dash.moved[0] != "CORE-1>21" {
+		t.Fatalf("moved = %v", f.dash.moved)
+	}
+	if !strings.Contains(r.Text, "✅ *CORE-1* berhasil digeser ke *CODE REVIEW* · 10:00 WIB") {
+		t.Errorf("reply = %q", r.Text)
+	}
+}
+
+func TestTiket_UnknownStatusShowsTheChoices(t *testing.T) {
+	f := newFixture()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	r := f.svc.Command(context.Background(), dev, "/n-tiket CORE-1 deploy")
+	if len(f.dash.moved) != 0 || !strings.Contains(r.Text, `Status "deploy" nggak ketemu`) {
+		t.Errorf("moved=%v reply=%q", f.dash.moved, r.Text)
+	}
+}
+
+func TestTiket_SomeoneElsesTicketIsRefused(t *testing.T) {
+	r := newFixture().svc.Command(context.Background(), dev, "/n-tiket OMS-5")
+	if !strings.Contains(r.Text, "bukan tiket kamu") {
+		t.Errorf("reply = %q", r.Text)
+	}
+}
+
+func TestAction_MoveUpdatesTheCard(t *testing.T) {
+	f := newFixture()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	a := f.svc.Action(context.Background(), dev, "nudge.move", map[string]string{"key": "CORE-1", "tid": "11", "to": "To Do"})
+	if !a.Update || !strings.Contains(a.Text, "digeser ke *To Do*") {
+		t.Errorf("action = %+v", a)
+	}
+}
+
+func TestAction_MoveThatIsNoLongerAvailableShowsFreshChoices(t *testing.T) {
+	f := newFixture()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	a := f.svc.Action(context.Background(), dev, "nudge.move", map[string]string{"key": "CORE-1", "tid": "99", "to": "Done"})
+	if !strings.Contains(a.Text, "pindah ke Done nggak tersedia lagi") || !strings.Contains(a.Text, "*Status:*") {
+		t.Errorf("reply = %q", a.Text)
+	}
+}
+
+func TestGeser_ReminderButtonsUseTheWorkflowCaseInsensitively(t *testing.T) {
+	f := newFixture()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	res := f.svc.Geser(context.Background(), dev, "CORE-1", "code-review")
+	if !res.OK || res.StatusName != "CODE REVIEW" || f.dash.moved[0] != "CORE-1>21" {
+		t.Errorf("res=%+v moved=%v", res, f.dash.moved)
+	}
+	if res := f.svc.Geser(context.Background(), dev, "OMS-5", "todo"); !res.NotOwner {
+		t.Errorf("someone else's ticket: %+v", res)
+	}
+	if res := f.svc.Geser(context.Background(), dev, "CORE-1", "deploy"); res.OK || !strings.Contains(res.Message, "nggak dikenali") {
+		t.Errorf("unknown target: %+v", res)
+	}
+}
+
+func TestCuti_ListShowsUpcomingWithRemoveButtonsAndAForm(t *testing.T) {
+	f := newFixture()
+	f.leaves.leaves = []user_leave_dto.Leave{{Date: "2026-11-20", Note: "Liburan"}, {Date: "2026-11-02"}}
+	r := f.svc.Command(context.Background(), dev, "/n-cuti")
+	if !strings.Contains(r.Text, "• Jum, 20 Nov 2026") || strings.Contains(r.Text, "2 Nov") {
+		t.Errorf("list:\n%s", r.Text)
+	}
+	var pickers, removes int
+	for _, s := range r.Cards[0].Card.Sections {
+		for _, w := range s.Widgets {
+			if w.DateTimePicker != nil {
+				pickers++
+			}
+			if w.DecoratedText != nil && w.DecoratedText.Button != nil && w.DecoratedText.Button.OnClick.Action.Function == "nudge.leave.remove" {
+				removes++
+			}
+		}
+	}
+	if pickers != 2 || removes != 1 {
+		t.Errorf("pickers=%d removes=%d", pickers, removes)
+	}
+}
+
+func TestCuti_TypedDatesAreFlexible(t *testing.T) {
+	cases := map[string]string{
+		"/n-cuti besok":                     "2026-11-17..2026-11-17|",
+		"/n-cuti 20/11":                     "2026-11-20..2026-11-20|",
+		"/n-cuti 20/11 - 23/11 Liburan":     "2026-11-20..2026-11-23|Liburan",
+		"/n-cuti 2026-12-01 s/d 2026-12-02": "2026-12-01..2026-12-02|",
+		"/n-cuti tambah 5 jan":              "2027-01-05..2027-01-05|",
+		"/n-cuti 24 des 2026 natal":         "2026-12-24..2026-12-24|natal",
+	}
+	for in, want := range cases {
+		f := newFixture()
+		r := f.svc.Command(context.Background(), dev, in)
+		if len(f.leaves.added) != 1 || f.leaves.added[0] != want {
+			t.Errorf("%q added %v, want %q", in, f.leaves.added, want)
+		}
+		if !strings.Contains(r.Text, "✅ Cuti disimpan") {
+			t.Errorf("%q reply = %q", in, r.Text)
+		}
+	}
+}
+
+func TestCuti_UnreadableDateShowsExamples(t *testing.T) {
+	f := newFixture()
+	r := f.svc.Command(context.Background(), dev, "/n-cuti kapan2")
+	if len(f.leaves.added) != 0 || !strings.Contains(r.Text, "Tanggalnya nggak kebaca") {
+		t.Errorf("added=%v reply=%q", f.leaves.added, r.Text)
+	}
+}
+
+func TestCuti_ServiceRulesBecomePlainMessages(t *testing.T) {
+	f := newFixture()
+	f.leaves.addErr = user_leave_service.ErrNoWorkingDay
+	if r := f.svc.Command(context.Background(), dev, "/n-cuti 21/11"); !strings.Contains(r.Text, "Sabtu/Minggu") {
+		t.Errorf("reply = %q", r.Text)
+	}
+	f.leaves.addErr = errors.Join(user_leave_service.ErrInvalidRange, errors.New("more than 31 days"))
+	if r := f.svc.Command(context.Background(), dev, "/n-cuti 1/12 - 31/1"); !strings.Contains(r.Text, "kepanjangan") {
+		t.Errorf("reply = %q", r.Text)
+	}
+}
+
+func TestCuti_FormAndRemoveButtons(t *testing.T) {
+	f := newFixture()
+	a := f.svc.Action(context.Background(), dev, "nudge.leave.add", map[string]string{"from": "2026-11-20", "note": "Cuti"})
+	if !a.Update || len(f.leaves.added) != 1 || f.leaves.added[0] != "2026-11-20..2026-11-20|Cuti" {
+		t.Errorf("add: %+v %v", a.Update, f.leaves.added)
+	}
+	a = f.svc.Action(context.Background(), dev, "nudge.leave.add", map[string]string{})
+	if !strings.Contains(a.Text, "Pilih *Dari tanggal*") {
+		t.Errorf("empty form reply = %q", a.Text)
+	}
+	a = f.svc.Action(context.Background(), dev, "nudge.leave.remove", map[string]string{"date": "2026-11-20"})
+	if len(f.leaves.removed) != 1 || !strings.Contains(a.Text, "Cuti Jum, 20 Nov 2026 dihapus") {
+		t.Errorf("remove: %v %q", f.leaves.removed, a.Text)
+	}
+	if r := f.svc.Command(context.Background(), dev, "/n-cuti hapus 20/11"); len(f.leaves.removed) != 2 || !strings.Contains(r.Text, "dihapus") {
+		t.Errorf("typed remove: %v %q", f.leaves.removed, r.Text)
+	}
+}
+
+func TestMute_TypedDurations(t *testing.T) {
+	cases := map[string]time.Time{
+		"/n-mute 30m":       now.Add(30 * time.Minute),
+		"/n-mute 2 jam":     now.Add(2 * time.Hour),
+		"/n-mute 90":        now.Add(90 * time.Minute),
+		"/n-mute besok":     user_setting_dto.TomorrowMorning(now),
+		"/n-mute selamanya": user_setting_dto.MuteForeverUntil,
+	}
+	for in, want := range cases {
+		f := newFixture()
+		r := f.svc.Command(context.Background(), dev, in)
+		if f.settings.mutedUntil == nil || !f.settings.mutedUntil.Equal(want) {
+			t.Errorf("%q muted until %v, want %v", in, f.settings.mutedUntil, want)
+		}
+		if !strings.Contains(r.Text, "🔕 Oke, notifikasi") {
+			t.Errorf("%q reply = %q", in, r.Text)
+		}
+	}
+	f := newFixture()
+	if r := f.svc.Command(context.Background(), dev, "/n-mute 3 hari"); f.settings.mutedUntil != nil || !strings.Contains(r.Text, "nggak kebaca") {
+		t.Errorf("bad duration: %v %q", f.settings.mutedUntil, r.Text)
+	}
+	if r := f.svc.Command(context.Background(), dev, "/n-mute 25 jam"); f.settings.mutedUntil != nil || !strings.Contains(r.Text, "nggak kebaca") {
+		t.Errorf("over the 24h cap: %v %q", f.settings.mutedUntil, r.Text)
+	}
+}
+
+func TestMute_ViewButtonsAndUnmute(t *testing.T) {
+	f := newFixture()
+	f.settings.switchOff = true
+	r := f.svc.Command(context.Background(), dev, "/n-mute")
+	if !strings.Contains(r.Text, "Notifikasi *aktif*") || !strings.Contains(r.Text, "sedang OFF di Pengaturan") {
+		t.Errorf("view:\n%s", r.Text)
+	}
+	a := f.svc.Action(context.Background(), dev, "nudge.mute", map[string]string{"for": "1j"})
+	if !a.Update || f.settings.mutedUntil == nil || !f.settings.mutedUntil.Equal(now.Add(time.Hour)) {
+		t.Errorf("mute button: %+v %v", a.Update, f.settings.mutedUntil)
+	}
+	r = f.svc.Command(context.Background(), dev, "/n-unmute")
+	if f.settings.unmuted != 1 || !strings.Contains(r.Text, "🔔 Notifikasi nyala lagi") {
+		t.Errorf("unmute: %d %q", f.settings.unmuted, r.Text)
+	}
+}
+
+func TestView_CardEscapesHTMLAndRendersMarkup(t *testing.T) {
+	if got := cardHTML("*KEY* <b>x</b> _hint_\nnext"); got != "<b>KEY</b> &lt;b&gt;x&lt;/b&gt; <i>hint</i><br>next" {
+		t.Errorf("cardHTML = %q", got)
+	}
+}
+
+func TestRouteCommand_IsTheTextRendering(t *testing.T) {
+	f := newFixture()
+	if got := f.svc.RouteCommand(context.Background(), dev, "/n-mute"); !strings.HasPrefix(got, "*🔕 Mute notifikasi*") || !strings.Contains(got, "💡 Ketik */n-mute 30m*") {
+		t.Errorf("text = %q", got)
+	}
 }

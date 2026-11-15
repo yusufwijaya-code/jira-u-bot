@@ -170,7 +170,16 @@ func main() {
 	jiraCredentialRepo := jira_credential_repository.NewJiraCredentialRepository(db)
 	jiraCredentialSvc := jira_credential_service.NewJiraCredentialService(&cfg, jiraCredentialRepo, registrationRepo)
 
-	chatInteractiveSvc := chat_interactive_service.NewChatInteractiveService(registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, jiraClientSvc, jiraCredentialSvc)
+	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
+		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
+	)
+
+	// Chat commands are the web dashboard's features (Dashboard, Papan Tiket,
+	// Cuti, Mute) on the same services.
+	chatInteractiveSvc := chat_interactive_service.New(chat_interactive_service.Deps{
+		Users: registrationRepo, Dashboard: userDashboardSvc, Leaves: userLeaveSvc, Settings: userSettingSvc,
+		WebURL: cfg.FrontendURL + cfg.BasePath,
+	})
 
 	chatOAuthSvc, err := chat_oauth_service.NewChatOAuthService(&cfg)
 	if err != nil {
@@ -301,9 +310,6 @@ func main() {
 		},
 	))
 
-	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
-		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
-	)
 	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc)
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, userLeaveSvc)
