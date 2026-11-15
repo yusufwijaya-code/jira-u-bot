@@ -25,6 +25,7 @@ import (
 	"nudge/modules/board/board_service"
 	"nudge/modules/business_hours/business_hours_service"
 	"nudge/modules/chat_app/chat_app_auth"
+	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_client"
 	"nudge/modules/chat_app/chat_app_handler"
 	"nudge/modules/chat_app/chat_app_repository"
@@ -195,6 +196,7 @@ func main() {
 	}
 	operatorName := resolveOperatorName(context.Background(), registrationRepo, cfg.JiraEmail)
 	deliveryDeps := chat_delivery.Deps{Store: chatAppRepo, OperatorEmail: cfg.JiraEmail, OperatorName: operatorName}
+	deliveryDeps.Cards = chat_app_card.Build // phase 3: cards with action buttons on the app path
 	if chatAppClient != nil {
 		deliveryDeps.App = chatAppClient
 	}
