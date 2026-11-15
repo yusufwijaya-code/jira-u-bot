@@ -1,127 +1,162 @@
-<section class="card chat-window">
-  <!-- Toolbar: one user, date range, kind -->
-  <header class="chat-toolbar">
-    <div class="chat-user-picker" [class.open]="pickerOpen()">
-      <button
-        type="button"
-        class="chat-user-trigger"
-        aria-haspopup="listbox"
-        [attr.aria-expanded]="pickerOpen()"
-        (click)="togglePicker()"
-        data-user-picker
-      >
-        @if (selected(); as u) {
-          <app-user-avatar [src]="u.userId ? avatarUrl(u.userId) : null" [name]="u.email" />
-          <span class="chat-user-trigger-text">
-            <strong>{{ displayName(u) }}</strong>
-            <small>{{ u.email }}</small>
-          </span>
-        } @else {
-          <span class="chat-user-trigger-text placeholder"><strong>Pilih user</strong><small>untuk melihat chat-nya dengan Nudge</small></span>
-        }
-        <app-icon class="ui-select-chevron" name="chevron-down" [size]="16" />
-      </button>
-
-      @if (pickerOpen()) {
-        <div class="chat-user-popup" role="listbox">
-          <label class="chat-user-search">
-            <app-icon name="search" [size]="15" />
-            <input
-              type="search"
-              placeholder="Cari nama atau email…"
-              [ngModel]="pickerQuery()"
-              (ngModelChange)="pickerQuery.set($event)"
-              aria-label="Cari user"
-            />
-          </label>
-          <ul>
-            @for (u of filteredUsers(); track u.email) {
-              <li
-                role="option"
-                class="chat-user-option"
-                [class.selected]="u.email === selected()?.email"
-                [attr.aria-selected]="u.email === selected()?.email"
-                [attr.data-email]="u.email"
-                (click)="select(u.email)"
-              >
-                <app-user-avatar [src]="u.userId ? avatarUrl(u.userId) : null" [name]="u.email" />
-                <span class="chat-user-option-text">
-                  <span class="row">
-                    <strong>{{ displayName(u) }}</strong>
-                    @if (u.conv) {
-                      <time>{{ when(u.conv.lastDate) }}</time>
-                    }
-                  </span>
-                  <small>{{ u.conv ? preview(u.conv) : 'Belum ada pesan' }}</small>
-                </span>
-                @if (u.conv) {
-                  <span class="chat-count">{{ u.conv.total }}</span>
-                }
-              </li>
-            } @empty {
-              <li class="chat-user-empty">Tidak ada user yang cocok.</li>
-            }
-          </ul>
-        </div>
-      }
+<section class="card chat-window" [class.show-list]="showList()">
+  <!-- Conversations -->
+  <aside class="chat-sidebar" aria-label="Percakapan">
+    <div class="chat-sidebar-head">
+      <h2>Percakapan</h2>
+      <span class="chat-sidebar-count">{{ chatUsers().length }}</span>
     </div>
-
-    <div class="chat-filters">
-      <div class="chat-range">
-        <app-date-range-picker
-          [from]="from()"
-          [to]="to() === from() ? '' : to()"
-          [max]="today"
-          placeholder="Semua tanggal"
-          ariaLabel="Filter tanggal"
-          (rangeChange)="setRange($event)"
-        />
-        @if (from()) {
-          <button type="button" class="icon-btn chat-range-clear" aria-label="Hapus filter tanggal" (click)="clearRange()" data-clear-range>
-            <app-icon name="x" [size]="14" />
-          </button>
-        }
-      </div>
-      <app-select
-        class="chat-kind"
-        [options]="kindFilters"
-        [ngModel]="kind"
-        (ngModelChange)="setKind($event)"
-        ariaLabel="Filter jenis pesan"
+    <label class="chat-search">
+      <app-icon name="search" [size]="15" />
+      <input
+        type="search"
+        placeholder="Cari nama atau email…"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        aria-label="Cari percakapan"
+        data-search
       />
-    </div>
-  </header>
+    </label>
 
-  <!-- Conversation -->
-  <div class="chat-pane">
+    <ul class="chat-conv-list" role="listbox" aria-label="Pilih user">
+      @if (listLoading()) {
+        @for (i of [1, 2, 3, 4]; track i) {
+          <li class="chat-conv skeleton-conv"><span class="skeleton sk-avatar"></span><span class="skeleton sk-line"></span></li>
+        }
+      }
+      @for (u of filteredUsers(); track u.email) {
+        <li
+          role="option"
+          class="chat-conv"
+          [class.active]="u.email.toLowerCase() === email().toLowerCase()"
+          [class.empty]="!u.conv"
+          [attr.aria-selected]="u.email.toLowerCase() === email().toLowerCase()"
+          [attr.data-email]="u.email"
+          tabindex="0"
+          (click)="select(u.email)"
+          (keydown.enter)="select(u.email)"
+        >
+          <span class="chat-conv-avatar">
+            <app-user-avatar [src]="u.user ? avatarUrl(u.user.userId) : null" [name]="u.email" />
+            @if (u.user?.chatAppActivated) {
+              <span class="chat-conv-badge" title="Nudge app aktif"></span>
+            }
+          </span>
+          <span class="chat-conv-text">
+            <span class="row">
+              <strong>{{ displayName(u) }}</strong>
+              @if (u.conv) {
+                <time>{{ when(u.conv.lastDate) }}</time>
+              }
+            </span>
+            <span class="row">
+              <small [class.failed]="u.conv?.lastStatus === 'failed'">{{ u.conv ? preview(u.conv) : 'Belum ada pesan' }}</small>
+              @if (u.conv) {
+                <span class="chat-count">{{ u.conv.total }}</span>
+              }
+            </span>
+          </span>
+        </li>
+      } @empty {
+        @if (!listLoading()) {
+          <li class="chat-conv-none">Tidak ada user yang cocok.</li>
+        }
+      }
+    </ul>
+  </aside>
+
+  <!-- Chat -->
+  <div class="chat-main">
     @if (selected(); as u) {
-      <div class="chat-head">
-        <img class="chat-head-nudge" src="favicon.svg" alt="" width="36" height="36" />
+      <header class="chat-head">
+        <button type="button" class="icon-btn chat-back" aria-label="Kembali ke percakapan" (click)="backToList()">
+          <app-icon name="arrow-left" [size]="18" />
+        </button>
+        <app-user-avatar [src]="userAvatar(u)" [name]="u.email" />
         <div class="chat-head-text">
-          <span class="chat-head-name"><strong>Nudge</strong> <span class="chat-app-tag">APP</span></span>
-          <small>DM dengan {{ displayName(u) }}</small>
+          <strong>{{ displayName(u) }}</strong>
+          <small>
+            {{ u.email }}
+            @if (u.user) {
+              · <span class="chat-head-status" [class.on]="u.user.chatAppActivated">{{ u.user.chatAppActivated ? 'Nudge aktif' : 'Nudge belum aktif' }}</span>
+              · {{ senderInfo(u) }}
+            }
+          </small>
         </div>
         <span class="spacer"></span>
         @if (live()) {
           <span class="chat-live" title="Pesan baru muncul otomatis"><span class="dot"></span> Live</span>
         }
-      </div>
+        <button
+          type="button"
+          class="icon-btn chat-filter-btn"
+          [class.active]="filtersOpen() || activeFilters()"
+          aria-label="Filter pesan"
+          [attr.aria-expanded]="filtersOpen()"
+          (click)="filtersOpen.set(!filtersOpen())"
+          data-filter-toggle
+        >
+          <app-icon name="selector" [size]="17" />
+          @if (activeFilters()) {
+            <span class="chat-filter-dot">{{ activeFilters() }}</span>
+          }
+        </button>
+        @if (u.user) {
+          <a class="icon-btn" [routerLink]="['/admin/users', u.user.userId]" aria-label="Detail user" title="Detail user">
+            <app-icon name="user-check" [size]="17" />
+          </a>
+        }
+      </header>
+
+      @if (filtersOpen()) {
+        <div class="chat-filters">
+          <div class="chat-range">
+            <app-date-range-picker
+              [from]="from()"
+              [to]="to() === from() ? '' : to()"
+              [max]="today"
+              placeholder="Semua tanggal"
+              ariaLabel="Filter tanggal"
+              (rangeChange)="setRange($event)"
+            />
+            @if (from()) {
+              <button type="button" class="icon-btn chat-range-clear" aria-label="Hapus filter tanggal" (click)="clearRange()" data-clear-range>
+                <app-icon name="x" [size]="14" />
+              </button>
+            }
+          </div>
+          <app-select class="chat-kind" [options]="kindFilters" [ngModel]="kind" (ngModelChange)="setKind($event)" ariaLabel="Filter jenis pesan" />
+          @if (activeFilters()) {
+            <button type="button" class="link-btn" (click)="clearFilters()">Reset filter</button>
+          }
+        </div>
+      }
     }
 
     <div class="chat-scroll" #scroller (scroll)="onScroll()">
       @if (!email()) {
         <div class="chat-empty">
-          <app-icon name="users" [size]="28" />
-          <p>Pilih satu user di atas untuk melihat chat-nya dengan Nudge.</p>
+          <span class="chat-empty-icon"><app-icon name="send" [size]="26" /></span>
+          <strong>Pilih percakapan</strong>
+          <p>Pilih satu user di kiri untuk melihat chat-nya dengan Nudge.</p>
         </div>
       } @else if (loading()) {
-        <div class="chat-empty"><span class="spinner dark" aria-hidden="true"></span><p>Memuat chat…</p></div>
+        <div class="chat-thread-skeleton" aria-busy="true">
+          <span class="skeleton sk-bubble left"></span>
+          <span class="skeleton sk-bubble right"></span>
+          <span class="skeleton sk-bubble left short"></span>
+          <span class="skeleton sk-bubble right"></span>
+        </div>
       } @else if (error()) {
-        <div class="chat-empty error"><app-icon name="alert-circle" [size]="28" /><p>{{ error() }}</p></div>
+        <div class="chat-empty error">
+          <span class="chat-empty-icon"><app-icon name="alert-circle" [size]="26" /></span>
+          <p>{{ error() }}</p>
+          <button type="button" class="btn btn-ghost btn-sm" (click)="reload()"><app-icon name="refresh" [size]="14" /> Coba lagi</button>
+        </div>
       } @else if (!messages().length) {
         <div class="chat-empty">
-          <app-icon name="clock" [size]="28" />
-          <p>Belum ada pesan untuk filter ini.</p>
+          <span class="chat-empty-icon"><app-icon name="send" [size]="26" /></span>
+          <strong>Belum ada pesan</strong>
+          <p>{{ activeFilters() ? 'Tidak ada pesan untuk filter ini.' : 'Mulai percakapan dengan mengirim pesan di bawah.' }}</p>
         </div>
       } @else {
         @if (hasOlder()) {
@@ -145,8 +180,9 @@
               [class.in]="r.e.direction === 'in'"
               [class.out]="r.e.direction === 'out'"
               [class.first]="r.first"
-              [class.failed]="r.e.status === 'failed'"
+              [class.failed]="r.e.status === 'failed' || r.e.pending === 'failed'"
               [class.skipped]="r.e.status === 'skipped'"
+              [class.pending]="r.e.pending === 'sending'"
               [attr.data-log-id]="r.e.id"
             >
               <div class="chat-avatar">
@@ -154,7 +190,7 @@
                   @if (r.e.direction === 'out') {
                     <img src="favicon.svg" alt="" width="32" height="32" />
                   } @else {
-                    <app-user-avatar [src]="selected()?.userId ? avatarUrl(selected()!.userId!) : null" [name]="email()" />
+                    <app-user-avatar [src]="userAvatar(selected())" [name]="email()" />
                   }
                 }
               </div>
@@ -162,30 +198,57 @@
                 @if (r.first) {
                   <div class="chat-sender">
                     @if (r.e.direction === 'out') {
-                      <strong>Nudge</strong> <span class="chat-app-tag" [class.operator]="r.e.channel !== 'app'">{{ senderLabel(r.e) }}</span>
+                      <strong>Nudge</strong> <span class="chat-app-tag" [class.operator]="r.e.channel === 'operator' || r.e.channel === 'fallback'">{{ senderLabel(r.e) }}</span>
                     } @else {
                       <strong>{{ displayName(selected()) }}</strong>
                     }
                   </div>
                 }
-                <div class="chat-bubble">
-                  @if (r.e.kind === 'click') {
-                    <span class="chat-click"><app-icon name="target" [size]="14" /></span>
+                <div class="chat-bubble-row">
+                  <div class="chat-bubble" [class.folded]="isLong(r.e) && !expanded().has(r.e.id)">
+                    @if (r.e.kind === 'click') {
+                      <span class="chat-click"><app-icon name="target" [size]="14" /></span>
+                    }
+                    <span class="chat-text" [innerHTML]="format(r.e.body)"></span>
+                  </div>
+                  @if (!r.e.pending) {
+                    <button
+                      type="button"
+                      class="chat-action"
+                      [class.done]="copied() === r.e.id"
+                      [attr.aria-label]="copied() === r.e.id ? 'Tersalin' : 'Salin pesan'"
+                      [title]="copied() === r.e.id ? 'Tersalin' : 'Salin pesan'"
+                      (click)="copy(r.e)"
+                    >
+                      <app-icon [name]="copied() === r.e.id ? 'check' : 'layers'" [size]="14" />
+                    </button>
                   }
-                  <span class="chat-text" [innerHTML]="format(r.e.body)"></span>
                 </div>
+                @if (isLong(r.e)) {
+                  <button type="button" class="chat-fold" (click)="toggleFold(r.e.id)">
+                    {{ expanded().has(r.e.id) ? 'Tutup' : 'Lihat selengkapnya' }}
+                  </button>
+                }
                 <div class="chat-meta">
-                  <span class="chat-kind-tag">{{ kindLabel[r.e.kind] || r.e.kind }}</span>
-                  <time>{{ clock(r.e.createdDate) }}</time>
-                  @if (r.e.status === 'failed') {
-                    <span class="chat-status failed"><app-icon name="alert-circle" [size]="12" /> Gagal terkirim</span>
-                  } @else if (r.e.status === 'skipped') {
-                    <span class="chat-status skipped">Tidak terkirim (dilewati)</span>
-                  } @else if (r.e.direction === 'out') {
-                    <span class="chat-status sent"><app-icon name="check" [size]="12" /></span>
+                  @if (r.e.pending === 'sending') {
+                    <span class="chat-status sending"><span class="mini-spinner"></span> Mengirim…</span>
+                  } @else if (r.e.pending === 'failed') {
+                    <span class="chat-status failed"><app-icon name="alert-circle" [size]="12" /> {{ r.e.error }}</span>
+                    <button type="button" class="chat-retry" (click)="send(r.e)" data-retry>Coba lagi</button>
+                    <button type="button" class="chat-retry subtle" (click)="discard(r.e)">Hapus</button>
+                  } @else {
+                    <span class="chat-kind-tag">{{ kindLabel[r.e.kind] || r.e.kind }}</span>
+                    <time [title]="fullTime(r.e.createdDate)">{{ clock(r.e.createdDate) }}</time>
+                    @if (r.e.status === 'failed') {
+                      <span class="chat-status failed"><app-icon name="alert-circle" [size]="12" /> Gagal terkirim</span>
+                    } @else if (r.e.status === 'skipped') {
+                      <span class="chat-status skipped">Tidak terkirim (dilewati)</span>
+                    } @else if (r.e.direction === 'out') {
+                      <span class="chat-status sent" title="Terkirim"><app-icon name="check" [size]="12" /></span>
+                    }
                   }
                 </div>
-                @if (r.e.error) {
+                @if (r.e.error && !r.e.pending) {
                   <div class="chat-error">{{ r.e.error }}</div>
                 }
               </div>
@@ -195,39 +258,40 @@
       }
     </div>
 
-    @if (newBelow()) {
-      <button type="button" class="chat-new-below" (click)="jumpToNew()" data-new-below>
-        {{ newBelow() }} pesan baru <app-icon name="chevron-down" [size]="14" />
+    @if (email() && (newBelow() || !atBottom())) {
+      <button type="button" class="chat-new-below" [class.has-new]="newBelow()" (click)="jumpToNew()" data-new-below>
+        @if (newBelow()) {
+          {{ newBelow() }} pesan baru
+        }
+        <app-icon name="chevron-down" [size]="16" />
       </button>
     }
 
-    <form class="chat-composer" (ngSubmit)="send()">
-      <textarea
-        rows="1"
-        name="draft"
-        [placeholder]="selected() ? 'Kirim pesan ke ' + displayName(selected()) + ' lewat Nudge…' : 'Pilih user dulu'"
-        [ngModel]="draft()"
-        (ngModelChange)="draft.set($event)"
-        (keydown)="onComposerKey($event)"
-        [disabled]="!email() || sending()"
-        [attr.maxlength]="maxMessage"
-        aria-label="Tulis pesan"
-        data-composer
-      ></textarea>
-      <button
-        type="submit"
-        class="chat-send"
-        [disabled]="!email() || !draft().trim() || sending()"
-        aria-label="Kirim pesan"
-        data-send
-      >
-        @if (sending()) {
-          <span class="spinner dark" aria-hidden="true"></span>
-        } @else {
+    @if (email()) {
+      <form class="chat-composer" (ngSubmit)="send()">
+        <textarea
+          #composer
+          rows="1"
+          name="draft"
+          [ngModelOptions]="{ standalone: true }"
+          [placeholder]="'Kirim pesan ke ' + displayName(selected()) + ' lewat Nudge…'"
+          [ngModel]="draft()"
+          (ngModelChange)="draft.set($event)"
+          (keydown)="onComposerKey($event)"
+          [attr.maxlength]="maxMessage"
+          aria-label="Tulis pesan"
+          data-composer
+        ></textarea>
+        <button type="submit" class="chat-send" [disabled]="!draft().trim()" aria-label="Kirim pesan" data-send>
           <app-icon name="send" [size]="18" />
+        </button>
+      </form>
+      <p class="chat-composer-hint">
+        <span>Enter kirim · Shift+Enter baris baru</span>
+        @if (draft().length > maxMessage - 400) {
+          <span class="chat-counter" [class.over]="draft().length >= maxMessage">{{ draft().length }}/{{ maxMessage }}</span>
         }
-      </button>
-    </form>
-    <p class="chat-composer-hint">Enter untuk kirim, Shift+Enter untuk baris baru. Dikirim lewat pengirim pilihan user (app Nudge / akun operator).</p>
+      </p>
+    }
   </div>
 </section>
