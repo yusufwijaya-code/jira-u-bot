@@ -315,15 +315,18 @@ func TestBuildMessageText_IncludesStoryPointCalculationExplanation(t *testing.T)
 	}
 }
 
-func TestBuildMessageText_EndsWithOKRHashtagFooter(t *testing.T) {
+func TestBuildMessageText_EndsWithHelpHintAndNoOKRHashtag(t *testing.T) {
 	for _, msg := range []google_chat_notifier_dto.ReminderMessage{
 		{IssueKey: "OMS-1", Tier: "30m"},
 		{IssueKey: "OMS-1", IsOverage: true},
 		{IssueKey: "OMS-1", IsEarlyCompletion: true},
 	} {
 		text := BuildMessageText(msg)
-		if !strings.HasSuffix(text, "#BersamaSayaMenempuhOKRyangPassss") {
-			t.Errorf("message text %q does not end with the OKR hashtag footer", text)
+		if !strings.HasSuffix(text, helpHint) {
+			t.Errorf("message text %q does not end with the help hint", text)
+		}
+		if strings.Contains(text, "#BersamaSayaMenempuhOKRyangPassss") {
+			t.Errorf("message text %q still contains the OKR hashtag footer", text)
 		}
 	}
 }

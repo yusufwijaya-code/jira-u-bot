@@ -63,9 +63,7 @@ Kalau notifikasi aktif, manfaatnya buat kamu:
 
 Fokus ngerjain tiketnya aja, biar Nudge yang ingetin waktunya 💪
 
-💡 Ketik */n-help* di sini buat lihat command lain
-
-#BersamaSayaMenempuhOKRyangPassss`
+💡 Ketik */n-help* di sini buat lihat command lain`
 	if err := s.dmNotifier.SendPlainTextDM(ctx, email, text); err != nil {
 		log.Printf("registration_service: thank-you DM to %s failed: %v", email, err)
 	}

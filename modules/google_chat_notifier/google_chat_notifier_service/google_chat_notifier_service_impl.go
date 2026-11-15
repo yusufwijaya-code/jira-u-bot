@@ -47,11 +47,6 @@ func (s *googleChatNotifierServiceImpl) SendReminder(ctx context.Context, msg go
 	return nil
 }
 
-// messageFooter is appended to every reminder/overage/early-completion
-// message — plain URLs (no <url|label> masking) and this footer are the
-// only requirements shared across all three shapes.
-const messageFooter = "#BersamaSayaMenempuhOKRyangPassss"
-
 // helpHint advertises the interactive slash commands on every outbound
 // message — this function is shared by both the webhook/space path and the
 // DM path, so adding it here covers both without touching either notifier
@@ -132,7 +127,7 @@ func BuildMessageText(msg google_chat_notifier_dto.ReminderMessage) string {
 
 	// No /n-geser hint: the command still works (and is listed by /n-help),
 	// but it's no longer advertised in every reminder.
-	lines = append(lines, "", helpHint, "", messageFooter)
+	lines = append(lines, "", helpHint)
 	return strings.Join(lines, "\n")
 }
 
