@@ -92,11 +92,19 @@ func (v view) card() chat_app_dto.CardWithID {
 	c := chat_app_dto.Card{Header: &chat_app_dto.CardHeader{Title: v.title, Subtitle: v.subtitle}}
 	for _, s := range v.sections {
 		out := chat_app_dto.Section{Header: cardHTML(s.header)}
-		for _, it := range s.items {
+		visible := 0 // widgets shown before "Show more"
+		for i, it := range s.items {
+			// A divider between two rows keeps tickets visually apart.
+			if i > 0 && it.row != nil && s.items[i-1].row != nil {
+				out.Widgets = append(out.Widgets, chat_app_dto.Widget{Divider: &struct{}{}})
+			}
 			out.Widgets = append(out.Widgets, it.widget())
+			if i == s.collapseAfter-1 {
+				visible = len(out.Widgets)
+			}
 		}
-		if s.collapseAfter > 0 && len(out.Widgets) > s.collapseAfter+1 {
-			out.Collapsible, out.UncollapsibleWidgetsCount = true, s.collapseAfter
+		if s.collapseAfter > 0 && len(s.items) > s.collapseAfter+1 {
+			out.Collapsible, out.UncollapsibleWidgetsCount = true, visible
 		}
 		if len(out.Widgets) > 0 {
 			c.Sections = append(c.Sections, out)
