@@ -60,6 +60,25 @@
 3. Untuk dashboard: buat OAuth Client baru tipe **Web application** di GCP Console (project yang sama dengan OAuth DM), isi `GOOGLE_SIGNIN_CLIENT_ID`/`GOOGLE_SIGNIN_CLIENT_SECRET`/`GOOGLE_SIGNIN_REDIRECT_URL`, `ADMIN_EMAIL`, dan `CREDENTIAL_ENCRYPTION_KEY` (32-byte base64, `openssl rand -base64 32`) di `.env`.
 4. `go run .` untuk menjalankan service — migrasi database diterapkan otomatis saat start.
 
+## Deploy
+
+Produksi: `https://labcup.tech/nudge/` (Ubuntu, nginx, systemd unit `nudge`, MySQL lokal).
+
+- **CI** (`.github/workflows/ci.yml`) — tiap PR dan push ke `feat/**`: `go vet`, `go test` (MySQL 8 service), build backend; `ng test` (ChromeHeadless) dan `ng build` frontend.
+- **Deploy** (`.github/workflows/deploy.yml`) — push ke `main` atau manual (*Run workflow*): jalankan CI → build binary Linux + bundle Angular jadi satu `nudge.tar.gz` → `scp` ke server → `deploy/remote-deploy.sh` membuka release baru, memindah symlink `current`, restart service, dan **rollback otomatis** kalau `/nudge/ping` tidak menjawab. Lima release terakhir disimpan.
+- **Secrets GitHub** (environment `production`): `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS` (output `ssh-keyscan <host>`), opsional `SSH_PORT` (default 22).
+
+Layout server:
+
+```
+/var/www/nudge/
+  current -> releases/<waktu>-<sha>   binary nudge, config/, public/nudge/ (Angular)
+  releases/                           5 release terakhir
+  shared/.env, shared/data/           konfigurasi & token OAuth — tidak ikut release
+```
+
+File server di repo: `deploy/nudge.service` (`/etc/systemd/system/`), `deploy/nginx-nudge.conf` (`/etc/nginx/snippets/nudge.conf`, di-`include` di server block labcup.tech). nginx menyajikan Angular langsung dan meneruskan `/nudge/api|auth|dashboard/admin/` serta `/nudge/ping` ke Go (port `PORT` di `shared/.env`).
+
 ## Struktur
 
 - `modules/poller` — loop polling Jira & deteksi perubahan status tiket

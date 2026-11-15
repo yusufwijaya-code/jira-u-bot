@@ -1,0 +1,19 @@
+# /etc/systemd/system/nudge.service
+# Release layout (deploy/remote-deploy.sh):
+#   /var/www/nudge/current  -> releases/<id>   (binary, config/, public/nudge/)
+#   /var/www/nudge/shared   .env + data/ (OAuth token) — survive every release
+[Unit]
+Description=Nudge (Jira budget reminders + dashboard API)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+Environment=GIN_MODE=release
+WorkingDirectory=/var/www/nudge/shared
+ExecStart=/var/www/nudge/current/nudge
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

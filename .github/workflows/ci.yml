@@ -2,32 +2,60 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+  push:
+    # main is tested by deploy.yml (which calls this workflow) before it ships.
+    branches: ['feat/**']
+  workflow_call:
 
 permissions:
   contents: read
 
+# github.workflow is the caller's name under workflow_call ("Deploy"), so a
+# deploy's test run never cancels — or is cancelled by — a plain CI run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'CI' }}
+
 jobs:
-  build:
+  backend:
+    name: Backend (Go)
     runs-on: ubuntu-latest
     services:
+      # Repository tests (base/testutil) expect root with no password on 3308.
       mysql:
-        image: mysql:8
+        image: mysql:8.0
         env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
           MYSQL_DATABASE: jira_db
         ports:
           - 3308:3306
         options: >-
-          --health-cmd="mysqladmin ping"
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
       - run: go vet ./...
-      - run: go build -o nudge .
       - run: go test ./...
+      - run: CGO_ENABLED=0 go build -o nudge .
+
+  frontend:
+    name: Frontend (Angular)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx ng test --watch=false --browsers=ChromeHeadless --no-progress
+      - run: npx ng build

@@ -7,33 +7,91 @@ on:
 
 permissions:
   contents: read
-  deployments: write
+
+# One deploy at a time; a newer push waits instead of cancelling a live switch.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build backend
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release/nudge .
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npx ng build
+
+      # Layout matches deploy/nginx-nudge.conf and deploy/nudge.service.
+      - name: Package
+        run: |
+          mkdir -p release/config release/deploy release/public/nudge
+          cp config/holidays_id.json release/config/
+          cp deploy/remote-deploy.sh release/deploy/
+          cp -r frontend/dist/frontend/browser/. release/public/nudge/
+          tar -czf nudge.tar.gz -C release .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nudge-release
+          path: nudge.tar.gz
+          retention-days: 7
+
   deploy:
+    name: Deploy to labcup.tech
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: production
       url: https://labcup.tech/nudge/dashboard
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/download-artifact@v4
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -e
-            cd /var/www/jira-u-bot
-            git fetch origin main
-            git reset --hard origin/main
-            export PATH=$PATH:/usr/local/go/bin
-            go build -o jira-u-bot .
-            systemctl restart jira-u-bot
-            sleep 2
-            systemctl is-active jira-u-bot
+          name: nudge-release
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload and switch release
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          id="$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes)
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes nudge.tar.gz "$SSH_USER@$SSH_HOST:/tmp/nudge-$id.tar.gz"
+          ssh "${ssh_opts[@]}" "$SSH_USER@$SSH_HOST" \
+            "tar -xzf /tmp/nudge-$id.tar.gz -O ./deploy/remote-deploy.sh | bash -s -- /tmp/nudge-$id.tar.gz $id"
 
       - name: Health check
         run: |
           curl -sf --retry 5 --retry-delay 3 --retry-all-errors https://labcup.tech/nudge/ping -o /dev/null
+          curl -sf https://labcup.tech/nudge/ -o /dev/null
           echo "nudge OK"
