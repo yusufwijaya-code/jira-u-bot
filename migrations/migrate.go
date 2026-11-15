@@ -275,4 +275,3 @@ func addColumnIfNotExists(db *sql.DB, alterSQL string) error {
 	}
 	return err
 }
-

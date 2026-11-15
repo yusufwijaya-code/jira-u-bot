@@ -1,8 +1,8 @@
 package config
 
 import (
-	"strings"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/spf13/viper"
