@@ -20,6 +20,9 @@ const TOAST_ICONS = { success: 'check-circle', error: 'alert-circle', info: 'inf
             @if (toast.message) {
               <span>{{ toast.message }}</span>
             }
+            @if (toast.action) {
+              <button type="button" class="toast-action" data-toast-action (click)="toastService.runAction(toast.id)">{{ toast.action.label }}</button>
+            }
           </div>
           <button type="button" class="toast-close" aria-label="Tutup" (click)="toastService.dismiss(toast.id)">
             <app-icon name="x" [size]="14" />

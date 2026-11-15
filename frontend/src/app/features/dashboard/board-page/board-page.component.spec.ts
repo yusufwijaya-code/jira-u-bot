@@ -297,23 +297,49 @@ describe('BoardPageComponent', () => {
     req.flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [] });
   });
 
-  it('keeps the moving spinner until the reloaded board arrives, then highlights the row', () => {
+  function startMove(fixture: ReturnType<typeof render>) {
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-card="OMS-1"] [data-status-chip]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '21', name: 'Start', toStatus: 'Code Process' }] });
+    fixture.detectChanges();
+    (el.querySelector('[data-transition="21"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+  }
+
+  it('moves the row before Jira answers, then offers Undo', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'show').and.callThrough();
+    const el: HTMLElement = fixture.nativeElement;
+    startMove(fixture);
+    expect(el.querySelector('[data-status="Code Process"] [data-card="OMS-1"]')).not.toBeNull();
+    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).toContain('Memindah');
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({});
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).not.toContain('Memindah');
+    expect(toast.show).toHaveBeenCalledWith('success', 'Status dipindah', 'OMS-1 → Code Process', 6000, jasmine.objectContaining({ label: 'Batalkan' }));
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('puts the row back when Jira rejects the move', () => {
     const fixture = render();
     const el: HTMLElement = fixture.nativeElement;
-    openMenu(fixture).flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [{ id: '11', name: 'Start', toStatus: 'Code Process' }] });
+    startMove(fixture);
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({ error: 'bukan tiket kamu' }, { status: 403, statusText: 'Forbidden' });
     fixture.detectChanges();
-    (el.querySelector('[data-transition="11"]') as HTMLButtonElement).click();
-    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({ status: 'Code Process' });
-    fixture.detectChanges();
-    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).toContain('Memindah');
+    expect(el.querySelector('[data-status="To Do"] [data-card="OMS-1"]')).not.toBeNull();
+  });
 
-    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
-      columns: [{ status: 'Code Process', cards: [{ issueKey: 'OMS-1', summary: 'Lock payments', status: 'Code Process', issueURL: '', boardId: 28, storyPoints: 2 }] }],
-    });
-    fixture.detectChanges();
-    const row = el.querySelector('[data-card="OMS-1"]')!;
-    expect(row.classList).toContain('just-moved');
-    expect(row.querySelector('[data-status-chip]')?.textContent).toContain('Code Process');
+  it('undo moves back when the workflow allows it', () => {
+    const fixture = render();
+    const cmp = fixture.componentInstance as unknown as { undo(k: string, s: string): void };
+    cmp.undo('OMS-1', 'To Do');
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ transitions: [{ id: '11', name: 'Back', toStatus: 'TO DO' }] });
+    const req = http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition'));
+    expect(req.request.body).toEqual(jasmine.objectContaining({ transitionId: '11' }));
+    req.flush({});
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
   });
 
   it('shows summary cards for the scope', () => {

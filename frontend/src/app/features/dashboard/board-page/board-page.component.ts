@@ -201,7 +201,7 @@ export class BoardPageComponent {
     });
   }
 
-  protected load(boardId: number | null = this.boardContext.selectedId(), done?: () => void): void {
+  protected load(boardId: number | null = this.boardContext.selectedId()): void {
     this.loading.set(true);
     this.error.set(null);
     // A newer load (e.g. a quick board switch) wins over an older answer.
@@ -212,11 +212,9 @@ export class BoardPageComponent {
         this.related.set(res.related ?? []);
         this.loaded.set(true);
         this.loading.set(false);
-        done?.();
       },
       error: () => {
         this.loading.set(false);
-        done?.();
         if (this.loaded()) {
           // Keep the tickets already on screen; just say the refresh failed.
           this.toast.error('Gagal memuat ulang tiket', 'Data di layar mungkin belum terbaru, coba lagi.');
@@ -378,21 +376,62 @@ export class BoardPageComponent {
 
   protected move(card: TicketCard, option: TransitionOption): void {
     this.menu.set(null);
+    const from = card.status;
+    this.applyLocalMove(card.issueKey, option.toStatus);
     this.moving.set(card.issueKey);
     this.dashboard.moveTicket(card.issueKey, option.id).subscribe({
       next: () => {
-        this.toast.success('Status dipindah', `${card.issueKey} → ${option.toStatus}`);
-        // The row keeps its spinner until the refreshed board shows it in its new section.
-        this.load(undefined, () => {
-          this.moving.set(null);
-          this.highlight(card.issueKey);
+        this.moving.set(null);
+        this.highlight(card.issueKey);
+        this.toast.show('success', 'Status dipindah', `${card.issueKey} → ${option.toStatus}`, 6000, {
+          label: 'Batalkan',
+          run: () => this.undo(card.issueKey, from),
         });
+        this.load();
       },
       error: (err) => {
+        this.applyLocalMove(card.issueKey, from);
         this.moving.set(null);
         this.toast.error('Gagal memindah status', err?.error?.error ?? 'Coba lagi beberapa saat.');
       },
     });
+  }
+
+  /** Moves a card on screen only: sprint cards change section, branches change their status. */
+  protected applyLocalMove(issueKey: string, toStatus: string): void {
+    const cols = this.columns();
+    const card = cols.flatMap((c) => c.cards).find((c) => c.issueKey === issueKey);
+    if (card) {
+      const moved = { ...card, status: toStatus };
+      const without = cols.map((c) => ({ ...c, cards: c.cards.filter((x) => x.issueKey !== issueKey) }));
+      const target = without.find((c) => c.status.toLowerCase() === toStatus.toLowerCase());
+      this.columns.set(
+        target
+          ? without.map((c) => (c === target ? { ...c, cards: [moved, ...c.cards] } : c))
+          : [...without, { status: toStatus, cards: [moved] }],
+      );
+      return;
+    }
+    this.related.update((list) => list.map((b) => (b.issueKey === issueKey ? { ...b, status: toStatus } : b)));
+  }
+
+  protected undo(issueKey: string, fromStatus: string): void {
+    this.dashboard.getTransitions(issueKey).subscribe({
+      next: (res) => {
+        const back = (res.transitions ?? []).find((t) => t.toStatus.toLowerCase() === fromStatus.toLowerCase());
+        if (!back) {
+          this.toast.error('Tidak bisa dibatalkan', `Workflow Jira tidak mengizinkan kembali ke ${fromStatus}.`);
+          return;
+        }
+        const card = this.findCard(issueKey);
+        if (card) this.move(card, back);
+      },
+      error: () => this.toast.error('Tidak bisa dibatalkan', 'Gagal memuat transisi dari Jira.'),
+    });
+  }
+
+  private findCard(issueKey: string): TicketCard | undefined {
+    return this.columns().flatMap((c) => c.cards).find((c) => c.issueKey === issueKey) ?? this.related().find((b) => b.issueKey === issueKey);
   }
 
   /** Flashes the moved row and brings it into view (its section may have changed). */
