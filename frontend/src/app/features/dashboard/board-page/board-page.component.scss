@@ -14,17 +14,15 @@
 .tb-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
 .tb-summary { display: flex; flex-wrap: wrap; gap: 6px; }
 .tb-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
-  background: var(--surface); color: var(--text-muted); font: inherit; font-size: 0.8rem; cursor: pointer;
-  transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  color: var(--text-muted); font: inherit; font-size: 0.8rem; cursor: pointer;
   strong { color: var(--text); }
   &:hover { border-color: var(--tone); color: var(--text); }
 }
 .tb-search {
-  display: flex; align-items: center; gap: 8px; min-width: 240px;
-  padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text-faint);
+  display: flex; align-items: center; gap: 8px; min-width: 240px; padding: 7px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-faint);
   &:focus-within { border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
   input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 0.86rem; color: var(--text); }
 }
@@ -33,37 +31,40 @@
 .tb-section {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-xs); scroll-margin-top: calc(var(--topbar-h) + 12px);
-  border-left: 3px solid var(--tone);
 }
+// The status colour lives in a softly tinted header instead of a side border.
 .tb-head {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 12px 16px; border: 0; background: none; font: inherit; color: var(--text); cursor: pointer; text-align: left;
-  border-radius: var(--radius);
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px;
+  border: 0; border-radius: var(--radius); font: inherit; color: var(--text); cursor: pointer; text-align: left;
+  background: color-mix(in srgb, var(--tone) 8%, var(--surface));
 }
+.tb-head[aria-expanded='true'] { border-radius: var(--radius) var(--radius) 0 0; }
 .tb-title { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .tb-count {
-  min-width: 22px; padding: 1px 8px; border-radius: 999px; background: var(--surface-2);
-  border: 1px solid var(--border); font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-align: center;
+  min-width: 22px; padding: 1px 8px; border-radius: 999px; background: var(--surface);
+  font-size: 0.75rem; font-weight: 700; color: var(--tone); text-align: center;
 }
 .tb-chevron { margin-left: auto; color: var(--text-faint); transform: rotate(-90deg); transition: transform var(--fast) var(--ease); }
 .tb-chevron.open { transform: none; }
-.tb-empty { margin: 0; padding: 0 16px 14px; font-size: 0.82rem; color: var(--text-faint); }
+.tb-empty { margin: 0; padding: 12px 16px 14px; font-size: 0.82rem; color: var(--text-faint); }
 
 .tb-table {
   width: 100%; border-collapse: collapse; font-size: 0.86rem;
   th {
-    padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface-2);
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-    color: var(--text-faint); text-align: left; white-space: nowrap;
+    padding: 8px 16px; border-top: 1px solid var(--border); font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-faint); text-align: left; white-space: nowrap;
   }
   td { padding: 12px 16px; border-top: 1px solid var(--border); vertical-align: middle; }
-  tbody tr { transition: background var(--fast) var(--ease), opacity var(--fast) var(--ease); }
-  tbody tr:hover { background: var(--surface-2); }
+  tbody tr:hover > td { background: var(--surface-2); }
   tr.busy { opacity: 0.6; }
+  // No overflow:hidden on the section (it would clip the status menu), so
+  // the last row's cells follow the card's rounded corners themselves.
+  tbody tr:last-child > td:first-child { border-bottom-left-radius: var(--radius); }
+  tbody tr:last-child > td:last-child { border-bottom-right-radius: var(--radius); }
 }
 .tb-num { text-align: right; width: 56px; color: var(--text-muted); font-weight: 600; }
 .tb-status-col { text-align: right; width: 1%; white-space: nowrap; }
-.tb-summary-cell { display: flex; flex-direction: column; gap: 2px; }
+.tb-summary-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .tb-summary-text { color: var(--text); line-height: 1.35; }
 .tb-parent, .tb-muted { font-size: 0.76rem; color: var(--text-faint); }
 
@@ -77,8 +78,56 @@
   > span { display: block; height: 100%; background: var(--primary); }
 }
 .tb-time.over .tb-bar > span { background: var(--error); }
+.tb-time.stopped:not(.over) .tb-bar > span { background: var(--success); }
+
+// Subtask / linked item hanging under its parent row.
+.tb-table tr.tb-branch > td { border-top-style: dashed; background: var(--surface-2); }
+.tb-branch .tb-summary-text { font-size: 0.84rem; }
+.tb-branch-key { display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; }
+.tb-elbow {
+  width: 12px; height: 12px; flex-shrink: 0; transform: translateY(-4px);
+  border: solid var(--border-strong); border-width: 0 0 2px 2px; border-bottom-left-radius: 6px;
+}
+.tb-relation {
+  padding: 0 6px; border-radius: 6px; background: var(--primary-soft);
+  color: var(--primary-strong); font-size: 0.68rem; font-weight: 600;
+}
+
+// --- Loading & process states (keyframes spin/shimmer + .skeleton are global) ---
+.tb-spin {
+  display: inline-block; width: 12px; height: 12px; vertical-align: -2px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.7s linear infinite;
+}
+.tb-progress {
+  position: sticky; top: 0; z-index: 5; height: 3px; margin-bottom: -3px; border-radius: 999px; overflow: hidden;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent) 0 0 / 40% 100% no-repeat var(--primary-soft);
+  animation: tb-slide 1.1s var(--ease) infinite;
+}
+@keyframes tb-slide { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes tb-flash { from { background: var(--primary-soft); } }
+.tb-dim { opacity: 0.55; pointer-events: none; transition: opacity var(--normal) var(--ease); }
+.tb-body { animation: fade-in var(--normal) var(--ease); }
+.tb-table tr.busy > td { background: var(--surface-2); }
+.tb-table tr.just-moved > td { animation: tb-flash 2.4s var(--ease); }
+
+.tb-skeleton { display: flex; flex-direction: column; gap: 14px; }
+.tb-sk-pill { width: 120px; height: 28px; border-radius: 999px; }
+.tb-sk-search { width: 240px; height: 38px; }
+.tb-sk-title { width: 160px; height: 14px; }
+.tb-sk-row {
+  display: grid; grid-template-columns: 90px 1fr 120px 110px; gap: 24px; align-items: center;
+  padding: 16px; border-top: 1px solid var(--border);
+  animation: fade-in 300ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 60ms);
+  .skeleton { height: 12px; }
+}
+.tb-sk-text { width: 70%; }
+.tb-sk-chip { height: 22px !important; border-radius: 999px; }
+.tb-sk-note { display: flex; align-items: center; gap: 8px; }
+.tb-menu-loading { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
+.tb-sk-option { height: 30px; margin: 0 6px; }
 
 @media (max-width: 720px) {
+  .tb-sk-row { grid-template-columns: 1fr auto; .tb-sk-text, .tb-sk-time { display: none; } }
   .tb-search { min-width: 0; width: 100%; }
   .tb-table {
     thead { display: none; }
@@ -87,5 +136,6 @@
     td[data-label='Ringkasan'], td[data-label='Waktu'] { grid-column: 1 / -1; }
     td[data-label='SP'] { display: none; }
   }
+  .tb-table tr.tb-branch { background: var(--surface-2); }
   .tb-status-col { grid-column: 2; grid-row: 1; }
 }

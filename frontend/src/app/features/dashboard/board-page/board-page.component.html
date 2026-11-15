@@ -1,13 +1,39 @@
-@if (loading()) {
-  <div class="empty-inline"><span>Memuat tiket…</span></div>
+@if (initialLoading()) {
+  <!-- First load: the page's shape, shimmering, instead of a lone "Memuat…" line. -->
+  <div class="tb-skeleton" aria-busy="true" aria-label="Memuat tiket" data-skeleton>
+    <div class="tb-toolbar">
+      <div class="tb-summary">
+        <span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill"></span>
+      </div>
+      <span class="skeleton tb-sk-search"></span>
+    </div>
+    @for (rows of [[1, 2, 3, 4], [1, 2]]; track $index) {
+      <section class="tb-section">
+        <div class="tb-head"><span class="skeleton tb-sk-title"></span></div>
+        @for (r of rows; track $index) {
+          <div class="tb-sk-row" [style.--i]="$index">
+            <span class="skeleton tb-sk-key"></span>
+            <span class="skeleton tb-sk-text"></span>
+            <span class="skeleton tb-sk-time"></span>
+            <span class="skeleton tb-sk-chip"></span>
+          </div>
+        }
+      </section>
+    }
+    <p class="tb-hint tb-sk-note"><span class="tb-spin" aria-hidden="true"></span> Mengambil tiket dari Jira…</p>
+  </div>
 } @else if (error()) {
   <div class="empty-inline">
     <span>{{ error() }}</span>
     <button type="button" class="btn btn-soft btn-sm" (click)="load()">Coba lagi</button>
   </div>
-} @else if (columns().length === 0) {
+} @else if (columns().length === 0 && !refreshing()) {
   <div class="empty-inline"><span>Belum ada tiket kamu di sprint aktif.</span></div>
 } @else {
+  <!-- Reloading with data on screen (board switch / after a move): a thin bar, the table stays. -->
+  @if (refreshing()) {
+    <div class="tb-progress" role="progressbar" aria-label="Memuat ulang tiket" data-refreshing></div>
+  }
   @if (menu()) {
     <div class="status-backdrop" (click)="closeMenu()"></div>
   }
@@ -32,10 +58,13 @@
       />
     </label>
   </div>
-  <p class="tb-hint">{{ total() }} tiket di sprint aktif. Klik status di baris tiket untuk memindahkannya sesuai workflow Jira.</p>
+  <p class="tb-hint">
+    {{ total() }} tiket di sprint aktif{{ branchTotal() ? ' + ' + branchTotal() + ' subtask/linked item di luar sprint' : '' }}.
+    Klik status di baris tiket untuk memindahkannya sesuai workflow Jira.
+  </p>
 
   @for (col of visible(); track col.status) {
-    <section class="tb-section" data-column [attr.data-status]="col.status" [attr.data-tone]="statusTone(col.status)" [id]="sectionId(col.status)">
+    <section class="tb-section" [class.tb-dim]="refreshing() && !moving()" data-column [attr.data-status]="col.status" [attr.data-tone]="statusTone(col.status)" [id]="sectionId(col.status)">
       <button
         type="button"
         class="tb-head"
@@ -50,6 +79,7 @@
       </button>
 
       @if (!isCollapsed(col)) {
+        <div class="tb-body">
         @if (col.cards.length === 0) {
           <p class="tb-empty">Tidak ada tiket di status ini.</p>
         } @else {
@@ -65,30 +95,20 @@
             </thead>
             <tbody>
               @for (card of col.cards; track card.issueKey) {
-                <tr [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey">
+                <tr [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey" [class.just-moved]="justMoved() === card.issueKey">
                   <td data-label="Tiket">
                     <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
                   </td>
-                  <td data-label="Ringkasan" class="tb-summary-cell">
-                    <span class="tb-summary-text">{{ card.summary }}</span>
-                    @if (card.parentKey) {
-                      <span class="tb-parent">↳ {{ card.parentKey }} · {{ card.parentSummary }}</span>
-                    }
+                  <td data-label="Ringkasan">
+                    <div class="tb-summary-cell">
+                      <span class="tb-summary-text">{{ card.summary }}</span>
+                      @if (card.parentKey) {
+                        <span class="tb-parent">↳ {{ card.parentKey }} · {{ card.parentSummary }}</span>
+                      }
+                    </div>
                   </td>
                   <td data-label="SP" class="tb-num">{{ card.storyPoints ? card.storyPoints : '—' }}</td>
-                  <td data-label="Waktu">
-                    @if (card.hasBudgetDetail) {
-                      <div class="tb-time" [class.over]="isOverBudget(card)" data-time>
-                        <span>{{ shortDuration(card.elapsedSeconds) }} / {{ shortDuration(card.budgetSeconds) }}</span>
-                        <span class="tb-bar"><span [style.width.%]="budgetPercent(card)"></span></span>
-                        <small>
-                          {{ isOverBudget(card) ? 'lewat ' : 'sisa ' }}{{ shortDuration(card.budgetSeconds - card.elapsedSeconds) }}
-                        </small>
-                      </div>
-                    } @else {
-                      <span class="tb-muted">—</span>
-                    }
-                  </td>
+                  <td data-label="Waktu"><ng-container *ngTemplateOutlet="timeCell; context: { $implicit: card }" /></td>
                   <td data-label="Status" class="tb-status-col">
                     <div class="status-menu">
                       <button
@@ -101,7 +121,7 @@
                         (click)="toggleMenu(card)"
                       >
                         @if (moving() === card.issueKey) {
-                          Memindah…
+                          <span class="tb-spin" aria-hidden="true"></span> Memindah…
                         } @else {
                           {{ card.status }}
                         }
@@ -110,7 +130,11 @@
                       @if (menu()?.key === card.issueKey) {
                         <div class="status-dropdown" role="menu">
                           @if (menu()!.loading) {
-                            <span class="status-dropdown-note">Memuat transisi…</span>
+                            <div class="tb-menu-loading" aria-busy="true" data-menu-loading>
+                              <span class="status-dropdown-note"><span class="tb-spin" aria-hidden="true"></span> Memuat transisi dari Jira…</span>
+                              <span class="skeleton tb-sk-option"></span>
+                              <span class="skeleton tb-sk-option"></span>
+                            </div>
                           } @else if (menu()!.error) {
                             <span class="status-dropdown-note">{{ menu()!.error }}</span>
                           } @else if (menu()!.options.length === 0) {
@@ -128,13 +152,48 @@
                     </div>
                   </td>
                 </tr>
+                <!-- Subtasks / linked items outside the sprint hang under their parent (read-only status). -->
+                @for (b of branchesOf(card); track b.issueKey) {
+                  <tr class="tb-branch" [attr.data-branch]="b.issueKey" [attr.data-branch-of]="card.issueKey">
+                    <td data-label="Tiket">
+                      <span class="tb-branch-key">
+                        <span class="tb-elbow" aria-hidden="true"></span>
+                        <a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a>
+                      </span>
+                    </td>
+                    <td data-label="Ringkasan">
+                      <div class="tb-summary-cell">
+                        <span class="tb-summary-text">{{ b.summary }}</span>
+                        <span class="tb-relation">{{ b.relation || 'subtask' }}</span>
+                      </div>
+                    </td>
+                    <td data-label="SP" class="tb-num">{{ b.storyPoints ? b.storyPoints : '—' }}</td>
+                    <td data-label="Waktu"><ng-container *ngTemplateOutlet="timeCell; context: { $implicit: b }" /></td>
+                    <td data-label="Status" class="tb-status-col">
+                      <span class="status-chip" title="Status cabang dipindah dari Jira">{{ b.status }}</span>
+                    </td>
+                  </tr>
+                }
               }
             </tbody>
           </table>
         }
+        </div>
       }
     </section>
   } @empty {
     <div class="empty-inline"><span>Tidak ada tiket yang cocok dengan "{{ query() }}".</span></div>
   }
 }
+
+<ng-template #timeCell let-card>
+  @if (hasTime(card)) {
+    <div class="tb-time" [class.over]="isOverBudget(card)" [class.stopped]="!card.hasBudgetDetail" data-time>
+      <span>{{ shortDuration(card.elapsedSeconds) }} / {{ shortDuration(card.budgetSeconds) }}</span>
+      <span class="tb-bar"><span [style.width.%]="budgetPercent(card)"></span></span>
+      <small>{{ timeNote(card) }}</small>
+    </div>
+  } @else {
+    <span class="tb-muted">—</span>
+  }
+</ng-template>

@@ -1,7 +1,9 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
+import { NgTemplateOutlet } from '@angular/common';
 import { IconComponent } from '../../../shared/ui/icon.component';
 
 interface Column {
@@ -48,7 +50,7 @@ export function shortDuration(totalSeconds: number): string {
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, NgTemplateOutlet],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
 })
@@ -58,8 +60,26 @@ export class BoardPageComponent {
   private toast = inject(ToastService);
 
   protected columns = signal<Column[]>([]);
+  /**
+   * The caller's subtasks / linked items of their sprint tickets that aren't
+   * in the sprint themselves (GET /board → related). They hang under their
+   * parent's row as branches and aren't counted per status, like on the
+   * dashboard. Their status is read-only: moves are limited to sprint
+   * tickets (Tech Spec "Papan Tiket & Cuti", AC1.6).
+   */
+  protected related = signal<TicketCard[]>([]);
   protected loading = signal(true);
+  /** True once a board answer arrived — later loads refresh in place instead of blanking the page. */
+  protected loaded = signal(false);
+  /** First load: skeleton. */
+  protected initialLoading = computed(() => this.loading() && !this.loaded());
+  /** Reload with data on screen (board switch, after a move): progress bar + dimmed table. */
+  protected refreshing = computed(() => this.loading() && this.loaded());
   protected error = signal<string | null>(null);
+  /** The ticket just moved: its row is highlighted for a moment after the reload. */
+  protected justMoved = signal<string | null>(null);
+  private loadSub?: Subscription;
+  private highlightTimer?: ReturnType<typeof setTimeout>;
   protected menu = signal<MenuState | null>(null);
   protected moving = signal<string | null>(null);
   protected query = signal('');
@@ -71,21 +91,47 @@ export class BoardPageComponent {
 
   protected total = computed(() => this.columns().reduce((n, c) => n + c.cards.length, 0));
 
-  /** Columns with only the cards matching the search (key, summary or parent). */
+  /** Branches keyed by their parent's issue key. */
+  private branchMap = computed(() => {
+    const byParent = new Map<string, TicketCard[]>();
+    for (const card of this.related()) {
+      if (!card.parentKey) continue;
+      byParent.set(card.parentKey, [...(byParent.get(card.parentKey) ?? []), card]);
+    }
+    return byParent;
+  });
+
+  /** Branches shown on the page: only those whose parent row is listed. */
+  protected branchTotal = computed(() => {
+    const listed = new Set(this.columns().flatMap((c) => c.cards.map((card) => card.issueKey)));
+    return this.related().filter((b) => b.parentKey && listed.has(b.parentKey)).length;
+  });
+
+  /**
+   * Columns with only the cards matching the search (key, summary or
+   * parent) — a card also stays when one of its branches matches.
+   */
   protected visible = computed<Column[]>(() => {
     const q = this.query().trim().toLowerCase();
     if (!q) return this.columns();
     return this.columns()
       .map((c) => ({
         status: c.status,
-        cards: c.cards.filter((card) =>
-          [card.issueKey, card.summary, card.parentKey ?? '', card.parentSummary ?? ''].some((v) => v.toLowerCase().includes(q)),
-        ),
+        cards: c.cards.filter((card) => matches(card, q) || (this.branchMap().get(card.issueKey) ?? []).some((b) => matches(b, q))),
       }))
       .filter((c) => c.cards.length > 0);
   });
 
+  /** The branches under a row; while searching, all of them when the parent matches, else only the matching ones. */
+  protected branchesOf(card: TicketCard): TicketCard[] {
+    const branches = this.branchMap().get(card.issueKey) ?? [];
+    const q = this.query().trim().toLowerCase();
+    if (!q || matches(card, q)) return branches;
+    return branches.filter((b) => matches(b, q));
+  }
+
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.highlightTimer));
     // Tickets follow the navbar board, like the dashboard.
     effect(() => {
       const boardId = this.boardContext.selectedId();
@@ -93,17 +139,28 @@ export class BoardPageComponent {
     });
   }
 
-  protected load(boardId: number | null = this.boardContext.selectedId()): void {
+  protected load(boardId: number | null = this.boardContext.selectedId(), done?: () => void): void {
     this.loading.set(true);
     this.error.set(null);
-    this.dashboard.getBoard(boardId).subscribe({
+    // A newer load (e.g. a quick board switch) wins over an older answer.
+    this.loadSub?.unsubscribe();
+    this.loadSub = this.dashboard.getBoard(boardId).subscribe({
       next: (res) => {
         this.columns.set((res.columns ?? []).map((c) => ({ status: c.status, cards: c.cards ?? [] })));
+        this.related.set(res.related ?? []);
+        this.loaded.set(true);
         this.loading.set(false);
+        done?.();
       },
       error: () => {
-        this.error.set('Gagal memuat tiket dari Jira, coba lagi');
         this.loading.set(false);
+        done?.();
+        if (this.loaded()) {
+          // Keep the tickets already on screen; just say the refresh failed.
+          this.toast.error('Gagal memuat ulang tiket', 'Data di layar mungkin belum terbaru, coba lagi.');
+          return;
+        }
+        this.error.set('Gagal memuat tiket dari Jira, coba lagi');
       },
     });
   }
@@ -138,8 +195,20 @@ export class BoardPageComponent {
     this.query.set(value);
   }
 
+  /** A running clock, or a stopped one with recorded time. */
+  protected hasTime(card: TicketCard): boolean {
+    return card.hasBudgetDetail || !!card.timeRecorded;
+  }
+
   protected isOverBudget(card: TicketCard): boolean {
-    return card.hasBudgetDetail && card.elapsedSeconds > card.budgetSeconds;
+    return this.hasTime(card) && card.elapsedSeconds > card.budgetSeconds;
+  }
+
+  /** "sisa 1j" / "lewat 15m" while running; "di bawah budget 1j" / "lewat 15m" once stopped. */
+  protected timeNote(card: TicketCard): string {
+    const diff = shortDuration(card.budgetSeconds - card.elapsedSeconds);
+    if (this.isOverBudget(card)) return `lewat ${diff}`;
+    return card.hasBudgetDetail ? `sisa ${diff}` : `di bawah budget ${diff}`;
   }
 
   /** Share of the budget used, capped at 100 for the bar. */
@@ -181,9 +250,12 @@ export class BoardPageComponent {
     this.moving.set(card.issueKey);
     this.dashboard.moveTicket(card.issueKey, option.id).subscribe({
       next: () => {
-        this.moving.set(null);
         this.toast.success('Status dipindah', `${card.issueKey} → ${option.toStatus}`);
-        this.load();
+        // The row keeps its spinner until the refreshed board shows it in its new section.
+        this.load(undefined, () => {
+          this.moving.set(null);
+          this.highlight(card.issueKey);
+        });
       },
       error: (err) => {
         this.moving.set(null);
@@ -191,6 +263,20 @@ export class BoardPageComponent {
       },
     });
   }
+
+  /** Flashes the moved row and brings it into view (its section may have changed). */
+  private highlight(issueKey: string): void {
+    clearTimeout(this.highlightTimer);
+    this.justMoved.set(issueKey);
+    const col = this.columns().find((c) => c.cards.some((card) => card.issueKey === issueKey));
+    if (col && this.isCollapsed(col)) this.toggleSection(col);
+    setTimeout(() => document.querySelector(`[data-card="${issueKey}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }));
+    this.highlightTimer = setTimeout(() => this.justMoved.set(null), 2400);
+  }
+}
+
+function matches(card: TicketCard, q: string): boolean {
+  return [card.issueKey, card.summary, card.parentKey ?? '', card.parentSummary ?? ''].some((v) => v.toLowerCase().includes(q));
 }
 
 function sectionId(status: string): string {

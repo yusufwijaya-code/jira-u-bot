@@ -13,6 +13,8 @@ export interface TicketCard {
   /** Board of the ticket's active sprint (0 = none). */
   boardId: number;
   hasBudgetDetail: boolean;
+  /** Clock stopped (finished / back to To Do) with recorded time: elapsed/budget hold the final tally. */
+  timeRecorded?: boolean;
   storyPoints: number;
   elapsedSeconds: number;
   budgetSeconds: number;

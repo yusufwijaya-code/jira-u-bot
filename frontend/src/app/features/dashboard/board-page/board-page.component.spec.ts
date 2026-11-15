@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
+import { ToastService } from '../../../core/ui/toast.service';
 import { BoardPageComponent, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
 
 describe('BoardPageComponent', () => {
@@ -141,6 +142,129 @@ describe('BoardPageComponent', () => {
     const el: HTMLElement = render().nativeElement;
     const pills = Array.from(el.querySelectorAll('[data-jump]')).map((p) => p.textContent!.replace(/\s+/g, ' ').trim());
     expect(pills).toEqual(['To Do 2', 'Code Process 0']);
+  });
+  function renderWithBranches() {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
+      columns: [
+        {
+          status: 'Code Completed',
+          cards: [
+            {
+              issueKey: 'CORE-10923', summary: 'Required Date', status: 'Code Completed', issueURL: 'https://x/browse/CORE-10923',
+              boardId: 26, storyPoints: 3, hasBudgetDetail: false, timeRecorded: true, elapsedSeconds: 9000, budgetSeconds: 10800,
+            },
+          ],
+        },
+      ],
+      related: [
+        {
+          issueKey: 'CORE-10924', summary: 'Backend API', status: 'Code Process', issueURL: 'https://x/browse/CORE-10924',
+          boardId: 26, storyPoints: 1, hasBudgetDetail: true, elapsedSeconds: 1800, budgetSeconds: 3600,
+          parentKey: 'CORE-10923', parentSummary: 'Required Date', relation: 'subtask',
+        },
+        { issueKey: 'CORE-777', summary: 'Orphan', status: 'To Do', issueURL: '', boardId: 26, storyPoints: 0, hasBudgetDetail: false, parentKey: 'CORE-1' },
+      ],
+    });
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('hangs out-of-sprint subtasks under their parent row with a read-only status', () => {
+    const el: HTMLElement = renderWithBranches().nativeElement;
+    const branch = el.querySelector('[data-branch="CORE-10924"]') as HTMLElement;
+    expect(branch.getAttribute('data-branch-of')).toBe('CORE-10923');
+    expect(branch.previousElementSibling?.getAttribute('data-card')).toBe('CORE-10923');
+    expect(branch.textContent).toContain('subtask');
+    expect(branch.textContent).toContain('30m / 1j');
+    expect(branch.querySelector('[data-status-chip]')).toBeNull();
+    expect(el.querySelector('[data-branch="CORE-777"]')).toBeNull();
+    expect(el.querySelector('.tb-hint')?.textContent).toContain('+ 1 subtask');
+    // branches are not counted per status
+    expect(el.querySelector('[data-jump]')?.textContent?.replace(/s+/g, ' ').trim()).toBe('Code Completed 1');
+  });
+
+  it('shows SP and the recorded time of a finished ticket', () => {
+    const el: HTMLElement = renderWithBranches().nativeElement;
+    const row = el.querySelector('[data-card="CORE-10923"]') as HTMLElement;
+    expect(row.querySelector('.tb-num')?.textContent?.trim()).toBe('3');
+    const time = row.querySelector('[data-time]') as HTMLElement;
+    expect(time.textContent).toContain('2j 30m / 3j');
+    expect(time.textContent).toContain('di bawah budget 30m');
+    expect(time.classList).toContain('stopped');
+  });
+
+  it('keeps a parent row when only its branch matches the search', () => {
+    const fixture = renderWithBranches();
+    const el: HTMLElement = fixture.nativeElement;
+    const input = el.querySelector('[data-search]') as HTMLInputElement;
+    input.value = 'backend';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="CORE-10923"]')).not.toBeNull();
+    expect(el.querySelector('[data-branch="CORE-10924"]')).not.toBeNull();
+  });
+
+  it('shows a skeleton until the first answer arrives', () => {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-skeleton]')).not.toBeNull();
+    expect(el.querySelectorAll('.tb-sk-row').length).toBe(6);
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [{ status: 'To Do', cards: [] }] });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-skeleton]')).toBeNull();
+  });
+
+  it('keeps the table on screen with a progress bar while reloading', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    (fixture.componentInstance as any).load();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-refreshing]')).not.toBeNull();
+    expect(el.querySelector('[data-card="OMS-1"]')).not.toBeNull();
+    expect(el.querySelector('[data-skeleton]')).toBeNull();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [{ status: 'To Do', cards: [] }] });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-refreshing]')).toBeNull();
+  });
+
+  it('keeps the tickets and toasts when a reload fails', () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'error');
+    (fixture.componentInstance as any).load();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({}, { status: 502, statusText: 'Bad Gateway' });
+    fixture.detectChanges();
+    expect(toast.error).toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('shows skeleton options while transitions load', () => {
+    const fixture = render();
+    const req = openMenu(fixture);
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-menu-loading]')).not.toBeNull();
+    req.flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [] });
+  });
+
+  it('keeps the moving spinner until the reloaded board arrives, then highlights the row', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    openMenu(fixture).flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [{ id: '11', name: 'Start', toStatus: 'Code Process' }] });
+    fixture.detectChanges();
+    (el.querySelector('[data-transition="11"]') as HTMLButtonElement).click();
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({ status: 'Code Process' });
+    fixture.detectChanges();
+    expect(el.querySelector('[data-card="OMS-1"] [data-status-chip]')?.textContent).toContain('Memindah');
+
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
+      columns: [{ status: 'Code Process', cards: [{ issueKey: 'OMS-1', summary: 'Lock payments', status: 'Code Process', issueURL: '', boardId: 28, storyPoints: 2 }] }],
+    });
+    fixture.detectChanges();
+    const row = el.querySelector('[data-card="OMS-1"]')!;
+    expect(row.classList).toContain('just-moved');
+    expect(row.querySelector('[data-status-chip]')?.textContent).toContain('Code Process');
   });
 });
 
