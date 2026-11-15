@@ -5,12 +5,10 @@
     <div class="cc-banner" data-token-banner>Untuk membuat card atas nama kamu, isi <strong>token Jira</strong> dulu di <a routerLink="/dashboard/settings">Pengaturan</a>.</div>
   } @else {
     @if (!boardId()) {
-      <label class="cc-field" data-board-pick><span>Board</span>
-        <select (change)="localBoard.set(+$any($event.target).value || null)">
-          <option value="">Pilih board…</option>
-          @for (b of boards(); track b.boardId) { <option [value]="b.boardId">{{ b.name }}</option> }
-        </select>
-      </label>
+      <!-- div, not label: a label would re-forward option clicks to the trigger and reopen the list. -->
+      <div class="cc-field" data-board-pick><span>Board</span>
+        <app-select [options]="boardOptions()" [ngModel]="localBoard()" (ngModelChange)="localBoard.set($event)" ariaLabel="Board" />
+      </div>
     }
     @if (board()) {
       <div class="tb-chips cc-modes" role="tablist">

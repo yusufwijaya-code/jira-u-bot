@@ -29,6 +29,8 @@ describe('BulkSubtasksComponent', () => {
     const ta = el.querySelector('[data-paste]') as HTMLTextAreaElement;
     ta.value = '| # | Task |'; ta.dispatchEvent(new Event('input')); f.detectChanges();
     (el.querySelector('[data-normalize]') as HTMLButtonElement).click();
+    f.detectChanges();
+    expect(el.querySelector('[data-normalizing]')).withContext('AI loading panel while Gemini works').not.toBeNull();
     http.expectOne((r) => r.url.endsWith('/create/normalize')).flush({
       rows: [
         { title: '[Exec Plan] Implementasi', storyPoints: 4.5, details: 'Repo: semua' },

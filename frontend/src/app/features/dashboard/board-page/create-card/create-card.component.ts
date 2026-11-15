@@ -1,5 +1,7 @@
 import { Subscription } from 'rxjs';
-import { Component, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { SelectComponent, SelectOption } from '../../../../shared/ui/select.component';
 import { ToastService } from '../../../../core/ui/toast.service';
 import { ConfirmService } from '../../../../core/ui/confirm.service';
 import { RouterLink } from '@angular/router';
@@ -12,7 +14,7 @@ import { BulkSubtasksComponent } from './bulk-subtasks.component';
 @Component({
   selector: 'app-create-card',
   standalone: true,
-  imports: [RouterLink, SingleCardFormComponent, BulkSubtasksComponent],
+  imports: [RouterLink, FormsModule, SelectComponent, SingleCardFormComponent, BulkSubtasksComponent],
   templateUrl: './create-card.component.html',
   styleUrl: './create-card.component.scss',
 })
@@ -27,6 +29,10 @@ export class CreateCardComponent {
   created = output<void>();
 
   protected localBoard = signal<number | null>(null);
+  protected boardOptions = computed<SelectOption<number | null>[]>(() => [
+    { value: null, label: 'Pilih board…' },
+    ...this.boards().map((b) => ({ value: b.boardId, label: b.name })),
+  ]);
   protected board = signal<number | null>(null);
   protected mode = signal<'single' | 'bulk'>('single');
   protected status = signal<CreateStatus | null>(null);

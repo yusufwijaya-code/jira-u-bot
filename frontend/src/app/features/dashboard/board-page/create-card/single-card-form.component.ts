@@ -1,12 +1,14 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { CreateMeta, CreateType, IssueCreateService } from '../../../../core/services/issue-create.service';
+import { FormsModule } from '@angular/forms';
+import { CreateField, CreateMeta, CreateType, IssueCreateService } from '../../../../core/services/issue-create.service';
+import { SelectComponent, SelectOption } from '../../../../shared/ui/select.component';
 import { UserPickerComponent } from './user-picker.component';
 
 /** "Satu card" (spec US-5): type → title → description → SP → assignee → parent → required dynamic fields. */
 @Component({
   selector: 'app-single-card-form',
   standalone: true,
-  imports: [UserPickerComponent],
+  imports: [FormsModule, SelectComponent, UserPickerComponent],
   templateUrl: './single-card-form.component.html',
 })
 export class SingleCardFormComponent {
@@ -39,6 +41,18 @@ export class SingleCardFormComponent {
     return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '';
   }
 
+  protected typeOptions = computed<SelectOption<string>[]>(() => [
+    { value: '', label: 'Pilih tipe…' },
+    ...(this.meta().types ?? []).map((t) => ({
+      value: t.id,
+      label: `${t.name}${t.subtask ? ' (subtask)' : ''}${t.supported ? '' : ' — tidak didukung'}`,
+    })),
+  ]);
+
+  protected fieldOptions(f: CreateField): SelectOption<string>[] {
+    return [{ value: '', label: 'Pilih…' }, ...(f.options ?? []).map((o) => ({ value: o.id, label: o.label }))];
+  }
+
   protected isSelected(fieldId: string, optionId: string): boolean {
     const v = this.values()[fieldId];
     return Array.isArray(v) ? v.includes(optionId) : v === optionId;
@@ -46,8 +60,10 @@ export class SingleCardFormComponent {
 
   protected setType(id: string): void { this.typeId.set(id); this.values.set({}); this.errors.set({}); }
   protected setValue(id: string, v: unknown): void { this.values.update((m) => ({ ...m, [id]: v })); }
-  protected onMulti(id: string, event: Event): void {
-    this.setValue(id, Array.from((event.target as HTMLSelectElement).selectedOptions).map((o) => o.value));
+  protected toggleMulti(id: string, optionId: string): void {
+    const cur = this.values()[id];
+    const list = Array.isArray(cur) ? (cur as string[]) : [];
+    this.setValue(id, list.includes(optionId) ? list.filter((x) => x !== optionId) : [...list, optionId]);
   }
 
   protected submit(): void {
