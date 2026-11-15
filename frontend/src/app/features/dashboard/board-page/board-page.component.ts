@@ -1,10 +1,11 @@
-import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
+import { ConfirmService } from '../../../core/ui/confirm.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { BoardColumnsComponent } from './board-columns.component';
 import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
@@ -49,6 +50,8 @@ export class BoardPageComponent {
   private dashboard = inject(DashboardService);
   protected boardContext = inject(BoardContextService);
   private toast = inject(ToastService);
+  private confirm = inject(ConfirmService);
+  private createCard = viewChild(CreateCardComponent);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   protected readonly createCardEnabled = environment.features.createCard;
@@ -140,7 +143,11 @@ export class BoardPageComponent {
       .filter((c) => c.cards.length > 0);
   });
 
-  protected setTab(tab: 'board' | 'create', extra: Record<string, string | null> = {}): void {
+  protected async setTab(tab: 'board' | 'create', extra: Record<string, string | null> = {}): Promise<void> {
+    if (tab === 'board' && this.tab() === 'create' && this.createCard()?.hasUnsent()) {
+      const ok = await this.confirm.ask({ title: 'Buang preview?', message: 'Preview subtask yang belum dibuat akan hilang.', confirmText: 'Ya, buang', tone: 'danger' });
+      if (!ok) return;
+    }
     this.tab.set(tab);
     this.router.navigate([], { queryParams: { tab: tab === 'create' ? 'create' : null, ...extra }, queryParamsHandling: 'merge', replaceUrl: true });
   }
@@ -170,6 +177,14 @@ export class BoardPageComponent {
       case 'over': return this.isOverBudget(card);
       case 'nosp': return !card.storyPoints;
       default: return true;
+    }
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  protected onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.tab() === 'create' && this.createCard()?.hasUnsent()) {
+      event.preventDefault();
+      event.returnValue = '';
     }
   }
 

@@ -1,5 +1,5 @@
 import { Subscription } from 'rxjs';
-import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { BoardContextService } from '../../../../core/services/board-context.service';
 import { CreateMeta, CreateStatus, IssueCreateService } from '../../../../core/services/issue-create.service';
@@ -28,6 +28,7 @@ export class CreateCardComponent {
   protected status = signal<CreateStatus | null>(null);
   protected meta = signal<CreateMeta | null>(null);
   protected statusError = signal(false);
+  private bulk = viewChild(BulkSubtasksComponent);
   private metaSub?: Subscription;
   protected metaError = signal<string | null>(null);
 
@@ -37,6 +38,10 @@ export class CreateCardComponent {
       const id = this.boardId() ?? this.localBoard();
       untracked(() => { this.mode.set(this.initialMode()); this.loadMeta(id); });
     });
+  }
+
+  hasUnsent(): boolean {
+    return this.mode() === 'bulk' && !!this.bulk()?.hasUnsent();
   }
 
   protected loadMeta(id: number | null): void {
