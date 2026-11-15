@@ -114,6 +114,7 @@ func MountChatLog(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.Aut
 	admin.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg), auth_middleware.AdminMiddleware(cfg))
 	admin.GET("/chat-logs", h.List)
 	admin.GET("/chat-logs/conversations", h.Conversations)
+	admin.POST("/chat-logs/send", h.Send)
 }
 
 // MountChatApp mounts the Chat App routes next to SetupRouter's.

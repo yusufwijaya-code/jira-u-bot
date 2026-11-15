@@ -3,15 +3,19 @@ package chat_log_handler
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
+	"nudge/modules/chat_delivery"
 	"nudge/modules/chat_log/chat_log_dto"
+	"nudge/modules/registration/registration_dto"
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
@@ -20,9 +24,75 @@ type Lister interface {
 	Conversations(ctx context.Context) ([]chat_log_dto.Conversation, error)
 }
 
+// Sender delivers an admin's message through the recipient's sender.
+type Sender interface {
+	SendAdminMessage(ctx context.Context, email, text string) error
+}
+
+// UserFinder limits sending to registered users.
+type UserFinder interface {
+	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
+}
+
+// MaxMessageRunes caps an admin message (Google Chat allows ~4096 chars).
+const MaxMessageRunes = 4000
+
 var knownKinds = map[string]bool{
 	chat_log_dto.KindReminder: true, chat_log_dto.KindMessage: true, chat_log_dto.KindReply: true,
 	chat_log_dto.KindCommand: true, chat_log_dto.KindClick: true, chat_log_dto.KindAdded: true, chat_log_dto.KindRemoved: true,
+	chat_log_dto.KindAdmin: true,
+}
+
+type sendRequest struct {
+	Email string `json:"email"`
+	Text  string `json:"text"`
+}
+
+// Send answers POST /api/dashboard/admin/chat-logs/send (admin only): it
+// DMs one registered user through their sender and returns
+// {"status": "sent" | "skipped"}; skipped = no sender can reach them.
+func (h *Handler) Send(c *gin.Context) {
+	if h.send == nil || h.users == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "pengiriman pesan tidak tersedia"})
+		return
+	}
+	var req sendRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "format tidak valid"})
+		return
+	}
+	email, text := strings.TrimSpace(req.Email), strings.TrimSpace(req.Text)
+	if email == "" || text == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user dan pesan wajib diisi"})
+		return
+	}
+	if utf8.RuneCountInString(text) > MaxMessageRunes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "pesan terlalu panjang"})
+		return
+	}
+	u, found, err := h.users.FindUserByEmail(c.Request.Context(), email)
+	switch {
+	case err != nil:
+		log.Printf("chat_log_handler: FindUserByEmail(%s) failed: %v", email, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal memeriksa user"})
+		return
+	case !found:
+		c.JSON(http.StatusNotFound, gin.H{"error": "user tidak terdaftar di Nudge"})
+		return
+	case !u.FlagActive:
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "user sedang nonaktif"})
+		return
+	}
+	err = h.send.SendAdminMessage(c.Request.Context(), u.Email, text)
+	switch {
+	case errors.Is(err, chat_delivery.ErrRecipientNotActivated):
+		c.JSON(http.StatusOK, gin.H{"status": chat_log_dto.StatusSkipped})
+	case err != nil:
+		log.Printf("chat_log_handler: admin message to %s failed: %v", u.Email, err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": "pesan gagal terkirim"})
+	default:
+		c.JSON(http.StatusOK, gin.H{"status": chat_log_dto.StatusSent})
+	}
 }
 
 // Conversations answers GET /api/dashboard/admin/chat-logs/conversations
@@ -38,11 +108,14 @@ func (h *Handler) Conversations(c *gin.Context) {
 }
 
 type Handler struct {
-	logs Lister
+	logs  Lister
+	send  Sender
+	users UserFinder
 }
 
-func New(logs Lister) *Handler {
-	return &Handler{logs: logs}
+// New builds the handler; send/users may be nil (sending then answers 503).
+func New(logs Lister, send Sender, users UserFinder) *Handler {
+	return &Handler{logs: logs, send: send, users: users}
 }
 
 // List answers GET /api/dashboard/admin/chat-logs (admin only) with

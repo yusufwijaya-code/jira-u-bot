@@ -15,6 +15,7 @@ const (
 
 	KindReminder = "reminder" // reminder or status-change notice
 	KindMessage  = "message"  // any other notice (broadcast, settings change…)
+	KindAdmin    = "admin"    // typed by an admin on the Pesan page
 	KindReply    = "reply"    // answer to a command or click
 	KindCommand  = "command"  // text or slash command from the user
 	KindClick    = "click"    // card button click

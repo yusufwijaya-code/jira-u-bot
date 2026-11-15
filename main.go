@@ -350,7 +350,7 @@ func main() {
 	chatAppRoutes.AdminTarget = admin_dashboard_handler.AdminTarget(adminDashboardSvc)
 	chatAppRoutes.AdminChange = admin_dashboard_handler.AdminChangeListener(adminDashboardSvc)
 	MountChatApp(router, &cfg, authSvc, chatAppRoutes)
-	MountChatLog(router, &cfg, authSvc, chat_log_handler.New(chatLogRepo))
+	MountChatLog(router, &cfg, authSvc, chat_log_handler.New(chatLogRepo, deliveryRouter, registrationRepo))
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

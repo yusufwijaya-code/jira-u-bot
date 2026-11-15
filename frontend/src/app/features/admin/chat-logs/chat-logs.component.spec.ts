@@ -127,6 +127,48 @@ describe('ChatLogsComponent', () => {
     expect(texts).toEqual(['Reminder CORE-4', 'baru 5', 'baru 6']);
   });
 
+  it('sends a message to the selected user and shows it', async () => {
+    await create();
+    http.expectOne(isConvs).flush({ conversations: CONVS });
+    flushLogs([entry(4)]);
+
+    const box = el().querySelector('[data-composer]') as HTMLTextAreaElement;
+    box.value = '  Halo Dev  ';
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    const req = http.expectOne((r) => r.url.endsWith('/chat-logs/send'));
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'dev@esb.co.id', text: 'Halo Dev' });
+    req.flush({ status: 'sent' });
+    const after = http.expectOne(isLogs);
+    expect(after.request.params.get('afterID')).toBe('4');
+    after.flush({ items: [entry(5, { kind: 'admin', body: 'Halo Dev' })], nextBeforeID: 0 });
+    fixture.detectChanges();
+
+    const last = Array.from(el().querySelectorAll('.chat-msg')).pop()!;
+    expect(last.classList).toContain('out');
+    expect(last.textContent).toContain('Halo Dev');
+    expect(last.textContent).toContain('Pesan admin');
+    // The live timer keeps the zone busy, so check the draft state itself.
+    expect((fixture.componentInstance as unknown as { draft(): string }).draft()).toBe('');
+  });
+
+  it('does not send on Shift+Enter or an empty draft', async () => {
+    await create();
+    http.expectOne(isConvs).flush({ conversations: CONVS });
+    flushLogs([]);
+    const box = el().querySelector('[data-composer]') as HTMLTextAreaElement;
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    box.value = 'baris 1';
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }));
+    http.expectNone((r) => r.url.endsWith('/chat-logs/send'));
+    expect((el().querySelector('[data-send]') as HTMLButtonElement).disabled).toBeFalse();
+  });
+
   it('loads older messages above', async () => {
     await create();
     http.expectOne(isConvs).flush({ conversations: CONVS });
