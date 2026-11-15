@@ -506,7 +506,8 @@ input:checked + .check-box {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  // Above in-page dropdowns (z 20) so nothing scrolls over the navbar.
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -688,7 +689,8 @@ tr.clickable:hover td { background: var(--surface-2); }
   // entrance animation still runs.
   > *:has(.ui-select.open, .ui-time.open, .ui-date.open, .status-dropdown) {
     position: relative;
-    z-index: 30;
+    // Above sibling cards, below the sticky navbar (30).
+    z-index: 21;
   }
 }
 
@@ -2541,7 +2543,6 @@ table.admin-users {
   &:hover:not(:disabled) { border-color: var(--primary-light); color: var(--primary-strong); }
   &:disabled { cursor: progress; }
 }
-.status-backdrop { position: fixed; inset: 0; z-index: 19; }
 .status-dropdown {
   position: absolute;
   right: 0;

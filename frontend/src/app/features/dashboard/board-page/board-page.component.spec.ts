@@ -84,6 +84,32 @@ describe('BoardPageComponent', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Tidak ada transisi');
   });
 
+  it('closes the status menu on a click anywhere outside it, even inside the card', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    openMenu(fixture).flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [] });
+    fixture.detectChanges();
+
+    // Inside the menu: stays open.
+    el.querySelector('.status-dropdown')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(el.querySelector('.status-dropdown')).not.toBeNull();
+
+    // Elsewhere in the same card row: closes.
+    el.querySelector('[data-card="OMS-1"] td')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    fixture.detectChanges();
+    expect(el.querySelector('.status-dropdown')).toBeNull();
+  });
+
+  it('closes the status menu on Escape', () => {
+    const fixture = render();
+    openMenu(fixture).flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [] });
+    fixture.detectChanges();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.status-dropdown')).toBeNull();
+  });
+
   it('shows the error when the transitions cannot be loaded', () => {
     const fixture = render();
     openMenu(fixture).flush({ error: 'Tiket ini bukan tiket kamu di sprint aktif.' }, { status: 403, statusText: 'Forbidden' });
