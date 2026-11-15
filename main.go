@@ -292,6 +292,7 @@ func main() {
 	adminDashboardSvc := admin_dashboard_service.NewAdminDashboardService(
 		registrationRepo, jiraCredentialSvc, deliveryRouter, cfg.JiraEmail,
 		admin_dashboard_service.WithBoardNamer(boardSvc),
+		admin_dashboard_service.WithChatApp(chatAppRepo, chatAppClient != nil),
 	)
 	adminDashboardHandler := admin_dashboard_handler.NewAdminDashboardHandler(adminDashboardSvc)
 

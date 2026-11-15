@@ -3,8 +3,11 @@ package admin_dashboard_service
 import (
 	"context"
 	"log"
+	"strings"
 
 	"nudge/modules/admin_dashboard/admin_dashboard_dto"
+	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/chat_dm_notifier/chat_dm_notifier_service"
 	"nudge/modules/jira_credential/jira_credential_service"
 	"nudge/modules/registration/registration_repository"
@@ -16,6 +19,8 @@ type adminDashboardServiceImpl struct {
 	dmNotifier       chat_dm_notifier_service.ChatDMNotifierService
 	selfEmail        string
 	boards           BoardNamer
+	chatApp          ChatAppStates
+	chatAppEnabled   bool
 	// sendSync makes NotifyUserChanged send inline (tests only).
 	sendSync bool
 }
@@ -45,6 +50,15 @@ func (s *adminDashboardServiceImpl) ListUsers(ctx context.Context) ([]admin_dash
 		return nil, err
 	}
 
+	// Chat App state is best-effort too: on error the rows just show
+	// "not activated" with the automatic sender.
+	var chatStates map[string]chat_app_dto.State
+	if s.chatApp != nil {
+		if m, err := s.chatApp.ListAll(ctx); err == nil {
+			chatStates = m
+		}
+	}
+
 	rows := make([]admin_dashboard_dto.UserRow, 0, len(users))
 	for _, u := range users {
 		row := admin_dashboard_dto.UserRow{
@@ -62,6 +76,11 @@ func (s *adminDashboardServiceImpl) ListUsers(ctx context.Context) ([]admin_dash
 			row.HasCredential = true
 			row.CredentialMasked = preview
 		}
+		st := chatStates[strings.ToLower(u.Email)]
+		row.ChatAppActivated = st.Activated()
+		row.ChatAppActivatedDate = st.ActivatedDate
+		row.ChatSender = st.Sender
+		row.EffectiveChatSender = chat_delivery.EffectiveSender(st, chat_delivery.IsOperator(u.Email, s.selfEmail), s.chatAppEnabled)
 		rows = append(rows, row)
 	}
 	return rows, nil

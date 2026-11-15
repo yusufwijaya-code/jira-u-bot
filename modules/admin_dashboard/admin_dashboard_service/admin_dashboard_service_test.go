@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"nudge/modules/chat_app/chat_app_dto"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/registration/registration_dto"
@@ -254,5 +255,36 @@ func TestGetUser_NotFound(t *testing.T) {
 	svc := NewAdminDashboardService(&fakeRegistrationRepoForAdmin{}, &fakeJiraCredentialForAdmin{}, nil, "")
 	if _, err := svc.GetUser(context.Background(), 99); !errors.Is(err, ErrUserNotFound) {
 		t.Errorf("err = %v, want ErrUserNotFound", err)
+	}
+}
+
+type fakeChatAppStates map[string]chat_app_dto.State
+
+func (f fakeChatAppStates) ListAll(context.Context) (map[string]chat_app_dto.State, error) {
+	return f, nil
+}
+
+func TestListUsers_IncludesChatAppActivationAndSender(t *testing.T) {
+	when := time.Date(2026, 11, 15, 9, 0, 0, 0, time.UTC)
+	operator := "operator"
+	repo := &fakeRegistrationRepoForAdmin{users: []registration_dto.User{
+		{UserID: 1, Email: "dev@esb.co.id", FlagActive: true},
+		{UserID: 2, Email: "qa@esb.co.id", FlagActive: true},
+	}}
+	states := fakeChatAppStates{
+		"dev@esb.co.id": {Email: "dev@esb.co.id", SpaceID: "spaces/D", ActivatedDate: &when},
+		"qa@esb.co.id":  {Email: "qa@esb.co.id", Sender: &operator},
+	}
+	svc := NewAdminDashboardService(repo, &fakeJiraCredentialForAdmin{}, nil, "bot@esb.co.id", WithChatApp(states, true))
+
+	rows, err := svc.ListUsers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rows[0].ChatAppActivated || rows[0].ChatAppActivatedDate == nil || rows[0].EffectiveChatSender != "nudge" {
+		t.Errorf("dev row = %+v", rows[0])
+	}
+	if rows[1].ChatAppActivated || rows[1].ChatSender == nil || rows[1].EffectiveChatSender != "operator" {
+		t.Errorf("qa row = %+v", rows[1])
 	}
 }
