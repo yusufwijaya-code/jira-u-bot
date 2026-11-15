@@ -197,6 +197,27 @@ tr:hover .tb-row-actions, tr:focus-within .tb-row-actions { opacity: 1; }
   &:hover { background: var(--surface-2); color: var(--text); } }
 .tb-branch-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; border: 0; background: none; padding: 0; font: inherit; font-size: 0.74rem; color: var(--text-muted); cursor: pointer;
   app-icon { transition: transform .2s; } app-icon:not(.open) { transform: rotate(-90deg); } }
+// Branch rows fold instead of being removed: cell padding and a 1fr→0fr grid row shrink together,
+// with a small per-row stagger (--i). Unclipped once open so the status menu can overflow.
+.tb-table tr.tb-branch > td {
+  transition: padding var(--normal) var(--ease), border-color var(--normal) var(--ease);
+  transition-delay: calc(var(--i, 0) * 25ms);
+}
+.tb-fold {
+  display: grid; grid-template-rows: 1fr; opacity: 1;
+  transition: grid-template-rows var(--normal) var(--ease), opacity var(--normal) var(--ease), transform var(--normal) var(--ease);
+  transition-delay: inherit;
+  > div { min-height: 0; overflow: hidden; animation: tb-unclip 0s var(--normal) forwards; }
+}
+.tb-table tr.tb-branch.closed > td { padding-top: 0; padding-bottom: 0; border-top-color: transparent; }
+tr.tb-branch.closed .tb-fold { grid-template-rows: 0fr; opacity: 0; transform: translateY(-4px); > div { animation: none; } }
+@media (max-width: 720px) {
+  .tb-table tr.tb-branch { transition: padding var(--normal) var(--ease), gap var(--normal) var(--ease); }
+  .tb-table tr.tb-branch.closed { padding-top: 0; padding-bottom: 0; row-gap: 0; border-top-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-table tr.tb-branch, .tb-table tr.tb-branch > td, .tb-fold { transition: none; }
+}
 .tb-mini-bar { width: 56px; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden;
   span { display: block; height: 100%; background: var(--success); } }
 @media (prefers-reduced-motion: reduce) { .tb-branch-toggle app-icon, .tb-row-actions { transition: none; } .tb-table tr.just-moved > td { animation: none; } }

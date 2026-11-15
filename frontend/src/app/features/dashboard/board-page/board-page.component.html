@@ -167,10 +167,12 @@
                     <ng-container *ngTemplateOutlet="statusCell; context: { $implicit: card }" />
                   </td>
                 </tr>
-                <!-- Subtasks / linked items outside the sprint hang under their parent row. -->
-                @for (b of branchesOf(card); track b.issueKey) {
-                  <tr class="tb-branch" [attr.data-branch]="b.issueKey" [attr.data-branch-of]="card.issueKey">
-                    <td data-label="Tiket">
+                <!-- Subtasks / linked items outside the sprint hang under their parent row.
+                     Closed rows stay rendered but folded (inert) so open and close both animate. -->
+                @let branchOpen = isBranchOpen(card.issueKey);
+                @for (b of branchesOf(card); track b.issueKey; let i = $index) {
+                  <tr class="tb-branch" [class.closed]="!branchOpen" [attr.inert]="branchOpen ? null : ''" [style.--i]="i" [attr.data-branch]="b.issueKey" [attr.data-branch-of]="card.issueKey">
+                    <td data-label="Tiket"><div class="tb-fold"><div>
                       <span class="tb-branch-key">
                         <span class="tb-elbow" aria-hidden="true"></span>
                         <a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a>
@@ -179,18 +181,18 @@
                           <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(b)"><app-icon name="copy" [size]="13" /></button>
                         </span>
                       </span>
-                    </td>
-                    <td data-label="Ringkasan">
+                    </div></div></td>
+                    <td data-label="Ringkasan"><div class="tb-fold"><div>
                       <div class="tb-summary-cell">
                         <span class="tb-summary-text">{{ b.summary }}</span>
                         <span class="tb-relation">{{ b.relation || 'subtask' }}</span>
                       </div>
-                    </td>
-                    <td data-label="SP" class="tb-num">{{ b.storyPoints ? b.storyPoints : '—' }}</td>
-                    <td data-label="Waktu"><ng-container *ngTemplateOutlet="timeCell; context: { $implicit: b }" /></td>
-                    <td data-label="Status" class="tb-status-col">
+                    </div></div></td>
+                    <td data-label="SP" class="tb-num"><div class="tb-fold"><div>{{ b.storyPoints ? b.storyPoints : '—' }}</div></div></td>
+                    <td data-label="Waktu"><div class="tb-fold"><div><ng-container *ngTemplateOutlet="timeCell; context: { $implicit: b }" /></div></div></td>
+                    <td data-label="Status" class="tb-status-col"><div class="tb-fold"><div>
                       <ng-container *ngTemplateOutlet="statusCell; context: { $implicit: b }" />
-                    </td>
+                    </div></div></td>
                   </tr>
                 }
               }

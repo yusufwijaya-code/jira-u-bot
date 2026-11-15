@@ -461,9 +461,17 @@ describe('BoardPageComponent', () => {
     const fixture = renderWithBranch();
     const el: HTMLElement = fixture.nativeElement;
     expect(el.querySelector('[data-branch-progress="CORE-1"]')?.textContent).toContain('1/2');
+    const row = () => el.querySelector('[data-branch="CORE-2"]') as HTMLElement;
+    expect(row().classList).not.toContain('closed');
+    expect(row().hasAttribute('inert')).toBeFalse();
     (el.querySelector('[data-branch-toggle="CORE-1"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(el.querySelector('[data-branch="CORE-2"]')).toBeNull();
+    // Folded, not removed, so the close can animate; inert keeps it out of tab order.
+    expect(row().classList).toContain('closed');
+    expect(row().hasAttribute('inert')).toBeTrue();
+    (el.querySelector('[data-branch-toggle="CORE-1"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(row().classList).not.toContain('closed');
   });
 
   it('copies a key and offers + Subtask only on non-branch rows', () => {

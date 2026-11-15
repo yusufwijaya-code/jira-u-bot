@@ -201,8 +201,8 @@ export class BoardPageComponent {
   }
 
   /** The branches under a row; while searching, all of them when the parent matches, else only the matching ones. */
+  /** Always the full list: closed branches stay rendered (folded) so open and close can both animate. */
   protected branchesOf(card: TicketCard): TicketCard[] {
-    if (!this.isBranchOpen(card.issueKey)) return [];
     const branches = this.branchMap().get(card.issueKey) ?? [];
     const q = this.query().trim().toLowerCase();
     if (!q || matches(card, q)) return branches;
