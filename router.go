@@ -12,6 +12,7 @@ import (
 	"nudge/modules/auth/auth_handler"
 	"nudge/modules/auth/auth_middleware"
 	"nudge/modules/auth/auth_service"
+	"nudge/modules/chat_app_activation"
 	"nudge/modules/sprint_report"
 	"nudge/modules/sprint_report/sprint_report_handler"
 	"nudge/modules/user_avatar/user_avatar_handler"
@@ -100,7 +101,10 @@ func notFoundHandler() gin.HandlerFunc {
 // ChatAppRoutes are the Tech Spec "Nudge sebagai Google Chat App"
 // endpoints. Events is nil when the Chat App is not configured.
 type ChatAppRoutes struct {
-	Events gin.HandlerFunc
+	Events      gin.HandlerFunc
+	Activation  *chat_app_activation.Handler
+	AdminTarget user_dashboard_handler.TargetResolver
+	AdminChange user_dashboard_handler.ChangeListener
 }
 
 // MountChatApp mounts the Chat App routes next to SetupRouter's.
@@ -109,4 +113,21 @@ func MountChatApp(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.Aut
 	if routes.Events != nil {
 		base.POST("/api/chat/events", routes.Events)
 	}
+	a := routes.Activation
+	if a == nil {
+		return
+	}
+	// Session routes. /auth/chat-app/* answers 401 JSON without a session;
+	// it is only ever opened from the dashboard by a logged-in user.
+	session := base.Group("")
+	session.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
+	session.GET("/auth/chat-app/activate", a.Activate)
+	session.GET("/auth/chat-app/callback", a.Callback)
+	session.GET("/api/dashboard/chat-app/status", a.Status(user_dashboard_handler.SessionTarget))
+	session.PUT("/api/dashboard/settings/chat-sender", a.SetSender(user_dashboard_handler.SessionTarget, nil))
+
+	admin := base.Group("/api/dashboard/admin")
+	admin.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg), auth_middleware.AdminMiddleware(cfg))
+	admin.GET("/users/:userID/chat-app/status", a.Status(routes.AdminTarget))
+	admin.PUT("/users/:userID/settings/chat-sender", a.SetSender(routes.AdminTarget, routes.AdminChange))
 }

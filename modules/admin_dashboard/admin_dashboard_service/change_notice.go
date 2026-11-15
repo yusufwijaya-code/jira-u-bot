@@ -59,6 +59,8 @@ func ChangeNoticeText(adminEmail, boardName string, ch admin_dashboard_dto.UserC
 		return fmt.Sprintf("Admin %s memperbarui Jira credential kamu.", adminEmail)
 	case "credential_deleted":
 		return fmt.Sprintf("Admin %s menghapus Jira credential kamu.", adminEmail)
+	case "chat_sender":
+		return fmt.Sprintf("Admin %s mengubah pengirim pesan Nudge kamu.", adminEmail)
 	}
 	return fmt.Sprintf("Admin %s mengubah pengaturan kamu.", adminEmail)
 }

@@ -29,6 +29,7 @@ import (
 	"nudge/modules/chat_app/chat_app_handler"
 	"nudge/modules/chat_app/chat_app_repository"
 	"nudge/modules/chat_app/chat_app_service"
+	"nudge/modules/chat_app_activation"
 	"nudge/modules/chat_command_poll_cursor/chat_command_poll_cursor_repository"
 	"nudge/modules/chat_command_poller/chat_command_poller_service"
 	"nudge/modules/chat_delivery"
@@ -314,6 +315,18 @@ func main() {
 	} else if chatAppClient != nil {
 		log.Printf("main: GOOGLE_CHAT_APP_PROJECT_NUMBER is empty — /api/chat/events not mounted")
 	}
+	var activationOAuth chat_app_activation.OAuth
+	if cfg.GoogleChatAppOneClick && cfg.GoogleChatAppActivationRedirectURL != "" && cfg.GoogleSignInClientID != "" {
+		activationOAuth = chat_app_activation.NewGoogleOAuth(cfg.GoogleSignInClientID, cfg.GoogleSignInClientSecret, cfg.GoogleChatAppActivationRedirectURL)
+	}
+	chatAppRoutes.Activation = chat_app_activation.New(chat_app_activation.Deps{
+		States: chatAppRepo, OAuth: activationOAuth, Notify: deliveryRouter,
+		AppEnabled: chatAppClient != nil, OneClick: cfg.GoogleChatAppOneClick,
+		OperatorEmail: cfg.JiraEmail, OperatorName: operatorName,
+		AppURL: cfg.FrontendURL + cfg.BasePath, CookiePath: cfg.BasePath,
+	})
+	chatAppRoutes.AdminTarget = admin_dashboard_handler.AdminTarget(adminDashboardSvc)
+	chatAppRoutes.AdminChange = admin_dashboard_handler.AdminChangeListener(adminDashboardSvc)
 	MountChatApp(router, &cfg, authSvc, chatAppRoutes)
 
 	srv := &http.Server{

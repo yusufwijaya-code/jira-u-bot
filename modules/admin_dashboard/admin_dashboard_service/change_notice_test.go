@@ -87,3 +87,9 @@ func TestNotifyUserChanged_NilNotifierIsNoop(t *testing.T) {
 	svc := NewAdminDashboardService(&fakeRegistrationRepoForAdmin{}, &fakeJiraCredentialForAdmin{}, nil, "")
 	svc.NotifyUserChanged(1, "a@esb.co.id", 2, "b@esb.co.id", admin_dashboard_dto.UserChange{Kind: "mute"})
 }
+
+func TestChangeNoticeText_ChatSender(t *testing.T) {
+	if got := ChangeNoticeText("admin@esb.co.id", "", admin_dashboard_dto.UserChange{Kind: "chat_sender"}); got != "Admin admin@esb.co.id mengubah pengirim pesan Nudge kamu." {
+		t.Errorf("chat_sender notice = %q", got)
+	}
+}
