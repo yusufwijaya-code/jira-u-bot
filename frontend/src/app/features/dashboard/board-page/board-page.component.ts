@@ -8,6 +8,7 @@ import { ToastService } from '../../../core/ui/toast.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { BoardColumnsComponent } from './board-columns.component';
 import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
+import { CreateCardComponent } from './create-card/create-card.component';
 import { IconComponent } from '../../../shared/ui/icon.component';
 
 interface Column {
@@ -40,13 +41,13 @@ export const VIEW_STORAGE_KEY = 'nudge.board.view';
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [IconComponent, NgTemplateOutlet, BoardColumnsComponent],
+  imports: [IconComponent, NgTemplateOutlet, BoardColumnsComponent, CreateCardComponent],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
 })
 export class BoardPageComponent {
   private dashboard = inject(DashboardService);
-  private boardContext = inject(BoardContextService);
+  protected boardContext = inject(BoardContextService);
   private toast = inject(ToastService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -54,6 +55,9 @@ export class BoardPageComponent {
   protected tab = signal<'board' | 'create'>(
     environment.features.createCard && this.route.snapshot.queryParamMap.get('tab') === 'create' ? 'create' : 'board',
   );
+  /** Buat Card's starting mode/parent: from the URL on entry, then set by addSubtask (the snapshot is stale after navigate). */
+  protected createMode = signal<'single' | 'bulk'>(this.route.snapshot.queryParamMap.get('mode') === 'bulk' ? 'bulk' : 'single');
+  protected createParent = signal<string | null>(this.route.snapshot.queryParamMap.get('parent'));
   protected filter = signal<BoardFilter>('all');
 
   protected columns = signal<Column[]>([]);
@@ -279,6 +283,8 @@ export class BoardPageComponent {
   }
 
   protected addSubtask(card: TicketCard): void {
+    this.createMode.set('bulk');
+    this.createParent.set(card.issueKey);
     this.setTab('create', { mode: 'bulk', parent: card.issueKey });
   }
 

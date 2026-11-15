@@ -211,6 +211,9 @@
   }
 }
 }
+@if (tab() === 'create') {
+  <app-create-card [boardId]="boardContext.selectedId()" [initialMode]="createMode()" [initialParent]="createParent()" (created)="load()" />
+}
 </div>
 
 <ng-template #timeCell let-card>
