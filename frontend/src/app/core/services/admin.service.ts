@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { BoardSummary } from './board-context.service';
+import { BoardsResponse } from './board-context.service';
 
 export interface UserRow {
   userId: number;
@@ -38,8 +38,8 @@ export class AdminService {
   }
 
   /** The user's boards, same shape as the navbar picker's GET /boards. */
-  listUserBoards(userId: number): Observable<{ boards: BoardSummary[] | null }> {
-    return this.http.get<{ boards: BoardSummary[] | null }>(`${environment.apiBasePath}/api/dashboard/admin/users/${userId}/boards`);
+  listUserBoards(userId: number): Observable<BoardsResponse> {
+    return this.http.get<BoardsResponse>(`${environment.apiBasePath}/api/dashboard/admin/users/${userId}/boards`);
   }
 
   toggleActive(userId: number, active: boolean): Observable<unknown> {

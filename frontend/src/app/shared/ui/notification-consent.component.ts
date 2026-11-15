@@ -20,14 +20,14 @@ import { IconComponent } from './icon.component';
           <div class="modal-icon"><app-icon name="bell" [size]="22" /></div>
           <h3 id="consent-title">Aktifkan notifikasi Nudge?</h3>
           <p id="consent-desc">
-            Nudge bisa mengirim DM Google Chat saat budget waktu tiket kamu hampir habis, sudah lewat, selesai lebih
+            Nudge bisa mengirim pesan Google Chat ke kamu saat budget waktu tiket kamu hampir habis, sudah lewat, selesai lebih
             awal, atau tiket balik ke To Do. Kamu bisa mengubahnya kapan saja di Pengaturan.
           </p>
 
           <label class="toggle-row consent-toggle">
             <span class="toggle-text">
               <strong>{{ enabled() ? 'Notifikasi aktif' : 'Notifikasi mati' }}</strong>
-              <small>{{ enabled() ? 'Reminder otomatis akan dikirim ke DM kamu.' : 'Tidak ada reminder otomatis yang dikirim.' }}</small>
+              <small>{{ enabled() ? 'Reminder otomatis akan dikirim lewat Google Chat.' : 'Tidak ada reminder otomatis yang dikirim.' }}</small>
             </span>
             <input
               type="checkbox"
@@ -76,7 +76,7 @@ export class NotificationConsentComponent {
         this.saving.set(false);
         this.toast.success(
           enabled ? 'Notifikasi aktif' : 'Notifikasi dimatikan',
-          enabled ? 'Nudge akan mengingatkan kamu lewat DM.' : 'Kamu bisa menyalakannya kapan saja di Pengaturan.',
+          enabled ? 'Nudge akan mengingatkan kamu lewat Google Chat.' : 'Kamu bisa menyalakannya kapan saja di Pengaturan.',
         );
       },
       error: () => {

@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { MuteRequest, MuteStatus, NotificationSettings, SettingsResponse, boardParams } from './board.service';
-import { BoardSummary } from './board-context.service';
+import { BoardSummary, OtherBoard } from './board-context.service';
 import { AdminService } from './admin.service';
 import { SettingsApi, SettingsScope } from './settings-api';
 
@@ -66,6 +66,7 @@ export class AdminUserScope extends SettingsScope {
   private userId = inject(ADMIN_TARGET_USER_ID);
 
   readonly boards = signal<BoardSummary[]>([]);
+  readonly otherBoards = signal<OtherBoard[]>([]);
   readonly loaded = signal(false);
   readonly selectedId = signal<number | null>(this.fromUrl());
   readonly selected = computed(() => this.boards().find((b) => b.boardId === this.selectedId()) ?? null);
@@ -74,6 +75,7 @@ export class AdminUserScope extends SettingsScope {
     this.adminService.listUserBoards(this.userId).subscribe({
       next: (res) => {
         this.boards.set(res.boards ?? []);
+        this.otherBoards.set(res.otherBoards ?? []);
         this.loaded.set(true);
         const id = this.selectedId();
         if (id !== null && !this.boards().some((b) => b.boardId === id)) {

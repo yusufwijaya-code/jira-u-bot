@@ -2,13 +2,15 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { SettingsComponent } from './settings.component';
 import { BoardService, NotificationSettings, SettingsResponse } from '../../../core/services/board.service';
-import { BoardContextService, BoardSummary } from '../../../core/services/board-context.service';
+import { BoardContextService, BoardSummary, OtherBoard } from '../../../core/services/board-context.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
+import { NotificationSwitchService } from '../../../core/services/notification-switch.service';
+import { SETTINGS_MODE } from '../../../core/services/settings-api';
 
 const NOTIFICATION: NotificationSettings = {
   reminderTiers: ['2h', '45m', '1m'],
@@ -45,6 +47,7 @@ const OMS: BoardSummary = {
 
 class FakeBoardContext {
   boards = signal<BoardSummary[]>([OMS]);
+  otherBoards = signal<OtherBoard[]>([]);
   loaded = signal(true);
   selectedId = signal<number | null>(null);
   selected = () => this.boards().find((b) => b.boardId === this.selectedId()) ?? null;
@@ -198,5 +201,105 @@ describe('SettingsComponent', () => {
 
     expect(el().querySelector('.msg.error')?.textContent).toContain('Gagal memuat pengaturan, coba lagi');
     expect(card('reminder')).toBeNull();
+  });
+
+  // --- review fixes ---
+
+  it('keeps the newest scope when an older settings response arrives late (#2)', () => {
+    const slow = new Subject<SettingsResponse>();
+    boardService.getSettings.and.callFake((boardId: number | null = null) =>
+      boardId === 28 ? slow : of(sample({ scope: 'board', boardId: 99, useDefault: false, mute: { global: OFF, board: OFF } })),
+    );
+    component().loadSettings(28);
+    component().loadSettings(99);
+    slow.next(sample({ scope: 'board', boardId: 28, useDefault: true, mute: { global: OFF, board: OFF } }));
+
+    expect(component().scopeBoardId()).toBe(99);
+  });
+
+  it('saves only the clicked card and keeps other cards as drafts (#5)', () => {
+    boardService.saveNotificationSettings.and.callFake((s) => of(s));
+    component().patch({ quietHours: { start: '09:00', end: '10:00' } }); // unsaved, quiet card
+    component().patch({ notifyReturnedToTodo: true });
+
+    component().save('events');
+
+    expect(boardService.saveNotificationSettings).toHaveBeenCalledWith({ ...NOTIFICATION, notifyReturnedToTodo: true }, null);
+    // the quiet hours edit is still pending in the draft
+    expect(component().draft().quietHours).toEqual({ start: '09:00', end: '10:00' });
+  });
+
+  it('suggests 09:00–10:00 quiet hours and resets them per scope (#4)', () => {
+    component().setQuietEnabled(true);
+    expect(component().draft().quietHours).toEqual({ start: '09:00', end: '10:00' });
+  });
+
+  it('names Code Completed for a CORE board and both rules on the default scope (#3)', () => {
+    fixture.detectChanges();
+    expect(el().querySelector('[data-hint="early-finish"]')?.textContent).toContain('Code Completed untuk board CORE');
+
+    context.boards.set([OMS, { ...OMS, boardId: 26, name: 'ESB Core Board', projectKey: 'CORE', reviewTracked: true }]);
+    context.selectedId.set(26);
+    fixture.detectChanges();
+    expect(el().querySelector('[data-hint="early-finish"]')?.textContent).toContain('pindah ke Code Completed');
+    expect(el().querySelector('[data-hint="returned-to-todo"]')?.textContent).toContain('CODE REVIEW');
+
+    context.selectedId.set(28);
+    fixture.detectChanges();
+    expect(el().querySelector('[data-hint="early-finish"]')?.textContent).toContain('pindah ke Code Review');
+  });
+
+  it('lists boards outside the active sprints and can reset or unmute them (#7)', async () => {
+    const until = new Date(Date.now() + 3600_000).toISOString();
+    context.otherBoards.set([
+      { boardId: 40, name: 'Old Board', projectKey: 'OLD', hasCustomSettings: true, muted: OFF },
+      { boardId: 41, name: 'Muted Board', projectKey: 'MUT', hasCustomSettings: false, muted: { active: true, until } },
+    ]);
+    fixture.detectChanges();
+    expect(card('other-boards').textContent).toContain('Old Board');
+
+    confirm.ask.and.resolveTo(true);
+    boardService.resetNotificationSettings.and.returnValue(of(NOTIFICATION));
+    await component().resetOtherBoard(context.otherBoards()[0]);
+    expect(boardService.resetNotificationSettings).toHaveBeenCalledWith(40);
+
+    boardService.unmute.and.returnValue(of(OFF));
+    component().unmuteOtherBoard(context.otherBoards()[1]);
+    expect(boardService.unmute).toHaveBeenCalledWith(41);
+    expect(context.load).toHaveBeenCalled();
+  });
+
+  it('hides the other-boards card on a board scope', () => {
+    context.otherBoards.set([{ boardId: 40, name: 'Old Board', projectKey: 'OLD', hasCustomSettings: true, muted: OFF }]);
+    context.selectedId.set(28);
+    fixture.detectChanges();
+    expect(card('other-boards')).toBeNull();
+  });
+});
+
+describe('SettingsComponent in admin mode (#6)', () => {
+  it("shows the target's master switch read-only and leaves the admin's own switch alone", async () => {
+    const boardService = jasmine.createSpyObj('BoardService', ['getSettings']);
+    boardService.getSettings.and.returnValue(of(sample({ notifications: { enabled: false, chosen: true } })));
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: BoardService, useValue: boardService },
+        { provide: BoardContextService, useValue: new FakeBoardContext() },
+        { provide: SETTINGS_MODE, useValue: 'admin' },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    const card = el.querySelector('[data-card="target-switch"]') as HTMLElement;
+    expect(card.textContent).toContain('Notifikasi mati');
+    expect(card.textContent).toContain('Dipilih sendiri oleh user');
+    expect(card.querySelector('input')).toBeNull();
+    expect(el.querySelector('[data-card="master-switch"]')).toBeNull();
+    expect(TestBed.inject(NotificationSwitchService).state()).toBeNull();
   });
 });

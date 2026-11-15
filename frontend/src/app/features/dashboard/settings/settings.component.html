@@ -52,6 +52,28 @@
       </section>
     }
 
+    <!-- Admin mode: the target's master switch, read-only (only the user may change it) -->
+    @if (isAdminMode && targetSwitch(); as ts) {
+      <section class="card" data-card="target-switch">
+        <header class="card-header">
+          <span class="card-icon"><app-icon [name]="ts.enabled ? 'bell' : 'bell-off'" [size]="20" /></span>
+          <div>
+            <h2>Notifikasi Nudge user ini</h2>
+            <p>Saklar utama semua notif otomatis. Hanya user sendiri yang bisa mengubahnya.</p>
+          </div>
+        </header>
+        <div class="toggle-row" data-target-switch>
+          <span class="toggle-text">
+            <strong>{{ ts.enabled ? 'Notifikasi aktif' : 'Notifikasi mati' }}</strong>
+            <small>
+              {{ ts.chosen ? 'Dipilih sendiri oleh user.' : 'User belum memilih lewat pop up persetujuan.' }}
+              {{ ts.enabled ? '' : 'Tidak ada notif otomatis yang dikirim, apa pun pengaturan di bawah.' }}
+            </small>
+          </span>
+        </div>
+      </section>
+    }
+
     <!-- Jira API key -->
     <section class="card" data-card="credential">
       <header class="card-header">
@@ -103,6 +125,42 @@
         }
       </div>
     </section>
+
+    <!-- Boards outside the active sprints that still carry custom settings / a mute -->
+    @if (scopeBoardId() === null && boardContext.otherBoards().length) {
+      <section class="card" data-card="other-boards">
+        <header class="card-header">
+          <span class="card-icon"><app-icon name="alert-circle" [size]="20" /></span>
+          <div>
+            <h2>Board di luar sprint aktif</h2>
+            <p>Board ini tidak ada di pilihan navbar karena sprint aktifnya tidak berisi tiket {{ isAdminMode ? 'user ini' : 'kamu' }}, tapi pengaturannya berlaku lagi begitu board aktif.</p>
+          </div>
+        </header>
+        <div class="toggle-list">
+          @for (board of boardContext.otherBoards(); track board.boardId) {
+            <div class="toggle-row" [attr.data-other-board]="board.boardId">
+              <span class="toggle-text">
+                <strong>{{ board.name }}</strong>
+                <small>
+                  {{ board.hasCustomSettings ? 'Pengaturan khusus' : 'Mengikuti default' }}
+                  @if (otherBoardMuteLabel(board); as muteLabel) { · {{ muteLabel }} }
+                </small>
+              </span>
+              <span class="scope-actions">
+                @if (otherBoardMuteLabel(board)) {
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="otherBoardBusy() !== null" (click)="unmuteOtherBoard(board)">Batalkan mute</button>
+                }
+                @if (board.hasCustomSettings) {
+                  <button type="button" class="btn btn-ghost btn-sm" [disabled]="otherBoardBusy() !== null" (click)="resetOtherBoard(board)">
+                    <app-icon name="refresh" [size]="14" /> Kembalikan ke default
+                  </button>
+                }
+              </span>
+            </div>
+          }
+        </div>
+      </section>
+    }
 
     <!-- 1. Pre-budget tiers -->
     <section class="card" data-card="reminder" [class.readonly]="readOnly()" [attr.inert]="readOnly() ? '' : null">
@@ -172,7 +230,7 @@
         <label class="toggle-row">
           <span class="toggle-text">
             <strong>Selesai lebih awal</strong>
-            <small>Saat tiket pindah ke Code Review sebelum budget habis.</small>
+            <small data-hint="early-finish">{{ earlyFinishHint() }}</small>
           </span>
           <input
             type="checkbox"
@@ -184,7 +242,7 @@
         <label class="toggle-row">
           <span class="toggle-text">
             <strong>Tiket balik ke To Do</strong>
-            <small>Saat tiket dikembalikan dari Code Process ke To Do.</small>
+            <small data-hint="returned-to-todo">{{ returnedToTodoHint() }}</small>
           </span>
           <input
             type="checkbox"
@@ -234,7 +292,10 @@
         <label class="toggle-row">
           <span class="toggle-text">
             <strong>Jam tenang harian</strong>
-            <small>Tanpa notifikasi setiap hari di rentang jam ini (WIB). Boleh melewati tengah malam.</small>
+            <small>
+              Tanpa notifikasi setiap hari di rentang jam ini (WIB). Boleh melewati tengah malam. Reminder budget sudah
+              otomatis berhenti di luar jam kerja (08:30–17:30, istirahat 12:00–13:00), jadi jam tenang paling terasa di dalam jam kerja.
+            </small>
           </span>
           <input
             type="checkbox"

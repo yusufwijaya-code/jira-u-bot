@@ -2,6 +2,9 @@ import { Component, computed, effect, inject, signal, untracked } from '@angular
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Subscription } from 'rxjs';
+import { OtherBoard } from '../../../core/services/board-context.service';
+import { NotificationSwitchState } from '../../../core/services/notification-switch.service';
 import {
   MuteStatus,
   NotificationSettings,
@@ -21,8 +24,12 @@ import { MutePanelComponent, activeUntil, formatWib } from './mute-panel.compone
 import { TierPickerComponent } from './tier-picker.component';
 import { sortTiers, tierDuration } from './tier-codes';
 
-/** Which card's Simpan button is running — every card saves the whole draft. */
+/** Which card's Simpan button is running — each card saves only its own fields. */
 export type SettingsCard = 'reminder' | 'overage' | 'events' | 'quiet';
+
+/** Quiet hours suggested when the toggle is first switched on. */
+export const DEFAULT_QUIET_START = '09:00';
+export const DEFAULT_QUIET_END = '10:00';
 
 const CARD_FIELDS: Record<SettingsCard, (keyof NotificationSettings)[]> = {
   reminder: ['reminderTiers'],
@@ -72,6 +79,14 @@ export class SettingsComponent {
   protected credentialMasked: string | null = null;
 
   protected draft = signal<NotificationSettings | null>(null);
+  /** The settings as last loaded / saved — the base each card's save starts from. */
+  private saved: NotificationSettings | null = null;
+  /** The in-flight GET /settings, cancelled when the scope changes again. */
+  private loadSub?: Subscription;
+  /** Admin mode: the target user's master switch (read-only here). */
+  protected targetSwitch = signal<NotificationSwitchState | null>(null);
+  /** Boards outside the active sprints that still have custom settings or a mute. */
+  protected otherBoardBusy = signal<number | null>(null);
   /** Scope of the loaded settings (board id, null = default). */
   protected scopeBoardId = signal<number | null>(null);
   protected useDefault = signal(false);
@@ -83,8 +98,8 @@ export class SettingsComponent {
   protected saving = signal<SettingsCard | null>(null);
   protected fieldErrors = signal<Partial<Record<keyof NotificationSettings, string>>>({});
   /** Values for the quiet hours inputs, kept while the toggle is off. */
-  protected quietStart = '12:00';
-  protected quietEnd = '13:00';
+  protected quietStart = DEFAULT_QUIET_START;
+  protected quietEnd = DEFAULT_QUIET_END;
 
   /** "Budget habis → +15 menit → +1 jam → tiap 30 menit". */
   protected overagePreview = computed(() => {
@@ -116,7 +131,7 @@ export class SettingsComponent {
         this.savingSwitch.set(false);
         this.toast.success(
           enabled ? 'Notifikasi aktif' : 'Notifikasi dimatikan',
-          enabled ? 'Nudge akan mengingatkan kamu lewat DM.' : 'Tidak ada notif otomatis yang dikirim.',
+          enabled ? 'Nudge akan mengingatkan kamu lewat Google Chat.' : 'Tidak ada notif otomatis yang dikirim.',
         );
       },
       error: () => {
@@ -137,6 +152,37 @@ export class SettingsComponent {
   protected readOnly = computed(() => this.scopeBoardId() !== null && this.useDefault() && !this.editingCustom());
   protected globalMuteUntil = computed(() => activeUntil(this.globalMute()));
 
+  /**
+   * Which project rule the scope follows: 'core' tracks review time and is
+   * "done" at Code Completed, 'other' is done at Code Review, 'mixed' is the
+   * default scope (or a board not in the picker) covering both.
+   */
+  protected statusRule = computed<'core' | 'other' | 'mixed'>(() => {
+    const board = this.scopeBoard();
+    if (this.scopeBoardId() === null || !board) return 'mixed';
+    return board.reviewTracked ? 'core' : 'other';
+  });
+  protected earlyFinishHint = computed(() => {
+    switch (this.statusRule()) {
+      case 'core':
+        return 'Saat tiket pindah ke Code Completed sebelum budget habis.';
+      case 'other':
+        return 'Saat tiket pindah ke Code Review sebelum budget habis.';
+      default:
+        return 'Saat tiket selesai sebelum budget habis: pindah ke Code Review, atau Code Completed untuk board CORE.';
+    }
+  });
+  protected returnedToTodoHint = computed(() => {
+    switch (this.statusRule()) {
+      case 'core':
+        return 'Saat tiket dikembalikan dari Code Process atau CODE REVIEW ke To Do.';
+      case 'other':
+        return 'Saat tiket dikembalikan dari Code Process ke To Do.';
+      default:
+        return 'Saat tiket dikembalikan ke To Do dari Code Process (atau CODE REVIEW untuk board CORE).';
+    }
+  });
+
   constructor() {
     // Reload whenever the navbar board changes.
     effect(() => {
@@ -151,21 +197,25 @@ export class SettingsComponent {
     this.editingCustom.set(false);
     this.fieldErrors.set({});
 
-    this.boardService.getSettings(boardId).subscribe({
+    // Switching boards quickly must never let an older response land last
+    // and show (then save) another board's settings.
+    this.loadSub?.unsubscribe();
+    this.loadSub = this.boardService.getSettings(boardId).subscribe({
       next: (res) => {
         this.scopeBoardId.set(res.scope === 'board' ? res.boardId : null);
         this.useDefault.set(res.scope === 'board' && res.useDefault);
+        this.saved = { ...res.notification };
         this.draft.set({ ...res.notification });
-        if (res.notification.quietHours) {
-          this.quietStart = res.notification.quietHours.start;
-          this.quietEnd = res.notification.quietHours.end;
-        }
+        this.quietStart = res.notification.quietHours?.start ?? DEFAULT_QUIET_START;
+        this.quietEnd = res.notification.quietHours?.end ?? DEFAULT_QUIET_END;
         this.globalMute.set(res.mute.global);
         this.boardMute.set(res.mute.board);
         // The top bar badge shows the caller's own mute only.
         if (!this.isAdminMode) {
           this.muteState.set(res.mute.global);
           this.notifSwitch.set(res.notifications);
+        } else {
+          this.targetSwitch.set(res.notifications ?? null);
         }
         this.hasCredential = res.credential.hasCredential;
         this.credentialMasked = res.credential.maskedPreview;
@@ -252,15 +302,22 @@ export class SettingsComponent {
 
   protected save(card: SettingsCard): void {
     const draft = this.draft();
-    if (!draft || this.saving() || this.readOnly()) return;
+    if (!draft || !this.saved || this.saving() || this.readOnly()) return;
     this.saving.set(card);
     const boardId = this.scopeBoardId();
+    // Only this card's fields go out; unsaved edits in other cards stay
+    // drafts instead of being saved along silently.
+    const payload: NotificationSettings = { ...this.saved, ...pick(draft, CARD_FIELDS[card]) };
 
-    this.boardService.saveNotificationSettings(draft, boardId).subscribe({
+    this.boardService.saveNotificationSettings(payload, boardId).subscribe({
       next: (saved) => {
         this.saving.set(null);
-        this.fieldErrors.set({});
-        this.draft.set({ ...saved });
+        const errors = { ...this.fieldErrors() };
+        for (const field of CARD_FIELDS[card]) delete errors[field];
+        this.fieldErrors.set(errors);
+        this.saved = { ...saved };
+        const current = this.draft() ?? saved;
+        this.draft.set({ ...current, ...pick(saved, CARD_FIELDS[card]) });
         if (boardId !== null) {
           const becameCustom = this.useDefault();
           this.useDefault.set(false);
@@ -289,4 +346,57 @@ export class SettingsComponent {
   protected onCredentialChanged(): void {
     this.loadSettings(this.scopeBoardId());
   }
+
+  /** "Kembalikan ke default" for a board outside the active sprints. */
+  protected async resetOtherBoard(board: OtherBoard): Promise<void> {
+    const confirmed = await this.confirm.ask({
+      title: 'Kembalikan ke default?',
+      message: `Pengaturan khusus ${board.name} dihapus. Kalau board ini aktif lagi, ia mengikuti pengaturan default semua board.`,
+      confirmText: 'Kembalikan',
+      icon: 'refresh',
+    });
+    if (!confirmed) return;
+    this.otherBoardBusy.set(board.boardId);
+    this.boardService.resetNotificationSettings(board.boardId).subscribe({
+      next: () => {
+        this.otherBoardBusy.set(null);
+        this.toast.success('Kembali ke default', `${board.name} sekarang mengikuti pengaturan default.`);
+        this.boardContext.load();
+      },
+      error: () => {
+        this.otherBoardBusy.set(null);
+        this.toast.error('Gagal mengembalikan ke default', 'Coba lagi sebentar.');
+      },
+    });
+  }
+
+  /** Ends the mute of a board outside the active sprints. */
+  protected unmuteOtherBoard(board: OtherBoard): void {
+    this.otherBoardBusy.set(board.boardId);
+    this.boardService.unmute(board.boardId).subscribe({
+      next: () => {
+        this.otherBoardBusy.set(null);
+        this.toast.success('Mute dibatalkan', `${board.name} tidak lagi dibungkam.`);
+        this.boardContext.load();
+      },
+      error: () => {
+        this.otherBoardBusy.set(null);
+        this.toast.error('Gagal membatalkan mute', 'Coba lagi sebentar.');
+      },
+    });
+  }
+
+  protected otherBoardMuteLabel(board: OtherBoard): string | null {
+    const until = activeUntil(board.muted);
+    if (!until) return null;
+    return board.muted.forever ? 'Notifikasi dimatikan' : `Dimute sampai ${formatWib(until)} WIB`;
+  }
+}
+
+function pick(source: NotificationSettings, fields: (keyof NotificationSettings)[]): Partial<NotificationSettings> {
+  const out: Partial<NotificationSettings> = {};
+  for (const field of fields) {
+    (out as Record<string, unknown>)[field] = source[field];
+  }
+  return out;
 }

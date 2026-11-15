@@ -19,6 +19,25 @@ export interface BoardSummary {
   reviewTracked?: boolean;
 }
 
+/**
+ * A board outside the user's active sprints that still has custom settings
+ * or a running mute (GET /boards → otherBoards). Not in the navbar picker;
+ * Pengaturan lists it so it can be undone.
+ */
+export interface OtherBoard {
+  boardId: number;
+  name: string;
+  projectKey: string;
+  hasCustomSettings: boolean;
+  muted: MuteStatus;
+}
+
+/** GET /api/dashboard/boards (also the admin per-user variant). */
+export interface BoardsResponse {
+  boards: BoardSummary[] | null;
+  otherBoards?: OtherBoard[] | null;
+}
+
 export const BOARD_STORAGE_KEY = 'nudge.board';
 
 /**
@@ -34,6 +53,7 @@ export class BoardContextService {
   private toast = inject(ToastService);
 
   readonly boards = signal<BoardSummary[]>([]);
+  readonly otherBoards = signal<OtherBoard[]>([]);
   readonly loaded = signal(false);
   readonly selectedId = signal<number | null>(null);
   readonly selected = computed(() => this.boards().find((b) => b.boardId === this.selectedId()) ?? null);
@@ -52,9 +72,10 @@ export class BoardContextService {
 
   /** (Re)loads the boards; a selected board that's gone falls back to "Semua board". */
   load(): void {
-    this.http.get<{ boards: BoardSummary[] | null }>(`${environment.apiBasePath}/api/dashboard/boards`).subscribe({
+    this.http.get<BoardsResponse>(`${environment.apiBasePath}/api/dashboard/boards`).subscribe({
       next: (res) => {
         this.boards.set(res.boards ?? []);
+        this.otherBoards.set(res.otherBoards ?? []);
         this.loaded.set(true);
         const id = this.selectedId();
         if (id !== null && !this.boards().some((b) => b.boardId === id)) {

@@ -1,7 +1,7 @@
 import { Injectable, InjectionToken, Signal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { BoardService, MuteRequest, MuteStatus, NotificationSettings, SettingsResponse } from './board.service';
-import { BoardContextService, BoardSummary } from './board-context.service';
+import { BoardContextService, BoardSummary, OtherBoard } from './board-context.service';
 
 /**
  * The HTTP calls the Pengaturan components make. By default the caller's own
@@ -27,6 +27,8 @@ export abstract class SettingsApi {
 @Injectable({ providedIn: 'root', useExisting: BoardContextService })
 export abstract class SettingsScope {
   abstract readonly boards: Signal<BoardSummary[]>;
+  /** Boards outside the active sprints that still have custom settings or a mute. */
+  abstract readonly otherBoards: Signal<OtherBoard[]>;
   abstract readonly selectedId: Signal<number | null>;
   abstract select(boardId: number | null): void;
   abstract load(): void;
