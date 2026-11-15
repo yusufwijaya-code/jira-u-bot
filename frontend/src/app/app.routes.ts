@@ -1,7 +1,6 @@
 import { Routes } from '@angular/router';
 import { LoginComponent } from './features/login/login.component';
 import { DashboardShellComponent } from './layouts/dashboard-shell/dashboard-shell.component';
-import { SettingsComponent } from './features/dashboard/settings/settings.component';
 import { HomeComponent } from './features/dashboard/home/home.component';
 import { AuthGuard } from './core/guards/auth.guard';
 import { AdminGuard } from './core/guards/admin.guard';
@@ -35,7 +34,7 @@ export const routes: Routes = [
       },
       {
         path: 'settings',
-        component: SettingsComponent,
+        loadComponent: () => import('./features/dashboard/settings/settings.component').then((m) => m.SettingsComponent),
         title: 'Pengaturan · Nudge',
         data: { heading: 'Pengaturan', subheading: 'Atur cara Nudge mengingatkan kamu' },
       },
