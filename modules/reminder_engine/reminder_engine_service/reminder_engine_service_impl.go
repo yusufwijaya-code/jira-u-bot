@@ -2,12 +2,14 @@ package reminder_engine_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
 	"nudge/modules/issue_session/issue_session_dto"
@@ -78,6 +80,20 @@ func NewReminderEngineService(
 // enhancement behavior exactly.
 func (e *reminderEngineServiceImpl) pickNotifier(assigneeEmail string) google_chat_notifier_service.GoogleChatNotifierService {
 	return google_chat_notifier_service.PickNotifier(assigneeEmail, e.selfEmail, e.webhookNotifier, e.dmNotifier)
+}
+
+// deliveryStatus maps a send result to its tr_reminderlog status: a
+// recipient no chat sender can reach (chat_delivery) is skipped, so it is
+// not retried every poll cycle (Tech Spec "Nudge sebagai Google Chat App",
+// AC1.5).
+func deliveryStatus(err error) (string, error) {
+	switch {
+	case err == nil:
+		return reminder_log_dto.DeliverySent, nil
+	case errors.Is(err, chat_delivery.ErrRecipientNotActivated):
+		return reminder_log_dto.DeliverySkipped, nil
+	}
+	return "", err
 }
 
 // settingsFor returns the assignee's effective settings for boardID. The
@@ -269,10 +285,11 @@ func (e *reminderEngineServiceImpl) sendTierIfDue(ctx context.Context, issue jir
 
 	// Only record the send AFTER the notifier confirms success, so a failed
 	// POST is retried on the next poll cycle (spec Reliability).
-	if err := e.pickNotifier(session.AssigneeEmail).SendReminder(ctx, msg); err != nil {
+	status, err := deliveryStatus(e.pickNotifier(session.AssigneeEmail).SendReminder(ctx, msg))
+	if err != nil {
 		return err
 	}
-	if err := e.reminderLog.LogReminder(ctx, issue.Key, target, reminder_log_dto.DeliverySent); err != nil {
+	if err := e.reminderLog.LogReminder(ctx, issue.Key, target, status); err != nil {
 		return err
 	}
 	// Older crossed tiers were superseded by the one just sent (AC1.3).
@@ -377,10 +394,11 @@ func (e *reminderEngineServiceImpl) sendOverage(ctx context.Context, issue jira_
 	// Order matters: only record the send (log + timestamp) AFTER the
 	// notifier confirms success, so a failed POST can be retried on the
 	// next poll cycle instead of being silently marked as sent.
-	if err := e.pickNotifier(assigneeEmail).SendReminder(ctx, msg); err != nil {
+	status, err := deliveryStatus(e.pickNotifier(assigneeEmail).SendReminder(ctx, msg))
+	if err != nil {
 		return err
 	}
-	if err := e.reminderLog.LogReminder(ctx, issue.Key, tier, reminder_log_dto.DeliverySent); err != nil {
+	if err := e.reminderLog.LogReminder(ctx, issue.Key, tier, status); err != nil {
 		return err
 	}
 	if err := e.logAll(ctx, issue.Key, stale, reminder_log_dto.DeliverySkipped); err != nil {

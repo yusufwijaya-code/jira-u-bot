@@ -8,6 +8,7 @@ import (
 
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/issue_session/issue_session_dto"
 	"nudge/modules/jira_client/jira_client_dto"
@@ -134,11 +135,12 @@ func (f *fakeRegistrationRepository) FindAllWithGoogleChatDMSpaceID(ctx context.
 
 type fakeGoogleChatNotifierService struct {
 	sentMessages []google_chat_notifier_dto.ReminderMessage
+	err          error
 }
 
 func (f *fakeGoogleChatNotifierService) SendReminder(ctx context.Context, msg google_chat_notifier_dto.ReminderMessage) error {
 	f.sentMessages = append(f.sentMessages, msg)
-	return nil
+	return f.err
 }
 
 // fakeBusinessHoursGate wraps the real BusinessHoursService (for accurate
@@ -1213,5 +1215,41 @@ func TestEvaluateAndSend_StaleOverageTierSkippedThenRepeatStillRuns(t *testing.T
 	}
 	if len(notifier.sentMessages) != 1 || notifier.sentMessages[0].Tier != "overage" {
 		t.Fatalf("sentMessages = %+v, want exactly the repeat notice", notifier.sentMessages)
+	}
+}
+
+func TestEvaluateAndSend_RecipientWithoutSenderIsSkippedNotRetried(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	reminderLog.sentTiers["OMS-1|2h"] = true
+	reminderLog.sentTiers["OMS-1|1h"] = true
+	notifier := &fakeGoogleChatNotifierService{err: chat_delivery.ErrRecipientNotActivated}
+	engine := newTestEngine(reminderLog, &fakeIssueSessionService{}, &fakeRegistrationRepository{users: map[string]registration_dto.User{}}, notifier)
+
+	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 9100}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("bot@esb.co.id", "Bot"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if reminderLog.statuses["OMS-1|30m"] != "skipped" {
+		t.Errorf("status = %q, want skipped", reminderLog.statuses["OMS-1|30m"])
+	}
+}
+
+func TestEvaluateAndSend_OverageWithoutSenderIsSkippedAndAdvancesSchedule(t *testing.T) {
+	reminderLog := newFakeReminderLogService()
+	issueSession := &fakeIssueSessionService{}
+	notifier := &fakeGoogleChatNotifierService{err: chat_delivery.ErrRecipientNotActivated}
+	engine := newTestEngine(reminderLog, issueSession, &fakeRegistrationRepository{users: map[string]registration_dto.User{}}, notifier)
+
+	session := issue_session_dto.IssueSession{IssueKey: "OMS-1", StoryPoints: 3, AccumulatedSeconds: 12000}
+	if err := engine.EvaluateAndSend(context.Background(), testIssue("bot@esb.co.id", "Bot"), session); err != nil {
+		t.Fatalf("EvaluateAndSend returned error: %v", err)
+	}
+	if len(issueSession.updateOverageCalls) != 1 {
+		t.Errorf("UpdateLastOverageReminder calls = %d, want 1 (no resend every poll)", len(issueSession.updateOverageCalls))
+	}
+	for key, status := range reminderLog.statuses {
+		if status != "skipped" {
+			t.Errorf("%s = %q, want skipped", key, status)
+		}
 	}
 }

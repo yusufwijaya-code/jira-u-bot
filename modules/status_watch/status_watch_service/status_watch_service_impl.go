@@ -2,12 +2,14 @@ package status_watch_service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"time"
 
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
+	"nudge/modules/chat_delivery"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_dto"
 	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
 	"nudge/modules/issue_session/issue_session_dto"
@@ -222,7 +224,7 @@ func (s *statusWatchServiceImpl) notifyChange(ctx context.Context, issue jira_cl
 			IssueKey: issue.Key, IssueURL: url, IssueSummary: issue.Fields.Summary, AssigneeEmail: email, Text: text,
 		}
 		notifier := google_chat_notifier_service.PickNotifier(email, s.SelfEmail, s.Webhook, s.DM)
-		if err := notifier.SendReminder(ctx, msg); err != nil {
+		if err := notifier.SendReminder(ctx, msg); err != nil && !errors.Is(err, chat_delivery.ErrRecipientNotActivated) {
 			log.Printf("status_watch: notice for %s to %s failed: %v", issue.Key, email, err)
 		}
 	}

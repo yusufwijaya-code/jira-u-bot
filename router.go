@@ -96,3 +96,17 @@ func notFoundHandler() gin.HandlerFunc {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 	}
 }
+
+// ChatAppRoutes are the Tech Spec "Nudge sebagai Google Chat App"
+// endpoints. Events is nil when the Chat App is not configured.
+type ChatAppRoutes struct {
+	Events gin.HandlerFunc
+}
+
+// MountChatApp mounts the Chat App routes next to SetupRouter's.
+func MountChatApp(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.AuthService, routes ChatAppRoutes) {
+	base := r.Group(cfg.BasePath)
+	if routes.Events != nil {
+		base.POST("/api/chat/events", routes.Events)
+	}
+}
