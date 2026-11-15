@@ -35,9 +35,6 @@
   @if (refreshing()) {
     <div class="tb-progress" role="progressbar" aria-label="Memuat ulang tiket" data-refreshing></div>
   }
-  @if (menu()) {
-    <div class="status-backdrop" (click)="closeMenu()"></div>
-  }
 
   <div class="tb-toolbar">
     <nav class="tb-summary" aria-label="Ringkasan status">

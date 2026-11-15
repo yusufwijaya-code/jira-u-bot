@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
@@ -260,6 +260,20 @@ export class BoardPageComponent {
 
   protected closeMenu(): void {
     this.menu.set(null);
+  }
+
+  /** Any click outside the open status menu closes it — anywhere on the page. */
+  @HostListener('document:pointerdown', ['$event'])
+  protected onDocumentPointerDown(event: Event): void {
+    if (!this.menu()) return;
+    const target = event.target as Element | null;
+    if (target?.closest?.('.status-menu')) return;
+    this.closeMenu();
+  }
+
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    if (this.menu()) this.closeMenu();
   }
 
   protected move(card: TicketCard, option: TransitionOption): void {
