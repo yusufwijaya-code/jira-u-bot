@@ -435,7 +435,9 @@ export class ChatLogsComponent implements OnInit {
 
   protected preview(c: ChatConversation): string {
     const who = c.lastDirection === 'in' ? '' : 'Nudge: ';
-    return who + (c.lastBody || KIND_LABEL[c.lastKind as ChatLogEntry['kind']] || '');
+    // Plain text: drop the *bold* / _italic_ / ~strike~ markers of Chat markup.
+    const body = (c.lastBody ?? '').replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim();
+    return who + (body || KIND_LABEL[c.lastKind as ChatLogEntry['kind']] || '');
   }
 
   /** How Nudge's messages reach this user, for the chat header. */

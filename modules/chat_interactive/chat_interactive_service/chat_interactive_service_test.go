@@ -586,3 +586,12 @@ func TestView_RowsAreSeparatedByDividersAndFoldCountsThem(t *testing.T) {
 		t.Errorf("collapsible=%v visible=%d, want the first 2 rows (3 widgets)", s.Collapsible, s.UncollapsibleWidgetsCount)
 	}
 }
+
+func TestView_TextPutsABlankLineBetweenTickets(t *testing.T) {
+	v := view{title: "x", sections: []section{{items: []item{
+		{row: &row{main: "A", bottom: "a"}}, {row: &row{main: "B"}},
+	}}}}
+	if got := v.text(); !strings.Contains(got, "• A\n   a\n\n• B") {
+		t.Errorf("text = %q", got)
+	}
+}

@@ -153,10 +153,13 @@ func (v view) text() string {
 	}
 	for _, s := range v.sections {
 		var lines []string
-		for _, it := range s.items {
+		for i, it := range s.items {
 			switch {
 			case it.row != nil:
 				line := "• " + it.row.main
+				if i > 0 && s.items[i-1].row != nil {
+					line = "\n" + line // blank line between tickets
+				}
 				if it.row.top != "" {
 					line += "\n   " + it.row.top
 				}
