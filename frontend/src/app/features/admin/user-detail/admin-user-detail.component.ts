@@ -8,6 +8,7 @@ import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
 import { UserAvatarComponent, adminUserAvatarUrl } from '../../../shared/ui/user-avatar.component';
 import { SelectComponent, SelectOption } from '../../../shared/ui/select.component';
+import { ChatSenderCardComponent } from '../../dashboard/settings/chat-sender-card.component';
 import { SettingsComponent } from '../../dashboard/settings/settings.component';
 
 /**
@@ -18,7 +19,7 @@ import { SettingsComponent } from '../../dashboard/settings/settings.component';
 @Component({
   selector: 'app-admin-user-detail',
   standalone: true,
-  imports: [FormsModule, RouterLink, IconComponent, UserAvatarComponent, SelectComponent, SettingsComponent],
+  imports: [ChatSenderCardComponent, FormsModule, RouterLink, IconComponent, UserAvatarComponent, SelectComponent, SettingsComponent],
   templateUrl: './admin-user-detail.component.html',
   providers: [
     { provide: ADMIN_TARGET_USER_ID, useFactory: () => Number(inject(ActivatedRoute).snapshot.paramMap.get('id')) },

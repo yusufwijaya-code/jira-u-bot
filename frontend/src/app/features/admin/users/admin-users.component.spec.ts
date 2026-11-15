@@ -3,7 +3,7 @@ import { of, throwError } from 'rxjs';
 import { AdminUsersComponent } from './admin-users.component';
 import { AdminService, ListUsersResponse } from '../../../core/services/admin.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 
 describe('AdminUsersComponent', () => {
   let fixture: ComponentFixture<AdminUsersComponent>;
@@ -18,6 +18,7 @@ describe('AdminUsersComponent', () => {
       imports: [AdminUsersComponent],
       providers: [
         provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) } } },
         { provide: AdminService, useValue: adminService },
         { provide: ConfirmService, useValue: confirmService },
       ],
@@ -29,8 +30,8 @@ describe('AdminUsersComponent', () => {
   it('renders one row per user with status badge and Jira Account ID', () => {
     const response: ListUsersResponse = {
       users: [
-        { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '2026-01-01', jiraAccountId: 'acc-1', hasCredential: true, credentialMasked: '••••ab3f' },
-        { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: false, createdDate: '2026-01-02', jiraAccountId: '', hasCredential: false, credentialMasked: '' },
+        { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '2026-01-01', jiraAccountId: 'acc-1', hasCredential: true, credentialMasked: '••••ab3f', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const },
+        { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: false, createdDate: '2026-01-02', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const },
       ],
     };
     adminService.listUsers.and.returnValue(of(response));
@@ -42,6 +43,27 @@ describe('AdminUsersComponent', () => {
     expect(rows[0].querySelector('.status-badge').textContent).toContain('Aktif');
     expect(rows[1].querySelector('.status-badge').textContent).toContain('Nonaktif');
     expect(rows[1].textContent).toContain('—');
+  });
+
+  it('filters to active users that have not activated Nudge App', () => {
+    const base = { userName: '', createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
+    adminService.listUsers.and.returnValue(of({
+      users: [
+        { ...base, userId: 1, email: 'a@esb.co.id', flagActive: true, chatAppActivated: true },
+        { ...base, userId: 2, email: 'b@esb.co.id', flagActive: true, chatAppActivated: false },
+        { ...base, userId: 3, email: 'c@esb.co.id', flagActive: false, chatAppActivated: false },
+      ],
+    }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('tbody tr').length).toBe(3);
+
+    const box = fixture.nativeElement.querySelector('[data-filter-chat-app]') as HTMLInputElement;
+    box.click();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('tbody tr');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('b@esb.co.id');
   });
 
   it('shows an empty table with no rows when there are no users', () => {
@@ -66,7 +88,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('toggles active status and reloads the list on success', () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     adminService.toggleActive.and.returnValue(of({}));
@@ -78,7 +100,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('shows a row-scoped error message when toggling active status fails', () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     adminService.toggleActive.and.returnValue(throwError(() => ({ error: { error: 'Tidak bisa menonaktifkan diri sendiri' } })));
@@ -90,7 +112,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('saves the Jira Account ID optimistically, without reloading the list', () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: 'old-id', hasCredential: false, credentialMasked: '' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: 'old-id', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     adminService.editJiraAccountId.and.returnValue(of({}));
@@ -104,8 +126,8 @@ describe('AdminUsersComponent', () => {
   });
 
   it('only shows the Hapus Credential button when the user has a credential', () => {
-    const withCred = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
-    const withoutCred = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const withCred = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
+    const withoutCred = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [withCred, withoutCred] }));
     fixture.detectChanges();
 
@@ -115,7 +137,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('asks for confirmation before deleting a credential, and does nothing if cancelled', async () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     confirmService.ask.and.resolveTo(false);
@@ -126,7 +148,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('deletes the credential and reloads the list on confirmation', async () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     confirmService.ask.and.resolveTo(true);
@@ -139,7 +161,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('shows the self-lockout error message when deleting a user fails', async () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     confirmService.ask.and.resolveTo(true);
@@ -152,7 +174,7 @@ describe('AdminUsersComponent', () => {
   });
 
   it('disables every action button for a row while an action is in flight', () => {
-    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const user = { userId: 1, email: 'a@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [user] }));
     fixture.detectChanges();
     adminService.toggleActive.and.returnValue(of({}));
@@ -165,8 +187,8 @@ describe('AdminUsersComponent', () => {
   });
 
   it('filters the table by the search query', () => {
-    const a = { userId: 1, email: 'alice@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
-    const b = { userId: 2, email: 'bob@esb.co.id', userName: 'B', flagActive: false, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f' };
+    const a = { userId: 1, email: 'alice@esb.co.id', userName: 'A', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
+    const b = { userId: 2, email: 'bob@esb.co.id', userName: 'B', flagActive: false, createdDate: '', jiraAccountId: '', hasCredential: true, credentialMasked: '••••ab3f', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     adminService.listUsers.and.returnValue(of({ users: [a, b] }));
     fixture.detectChanges();
 
@@ -179,7 +201,7 @@ describe('AdminUsersComponent', () => {
   });
 
   describe('navigation to the user detail', () => {
-    const user = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '' };
+    const user = { userId: 2, email: 'b@esb.co.id', userName: 'B', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const };
     let navigate: jasmine.Spy;
 
     beforeEach(() => {

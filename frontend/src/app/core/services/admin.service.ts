@@ -13,6 +13,10 @@ export interface UserRow {
   jiraAccountId: string;
   hasCredential: boolean;
   credentialMasked: string;
+  chatAppActivated: boolean;
+  chatAppActivatedDate: string | null;
+  chatSender: 'nudge' | 'operator' | null;
+  effectiveChatSender: 'nudge' | 'operator';
 }
 
 export interface ListUsersResponse {

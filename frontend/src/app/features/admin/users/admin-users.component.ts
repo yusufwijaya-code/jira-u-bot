@@ -6,7 +6,7 @@ import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
 import { UserAvatarComponent, adminUserAvatarUrl } from '../../../shared/ui/user-avatar.component';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-admin-users',
@@ -20,6 +20,7 @@ export class AdminUsersComponent implements OnInit {
   protected loading = true;
   protected error: string | null = null;
   protected query = '';
+  protected onlyNotActivated = false;
   protected rowActionInFlight: Record<number, boolean> = {};
   protected rowMessage: Record<number, string> = {};
   protected jiraAccountIdDrafts: Record<number, string> = {};
@@ -28,14 +29,18 @@ export class AdminUsersComponent implements OnInit {
   private confirm = inject(ConfirmService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   ngOnInit(): void {
+    this.onlyNotActivated = this.route.snapshot.queryParamMap.get('chatApp') === 'inactive';
     this.loadUsers();
   }
 
   protected get filteredUsers(): UserRow[] {
     const q = this.query.trim().toLowerCase();
-    return q ? this.users.filter((u) => u.email.toLowerCase().includes(q)) : this.users;
+    return this.users.filter(
+      (u) => (!q || u.email.toLowerCase().includes(q)) && (!this.onlyNotActivated || (u.flagActive && !u.chatAppActivated)),
+    );
   }
 
   /** Row click → the user's detail page (settings, mute, credential). */

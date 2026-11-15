@@ -52,6 +52,11 @@
       </section>
     }
 
+    <!-- Pengirim pesan (Tech Spec "Nudge sebagai Google Chat App", US-7) — global, so only on "Semua board" -->
+    @if (!isAdminMode && scopeBoardId() === null) {
+      <app-chat-sender-card />
+    }
+
     <!-- Admin mode: the target's master switch, read-only (only the user may change it) -->
     @if (isAdminMode && targetSwitch(); as ts) {
       <section class="card" data-card="target-switch">

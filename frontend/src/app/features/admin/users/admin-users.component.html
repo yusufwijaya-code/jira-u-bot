@@ -10,6 +10,10 @@
         <app-icon name="search" [size]="16" />
         <input type="search" placeholder="Cari email..." [(ngModel)]="query" aria-label="Cari email" />
       </label>
+      <label class="filter-check" *ngIf="!loading && !error">
+        <input type="checkbox" data-filter-chat-app [(ngModel)]="onlyNotActivated" />
+        Belum aktivasi Nudge App
+      </label>
     </header>
 
     <div class="table-skeleton" *ngIf="loading" aria-busy="true">
@@ -24,7 +28,7 @@
     <div class="table-wrap" *ngIf="!loading && !error">
       <table class="admin-users">
         <thead>
-          <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th class="th-actions">Aksi</th></tr>
+          <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th>Pengirim</th><th class="th-actions">Aksi</th></tr>
         </thead>
         <tbody>
           <tr
@@ -79,6 +83,11 @@
                   Hapus Credential
                 </button>
               </div>
+            </td>
+            <td data-col="sender">
+              <span class="status-badge" [class.active]="user.chatAppActivated">
+                {{ user.effectiveChatSender === 'nudge' ? 'Nudge' : 'Operator' }}{{ user.chatAppActivated ? '' : ' · belum aktivasi' }}
+              </span>
             </td>
             <td class="actions">
               <div class="action-row" (click)="$event.stopPropagation()">

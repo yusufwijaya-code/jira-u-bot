@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ChatAppService } from '../../../core/services/chat-app.service';
 import { signal } from '@angular/core';
 import { Subject, of, throwError } from 'rxjs';
 import { SettingsComponent } from './settings.component';
@@ -81,6 +82,7 @@ describe('SettingsComponent', () => {
       imports: [SettingsComponent],
       providers: [
         provideHttpClient(),
+        { provide: ChatAppService, useValue: { load: () => of({ enabled: false }), activateUrl: () => '' } },
         provideHttpClientTesting(),
         { provide: BoardService, useValue: boardService },
         { provide: BoardContextService, useValue: context },
