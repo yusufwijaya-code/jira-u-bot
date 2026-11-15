@@ -13,6 +13,7 @@ import (
 	"nudge/modules/auth/auth_middleware"
 	"nudge/modules/auth/auth_service"
 	"nudge/modules/chat_app_activation"
+	"nudge/modules/board_scope"
 	"nudge/modules/chat_log/chat_log_handler"
 	"nudge/modules/sprint_report"
 	"nudge/modules/sprint_report/sprint_report_handler"
@@ -106,6 +107,15 @@ type ChatAppRoutes struct {
 	Activation  *chat_app_activation.Handler
 	AdminTarget user_dashboard_handler.TargetResolver
 	AdminChange user_dashboard_handler.ChangeListener
+}
+
+// MountBoardScope mounts the session user's board choice (web navbar),
+// shared with the chat commands.
+func MountBoardScope(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.AuthService, h *board_scope.Handler) {
+	api := r.Group(cfg.BasePath + "/api/dashboard")
+	api.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
+	api.GET("/board-scope", h.Get)
+	api.PUT("/board-scope", h.Put)
 }
 
 // MountChatLog mounts the admin "Riwayat pesan" list (admin only).

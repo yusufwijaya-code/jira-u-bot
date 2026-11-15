@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NavigationEnd, Router } from '@angular/router';
-import { filter } from 'rxjs';
+import { catchError, filter, forkJoin, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { MuteStatus } from './board.service';
 import { ToastService } from '../ui/toast.service';
@@ -44,7 +44,8 @@ export const BOARD_STORAGE_KEY = 'nudge.board';
  * Which Jira board the dashboard and Pengaturan are scoped to (Tech Spec
  * "Per-Board Settings & Active Sprint Dashboard"). `selectedId` null means
  * "Semua board" (dashboard) / the default settings (Pengaturan). The choice
- * lives in the URL (?board=) and localStorage.
+ * lives in the URL (?board=), localStorage and the server (board-scope), so
+ * the Nudge chat commands show the same board.
  */
 @Injectable({ providedIn: 'root' })
 export class BoardContextService {
@@ -58,6 +59,10 @@ export class BoardContextService {
   readonly selectedId = signal<number | null>(null);
   readonly selected = computed(() => this.boards().find((b) => b.boardId === this.selectedId()) ?? null);
 
+  private readonly scopeUrl = `${environment.apiBasePath}/api/dashboard/board-scope`;
+  /** The server's choice is read once, on the first load. */
+  private scopeSynced = false;
+
   constructor() {
     this.selectedId.set(this.fromUrl() ?? this.fromStorage());
     // Back/forward or a pasted link with ?board= wins over the stored choice.
@@ -66,14 +71,23 @@ export class BoardContextService {
       if (fromUrl !== undefined && fromUrl !== this.selectedId()) {
         this.selectedId.set(fromUrl);
         this.store(fromUrl);
+        this.save(fromUrl);
       }
     });
   }
 
   /** (Re)loads the boards; a selected board that's gone falls back to "Semua board". */
   load(): void {
-    this.http.get<BoardsResponse>(`${environment.apiBasePath}/api/dashboard/boards`).subscribe({
-      next: (res) => {
+    const scope$ = this.scopeSynced
+      ? of(undefined)
+      : this.http.get<{ boardId: number | null }>(this.scopeUrl).pipe(catchError(() => of(undefined)));
+    this.scopeSynced = true;
+    forkJoin({
+      res: this.http.get<BoardsResponse>(`${environment.apiBasePath}/api/dashboard/boards`),
+      scope: scope$,
+    }).subscribe({
+      next: ({ res, scope }) => {
+        if (scope) this.adoptServerChoice(scope.boardId);
         this.boards.set(res.boards ?? []);
         this.otherBoards.set(res.otherBoards ?? []);
         this.loaded.set(true);
@@ -90,6 +104,7 @@ export class BoardContextService {
   select(boardId: number | null): void {
     this.selectedId.set(boardId);
     this.store(boardId);
+    this.save(boardId);
     this.router.navigate([], {
       queryParams: { board: boardId ?? null },
       queryParamsHandling: 'merge',
@@ -99,6 +114,29 @@ export class BoardContextService {
 
   avatarUrl(boardId: number): string {
     return `${environment.apiBasePath}/api/dashboard/boards/${boardId}/avatar`;
+  }
+
+  /**
+   * The server's choice wins (it may come from the chat), unless the URL
+   * names a board. A browser with a stored choice the server doesn't have
+   * yet hands it over.
+   */
+  private adoptServerChoice(serverId: number | null): void {
+    if (this.fromUrl() !== undefined) {
+      if (serverId !== this.selectedId()) this.save(this.selectedId());
+      return;
+    }
+    if (serverId === null) {
+      if (this.selectedId() !== null) this.save(this.selectedId());
+      return;
+    }
+    this.selectedId.set(serverId);
+    this.store(serverId);
+  }
+
+  /** Shares the choice with the chat commands (best effort). */
+  private save(boardId: number | null): void {
+    this.http.put(this.scopeUrl, { boardId }).subscribe({ error: () => undefined });
   }
 
   /** undefined = no ?board= in the URL; null = explicit "all". */

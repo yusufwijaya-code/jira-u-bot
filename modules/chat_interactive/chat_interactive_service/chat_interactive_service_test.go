@@ -90,6 +90,7 @@ func (f *fakeLeaves) Remove(_ context.Context, _ string, date string) (bool, err
 
 type fakeSettings struct {
 	mutedUntil *time.Time
+	mutedBoard int64
 	switchOff  bool
 	unmuted    int
 }
@@ -98,8 +99,8 @@ func (f *fakeSettings) GetEffective(context.Context, int64, int64) (user_setting
 	return user_setting_dto.UserSetting{MutedUntil: f.mutedUntil}, nil
 }
 
-func (f *fakeSettings) MuteUntil(_ context.Context, _, _ int64, until time.Time) error {
-	f.mutedUntil = &until
+func (f *fakeSettings) MuteUntil(_ context.Context, _, board int64, until time.Time) error {
+	f.mutedUntil, f.mutedBoard = &until, board
 	return nil
 }
 
@@ -117,12 +118,22 @@ type fixture struct {
 	dash     *fakeDashboard
 	leaves   *fakeLeaves
 	settings *fakeSettings
+	scope    *fakeScope
 	svc      ChatInteractiveService
 }
 
+type fakeScope struct{ id int64 }
+
+func (f *fakeScope) Get(context.Context, string) (int64, error) { return f.id, nil }
+func (f *fakeScope) Set(_ context.Context, _ string, id int64) error {
+	f.id = id
+	return nil
+}
+
 func newFixture() fixture {
-	f := fixture{dash: &fakeDashboard{transitions: map[string]user_dashboard_dto.TicketTransitions{}}, leaves: &fakeLeaves{}, settings: &fakeSettings{}}
+	f := fixture{dash: &fakeDashboard{transitions: map[string]user_dashboard_dto.TicketTransitions{}}, leaves: &fakeLeaves{}, settings: &fakeSettings{}, scope: &fakeScope{}}
 	f.svc = New(Deps{
+		Scope:     f.scope,
 		Users:     fakeUsers{dev: {UserID: 7, UserName: "Yusuf Wijaya", Email: dev, FlagActive: true}},
 		Dashboard: f.dash, Leaves: f.leaves, Settings: f.settings,
 		WebURL: "https://nudge.test", Now: func() time.Time { return now },
@@ -254,11 +265,117 @@ func TestDashboard_JiraDownIsAFriendlyNote(t *testing.T) {
 	}
 }
 
+func TestMyTickets_FollowsTheWebBoardChoice(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.scope.id = 2 // OMS picked in the web navbar
+	r := f.svc.Command(context.Background(), dev, "/n-mytickets")
+	if !strings.Contains(r.Text, "*OMS-9*") || strings.Contains(r.Text, "*CORE-1*") || !strings.Contains(r.Text, "📌 *OMS Board* — ikut pilihan board di web") {
+		t.Errorf("OMS only:\n%s", r.Text)
+	}
+	f.scope.id = 0 // Semua board
+	r = f.svc.Command(context.Background(), dev, "/n-mytickets")
+	if !strings.Contains(r.Text, "*OMS-9*") || !strings.Contains(r.Text, "*CORE-1*") || !strings.Contains(r.Text, "📌 *Semua board*") {
+		t.Errorf("all boards:\n%s", r.Text)
+	}
+	var switches []string
+	for _, s := range r.Cards[0].Card.Sections {
+		for _, w := range s.Widgets {
+			if w.ButtonList == nil {
+				continue
+			}
+			for _, b := range w.ButtonList.Buttons {
+				if b.OnClick.Action != nil && b.OnClick.Action.Function == "nudge.scope" {
+					switches = append(switches, b.Text)
+				}
+			}
+		}
+	}
+	if strings.Join(switches, ",") != "CORE Board,OMS Board" {
+		t.Errorf("switch buttons = %v", switches)
+	}
+}
+
+func TestMyTickets_SwitchingBoardIsSavedForTheWeb(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	a := f.svc.Action(context.Background(), dev, "nudge.scope", map[string]string{"board": "1", "then": "/n-mytickets"})
+	if f.scope.id != 1 || !a.Update || !strings.Contains(a.Text, "*CORE-1*") || strings.Contains(a.Text, "*OMS-9*") {
+		t.Errorf("scope=%d update=%v\n%s", f.scope.id, a.Update, a.Text)
+	}
+	f.svc.Command(context.Background(), dev, "/n-mytickets semua")
+	if f.scope.id != 0 {
+		t.Errorf("typed 'semua' must select every board, scope = %d", f.scope.id)
+	}
+	f.svc.Command(context.Background(), dev, "/n-mytickets oms")
+	if f.scope.id != 2 {
+		t.Errorf("typed board name must select it, scope = %d", f.scope.id)
+	}
+	if r := f.svc.Command(context.Background(), dev, "/n-mytickets hr"); !strings.Contains(r.Text, `Board "hr" nggak ketemu`) || f.scope.id != 2 {
+		t.Errorf("unknown board: scope=%d\n%s", f.scope.id, r.Text)
+	}
+}
+
+func TestMyTickets_StaleWebChoiceFallsBackToAllBoards(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.scope.id = 99
+	r := f.svc.Command(context.Background(), dev, "/n-mytickets")
+	if !strings.Contains(r.Text, "nggak punya tiket kamu di sprint aktif") || !strings.Contains(r.Text, "*CORE-1*") {
+		t.Errorf("reply:\n%s", r.Text)
+	}
+}
+
+func TestDashboardAndMute_FollowTheWebBoardChoice(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.scope.id = 2
+	r := f.svc.Command(context.Background(), dev, "/n-dashboard")
+	if !strings.Contains(r.Text, "*1 tiket* di sprint aktif") || strings.Contains(r.Text, "CORE-2") {
+		t.Errorf("dashboard OMS only:\n%s", r.Text)
+	}
+	f.svc.Command(context.Background(), dev, "/n-mute 1 jam")
+	if f.settings.mutedBoard != 2 {
+		t.Errorf("mute must target the picked board, got %d", f.settings.mutedBoard)
+	}
+}
+
+func TestMyTickets_SubtasksHangUnderTheirParentAndCanBeMoved(t *testing.T) {
+	f := newFixture()
+	b := sampleBoard()
+	b.Related = []user_dashboard_dto.Card{
+		{IssueKey: "CORE-50", Summary: "Sub", Status: "Done", BoardID: 1, ParentKey: "CORE-1", Relation: "subtask"},
+		{IssueKey: "CORE-51", Summary: "Linked", Status: "To Do", BoardID: 1, ParentKey: "CORE-3", Relation: "relates to"},
+	}
+	f.dash.board = b
+	r := f.svc.Command(context.Background(), dev, "/n-mytickets core")
+	for _, want := range []string{
+		"• *CORE-1* Fix login\n   Code Process · 3 SP\n   ⏱ Sisa 2 jam · berjalan 1 jam · deadline 14:00 WIB\n\n      ↳ *CORE-50* Sub\n         Done · subtask",
+		"• *CORE-3* Report\n   To Do\n\n      ↳ *CORE-51* Linked\n         To Do · relates to",
+		"*CORE Board · 3 tiket (+2 subtask/terkait)*",
+	} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("missing %q in:\n%s", want, r.Text)
+		}
+	}
+	found := false
+	for _, s := range r.Cards[0].Card.Sections {
+		for _, w := range s.Widgets {
+			if d := w.DecoratedText; d != nil && strings.Contains(d.Text, "CORE-50") {
+				found = strings.HasPrefix(d.Text, "↳ ") && d.Button != nil && d.Button.OnClick.Action.Function == "nudge.ticket"
+			}
+		}
+	}
+	if !found {
+		t.Error("the subtask row must be a ↳ branch with its own Geser button")
+	}
+}
+
 func TestTiket_ListGroupsByBoardWithAGeserButtonPerTicket(t *testing.T) {
 	f := newFixture()
 	f.dash.board = sampleBoard()
-	r := f.svc.Command(context.Background(), dev, "/n-tiket")
-	if !strings.Contains(r.Text, "*CORE Board (3)*") || !strings.Contains(r.Text, "*OMS Board (1)*") {
+	r := f.svc.Command(context.Background(), dev, "/n-tiket semua")
+	if !strings.Contains(r.Text, "*CORE Board · 3 tiket*") || !strings.Contains(r.Text, "*OMS Board · 1 tiket*") {
 		t.Errorf("board groups missing:\n%s", r.Text)
 	}
 	buttons := 0
@@ -489,7 +606,7 @@ func TestMute_ViewButtonsAndUnmute(t *testing.T) {
 	f := newFixture()
 	f.settings.switchOff = true
 	r := f.svc.Command(context.Background(), dev, "/n-mute")
-	if !strings.Contains(r.Text, "Notifikasi *aktif*") || !strings.Contains(r.Text, "sedang OFF di Pengaturan") {
+	if !strings.Contains(r.Text, "Notifikasi semua board *aktif*") || !strings.Contains(r.Text, "sedang OFF di Pengaturan") {
 		t.Errorf("view:\n%s", r.Text)
 	}
 	a := f.svc.Action(context.Background(), dev, "nudge.mute", map[string]string{"for": "1j"})
@@ -497,7 +614,7 @@ func TestMute_ViewButtonsAndUnmute(t *testing.T) {
 		t.Errorf("mute button: %+v %v", a.Update, f.settings.mutedUntil)
 	}
 	r = f.svc.Command(context.Background(), dev, "/n-unmute")
-	if f.settings.unmuted != 1 || !strings.Contains(r.Text, "🔔 Notifikasi nyala lagi") {
+	if f.settings.unmuted != 1 || !strings.Contains(r.Text, "🔔 Notifikasi semua board nyala lagi") {
 		t.Errorf("unmute: %d %q", f.settings.unmuted, r.Text)
 	}
 }
@@ -521,9 +638,9 @@ func TestMyTickets_ListsEveryTicketWithItsTimeInfo(t *testing.T) {
 	b.Columns[0].Cards[0].StoryPoints = 2 // To Do ticket: budget it will get
 	b.Columns[3].Cards[0].TimeRecorded = true
 	b.Columns[3].Cards[0].ElapsedSeconds, b.Columns[3].Cards[0].BudgetSeconds = 1800, 3600
-	b.Related = []user_dashboard_dto.Card{{IssueKey: "CORE-50", Summary: "Sub", Status: "To Do", ParentKey: "CORE-1", Relation: "subtask"}}
+	b.Related = []user_dashboard_dto.Card{{IssueKey: "CORE-50", Summary: "Sub", Status: "To Do", BoardID: 1, ParentKey: "CORE-1", Relation: "subtask"}}
 	f.dash.board = b
-	r := f.svc.Command(context.Background(), dev, "/n-mytickets")
+	r := f.svc.Command(context.Background(), dev, "/n-mytickets semua")
 	for _, want := range []string{
 		"*📋 Tiket Saya*",
 		"To Do *1* · Code Process *1* · CODE REVIEW *1* · Done *1*",
@@ -532,8 +649,7 @@ func TestMyTickets_ListsEveryTicketWithItsTimeInfo(t *testing.T) {
 		"• *CORE-2* Voucher API\n   CODE REVIEW · 2 SP\n   🔴 Lewat 1 jam · berjalan 3 jam dari budget 2 jam",
 		"• *CORE-3* Report\n   To Do · 2 SP\n   Budget 2 jam · dihitung saat masuk Code Process",
 		"✔ Tercatat 30 menit dari budget 1 jam",
-		"*Subtask & terkait di luar sprint (1)*",
-		"• *CORE-50* Sub\n   To Do · subtask dari CORE-1",
+		"↳ *CORE-50* Sub\n         To Do · subtask",
 	} {
 		if !strings.Contains(r.Text, want) {
 			t.Errorf("missing %q in:\n%s", want, r.Text)

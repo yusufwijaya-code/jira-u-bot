@@ -43,12 +43,18 @@ describe('BoardContextService', () => {
 
   afterEach(() => localStorage.removeItem(BOARD_STORAGE_KEY));
 
+  /** Answers the first load: the boards and the server's board choice. */
+  function flushLoad(boards: BoardSummary[], serverBoard: number | null = null): void {
+    http.expectOne('/api/dashboard/board-scope').flush({ boardId: serverBoard });
+    http.expectOne('/api/dashboard/boards').flush({ boards });
+  }
+
   it('starts on "Semua board" and loads the boards', () => {
     const svc = setup();
     expect(svc.selectedId()).toBeNull();
 
     svc.load();
-    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
+    flushLoad([OMS]);
 
     expect(svc.boards().length).toBe(1);
     expect(svc.loaded()).toBeTrue();
@@ -60,8 +66,36 @@ describe('BoardContextService', () => {
     expect(svc.selectedId()).toBe(28);
 
     svc.load();
-    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
+    flushLoad([OMS], 28);
     expect(svc.selected()?.name).toBe('ESB OMS Board');
+  });
+
+  it('takes the board chosen on the server (e.g. from the chat)', () => {
+    localStorage.setItem(BOARD_STORAGE_KEY, '26');
+    const svc = setup();
+    svc.load();
+    flushLoad([OMS], 28);
+    expect(svc.selectedId()).toBe(28);
+    expect(localStorage.getItem(BOARD_STORAGE_KEY)).toBe('28');
+  });
+
+  it('hands a browser-only choice to the server', () => {
+    localStorage.setItem(BOARD_STORAGE_KEY, '28');
+    const svc = setup();
+    svc.load();
+    flushLoad([OMS], null);
+    const put = http.expectOne((r) => r.method === 'PUT' && r.url === '/api/dashboard/board-scope');
+    expect(put.request.body).toEqual({ boardId: 28 });
+    expect(svc.selectedId()).toBe(28);
+  });
+
+  it('reads the server choice only on the first load', () => {
+    const svc = setup();
+    svc.load();
+    flushLoad([OMS]);
+    svc.load();
+    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
+    http.expectNone('/api/dashboard/board-scope');
   });
 
   it('select() stores the choice and puts it in the URL', async () => {
@@ -72,6 +106,7 @@ describe('BoardContextService', () => {
     svc.select(28);
     await new Promise((r) => setTimeout(r));
 
+    expect(http.expectOne((r) => r.method === 'PUT' && r.url === '/api/dashboard/board-scope').request.body).toEqual({ boardId: 28 });
     expect(localStorage.getItem(BOARD_STORAGE_KEY)).toBe('28');
     expect(router.url).toContain('board=28');
 
@@ -92,7 +127,7 @@ describe('BoardContextService', () => {
     const svc = setup();
 
     svc.load();
-    http.expectOne('/api/dashboard/boards').flush({ boards: [OMS] });
+    flushLoad([OMS], 99);
 
     expect(svc.selectedId()).toBeNull();
     expect(toast.info).toHaveBeenCalled();
