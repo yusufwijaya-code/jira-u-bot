@@ -29,7 +29,7 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
               <input type="radio" name="chat-sender" value="nudge" [checked]="s.effectiveSender === 'nudge'" [disabled]="nudgeDisabled(s)" (click)="pick('nudge', $event)" />
               <span>
                 <strong>Nudge (app)</strong>
-                <small>Pesan datang dari app Nudge di Google Chat. Mendukung command &amp; tombol aksi.</small>
+                <small>Pesan datang dari app Nudge di Google Chat. Pesan berupa card dengan tombol (Geser status, Buka menu, dll.).</small>
                 @if (s.operatorAccount) {
                   <small>Akun operator tidak bisa menerima DM dari dirinya sendiri.</small>
                 }
@@ -44,6 +44,7 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
                 <span>
                   <strong>{{ s.operatorName }}</strong>
                   <small>Pesan datang dari akun {{ s.operatorName }} seperti sebelumnya.</small>
+                  <small data-operator-limits>Hanya teks, tanpa tombol: command tetap bisa diketik, mis. /n-mytickets atau /n-tiket CORE-123 review.</small>
                 </span>
               </label>
             }
