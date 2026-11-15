@@ -96,9 +96,15 @@ type fakeChatInteractiveForHandler struct {
 }
 
 func (f *fakeChatInteractiveForHandler) RouteCommand(ctx context.Context, senderEmail, messageText string) string {
-	f.lastSenderEmail = senderEmail
-	f.lastCommand = messageText
-	return f.response
+	return ""
+}
+
+func (f *fakeChatInteractiveForHandler) Command(ctx context.Context, senderEmail, messageText string) chat_interactive_service.Reply {
+	return chat_interactive_service.Reply{}
+}
+
+func (f *fakeChatInteractiveForHandler) Action(ctx context.Context, senderEmail, function string, params map[string]string) chat_interactive_service.ActionReply {
+	return chat_interactive_service.ActionReply{}
 }
 
 type fakeJiraCredentialForHandler struct {
@@ -192,7 +198,7 @@ func TestGetTeamAndOverdue_UseSessionEmail(t *testing.T) {
 	}
 }
 
-func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
+func TestTransitionTicket_TargetDelegatesToGeser(t *testing.T) {
 	chat := &fakeChatInteractiveForHandler{response: "✅ OMS-1 berhasil digeser ke Code Review"}
 	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, chat, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
 
@@ -204,13 +210,13 @@ func TestTransitionTicket_DelegatesToRouteCommand(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	if chat.lastSenderEmail != "dev@esb.co.id" {
-		t.Errorf("RouteCommand sender = %q, want dev@esb.co.id", chat.lastSenderEmail)
+		t.Errorf("Geser sender = %q, want dev@esb.co.id", chat.lastSenderEmail)
 	}
-	if chat.lastCommand != "/n-geser<OMS-1>:code-review" {
-		t.Errorf("RouteCommand command = %q, want /n-geser<OMS-1>:code-review", chat.lastCommand)
+	if chat.lastCommand != "OMS-1:code-review" {
+		t.Errorf("Geser call = %q, want OMS-1:code-review", chat.lastCommand)
 	}
 	if !strings.Contains(w.Body.String(), "berhasil digeser") {
-		t.Errorf("body = %q, want it to echo RouteCommand's response (spec AC4.2)", w.Body.String())
+		t.Errorf("body = %q, want it to echo Geser's message", w.Body.String())
 	}
 }
 
@@ -948,5 +954,7 @@ func TestListBoards_ReportsOtherBoardsWithCustomSettingsOrMute(t *testing.T) {
 }
 
 func (f *fakeChatInteractiveForHandler) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) chat_interactive_service.GeserResult {
-	return chat_interactive_service.GeserResult{}
+	f.lastSenderEmail = senderEmail
+	f.lastCommand = issueKey + ":" + targetSlug
+	return chat_interactive_service.GeserResult{OK: true, Message: f.response}
 }

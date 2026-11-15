@@ -6,6 +6,7 @@ package chat_app_dto
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,6 +48,45 @@ type Event struct {
 	User    ChatUser `json:"user"`
 	Message *Message `json:"message,omitempty"`
 	Action  *Action  `json:"action,omitempty"`
+	Common  *Common  `json:"common,omitempty"`
+}
+
+// Common carries the values of a card's form fields on CARD_CLICKED.
+type Common struct {
+	FormInputs map[string]FormInput `json:"formInputs,omitempty"`
+}
+
+type FormInput struct {
+	StringInputs *StringInputs `json:"stringInputs,omitempty"`
+	DateInput    *DateInput    `json:"dateInput,omitempty"`
+}
+
+type StringInputs struct {
+	Value []string `json:"value"`
+}
+
+type DateInput struct {
+	MsSinceEpoch FlexString `json:"msSinceEpoch"`
+}
+
+// FormValues flattens the form inputs: text fields to their first value,
+// date fields to YYYY-MM-DD (a DATE_ONLY value is UTC midnight of the day).
+func (e Event) FormValues() map[string]string {
+	out := map[string]string{}
+	if e.Common == nil {
+		return out
+	}
+	for name, in := range e.Common.FormInputs {
+		switch {
+		case in.DateInput != nil:
+			if ms, err := strconv.ParseInt(string(in.DateInput.MsSinceEpoch), 10, 64); err == nil && ms > 0 {
+				out[name] = time.UnixMilli(ms).UTC().Format("2006-01-02")
+			}
+		case in.StringInputs != nil && len(in.StringInputs.Value) > 0:
+			out[name] = in.StringInputs.Value[0]
+		}
+	}
+	return out
 }
 
 type Space struct {
@@ -120,10 +160,15 @@ type ActionParameter struct {
 // Response is the synchronous reply to an event; the zero value marshals
 // to {} (no reply).
 type Response struct {
-	Text                 string          `json:"text,omitempty"`
+	Text string `json:"text,omitempty"`
+	// FallbackText is the notification preview of a card-only message.
+	FallbackText         string          `json:"fallbackText,omitempty"`
 	CardsV2              []CardWithID    `json:"cardsV2,omitempty"`
 	ActionResponse       *ActionResponse `json:"actionResponse,omitempty"`
 	PrivateMessageViewer *ChatUser       `json:"privateMessageViewer,omitempty"`
+	// LogText is what the admin "Pesan" log shows for this reply (a card's
+	// text rendering); never sent to Google.
+	LogText string `json:"-"`
 }
 
 type ActionResponse struct {
@@ -137,6 +182,7 @@ const (
 
 // OutgoingMessage is a message Nudge creates through the Chat API.
 type OutgoingMessage struct {
-	Text    string       `json:"text,omitempty"`
-	CardsV2 []CardWithID `json:"cardsV2,omitempty"`
+	Text         string       `json:"text,omitempty"`
+	FallbackText string       `json:"fallbackText,omitempty"`
+	CardsV2      []CardWithID `json:"cardsV2,omitempty"`
 }

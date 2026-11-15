@@ -519,3 +519,11 @@ func TestPollOnce_CursorPersistFailureOnlyReplaysUnpersistedTail(t *testing.T) {
 func (f *fakeChatInteractiveServiceForPoller) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) chat_interactive_service.GeserResult {
 	return chat_interactive_service.GeserResult{}
 }
+
+func (f *fakeChatInteractiveServiceForPoller) Command(ctx context.Context, senderEmail, messageText string) chat_interactive_service.Reply {
+	return chat_interactive_service.Reply{}
+}
+
+func (f *fakeChatInteractiveServiceForPoller) Action(ctx context.Context, senderEmail, function string, params map[string]string) chat_interactive_service.ActionReply {
+	return chat_interactive_service.ActionReply{}
+}

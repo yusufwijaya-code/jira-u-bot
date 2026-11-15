@@ -48,14 +48,24 @@ type fakeCommands struct {
 	got    []string
 }
 
-func (f *fakeCommands) RouteCommand(_ context.Context, email, text string) string {
+func (f *fakeCommands) Command(_ context.Context, email, text string) chat_interactive_service.Reply {
 	time.Sleep(f.delay)
 	if f.panics {
 		var m map[string]string
 		m["nil deref"] = text // a real runtime panic, as from a nil map in a Jira path
 	}
 	f.got = append(f.got, email+"|"+text)
-	return "reply to " + text
+	return chat_interactive_service.Reply{Text: "reply to " + text}
+}
+
+func (f *fakeCommands) Action(_ context.Context, email, fn string, params map[string]string) chat_interactive_service.ActionReply {
+	time.Sleep(f.delay)
+	f.got = append(f.got, email+"|"+fn+"|"+params["key"]+"|"+params["from"])
+	card := chat_app_dto.CardWithID{CardID: "c", Card: chat_app_dto.Card{Header: &chat_app_dto.CardHeader{Title: "after " + fn}}}
+	return chat_interactive_service.ActionReply{
+		Reply:  chat_interactive_service.Reply{Text: "did " + fn, Title: "after " + fn, Cards: []chat_app_dto.CardWithID{card}},
+		Update: fn == "nudge.move",
+	}
 }
 
 type fakeApp struct {
@@ -177,22 +187,90 @@ func TestCommandText_SlashCommands(t *testing.T) {
 		return &chat_app_dto.Message{Text: "/x " + args, ArgumentText: args, SlashCommand: &chat_app_dto.SlashCommand{CommandID: chat_app_dto.FlexString(id)}}
 	}
 	cases := []struct {
-		msg        *chat_app_dto.Message
-		want, hint string
+		msg  *chat_app_dto.Message
+		want string
 	}{
-		{slash("1", ""), "/n-mytickets", ""},
-		{slash("2", " CORE-12 "), "/n-budget CORE-12", ""},
-		{slash("5", ""), "/n-help", ""},
-		{slash("6", "core-123 Code-Review"), "/n-geser<CORE-123>:code-review", ""},
-		{slash("6", "CORE-123"), "", geserUsage},
-		{slash("99", ""), "/n-help", ""},
-		{&chat_app_dto.Message{Text: "/n-geser<CORE-1>:todo", ArgumentText: "/n-geser<CORE-1>:todo"}, "/n-geser<CORE-1>:todo", ""},
+		{slash("1", ""), "/n-dashboard"},
+		{slash("2", " CORE-12 review "), "/n-tiket CORE-12 review"},
+		{slash("3", "besok"), "/n-cuti besok"},
+		{slash("4", "1 jam"), "/n-mute 1 jam"},
+		{slash("5", ""), "/n-help"},
+		{slash("6", ""), "/n-unmute"},
+		{slash("99", ""), "/n-help"},
+		{&chat_app_dto.Message{Text: "/n-geser<CORE-1>:todo", ArgumentText: "/n-geser<CORE-1>:todo"}, "/n-geser<CORE-1>:todo"},
 	}
 	for _, c := range cases {
-		got, hint := commandText(c.msg)
-		if got != c.want || hint != c.hint {
-			t.Errorf("commandText(%+v) = %q, %q; want %q, %q", c.msg, got, hint, c.want, c.hint)
+		if got := commandText(c.msg); got != c.want {
+			t.Errorf("commandText(%+v) = %q; want %q", c.msg, got, c.want)
 		}
+	}
+}
+
+func TestHandle_CommandCardIsSentAsCardWithFallbackAndLoggedAsText(t *testing.T) {
+	rec := &fakeRecorder{}
+	cmds := &cardCommands{}
+	svc := New(Deps{Users: fakeUsers{dev: {Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{dev: {Email: dev, SpaceID: "spaces/DM"}}}, Commands: cmds, Log: rec})
+	res := svc.Handle(context.Background(), dmEvent("MESSAGE", dev, &chat_app_dto.Message{Text: "/n-dashboard"}))
+	if len(res.CardsV2) != 1 || res.Text != "" || res.FallbackText != "📊 Dashboard" {
+		t.Fatalf("response = %+v, want a card with fallback text", res)
+	}
+	entries := rec.all()
+	if out := entries[len(entries)-1]; out.Body != "*📊 Dashboard*\nisi" {
+		t.Errorf("logged reply = %q, want the card's text rendering", out.Body)
+	}
+}
+
+type cardCommands struct{ fakeCommands }
+
+func (*cardCommands) Command(context.Context, string, string) chat_interactive_service.Reply {
+	return chat_interactive_service.Reply{Text: "*📊 Dashboard*\nisi", Title: "📊 Dashboard", Cards: []chat_app_dto.CardWithID{{CardID: "d"}}}
+}
+
+func menuClick(fn string, params ...chat_app_dto.ActionParameter) chat_app_dto.Event {
+	ev := dmEvent("CARD_CLICKED", dev, &chat_app_dto.Message{CardsV2: []chat_app_dto.CardWithID{{CardID: "old"}}})
+	ev.Action = &chat_app_dto.Action{ActionMethodName: fn, Parameters: params}
+	return ev
+}
+
+func TestHandle_MenuButtonThatUpdatesReplacesTheCard(t *testing.T) {
+	cmds := &fakeCommands{}
+	res := newSvc(&fakeStates{states: map[string]chat_app_dto.State{}}, cmds, nil).Handle(context.Background(),
+		menuClick("nudge.move", chat_app_dto.ActionParameter{Key: "key", Value: "CORE-1"}))
+	if res.ActionResponse == nil || res.ActionResponse.Type != chat_app_dto.ResponseUpdateMessage || len(res.CardsV2) != 1 {
+		t.Fatalf("response = %+v, want UPDATE_MESSAGE with the new card", res)
+	}
+	if cmds.got[0] != dev+"|nudge.move|CORE-1|" {
+		t.Errorf("Action call = %v", cmds.got)
+	}
+}
+
+func TestHandle_MenuButtonOpeningAViewPostsANewMessage(t *testing.T) {
+	res := newSvc(&fakeStates{states: map[string]chat_app_dto.State{}}, &fakeCommands{}, nil).Handle(context.Background(),
+		menuClick("nudge.cmd", chat_app_dto.ActionParameter{Key: "cmd", Value: "/n-tiket"}))
+	if res.ActionResponse == nil || res.ActionResponse.Type != chat_app_dto.ResponseNewMessage || len(res.CardsV2) != 1 {
+		t.Fatalf("response = %+v, want NEW_MESSAGE with a card", res)
+	}
+}
+
+func TestHandle_MenuButtonPassesFormInputs(t *testing.T) {
+	cmds := &fakeCommands{}
+	ev := menuClick("nudge.leave.add")
+	ev.Common = &chat_app_dto.Common{FormInputs: map[string]chat_app_dto.FormInput{
+		"from": {DateInput: &chat_app_dto.DateInput{MsSinceEpoch: "1795132800000"}}, // 2026-11-20 00:00 UTC
+	}}
+	newSvc(&fakeStates{states: map[string]chat_app_dto.State{}}, cmds, nil).Handle(context.Background(), ev)
+	if len(cmds.got) != 1 || cmds.got[0] != dev+"|nudge.leave.add||2026-11-20" {
+		t.Errorf("Action call = %v, want the picked date as from", cmds.got)
+	}
+}
+
+func TestHandle_MenuButtonOfUnknownUserIsRefused(t *testing.T) {
+	cmds := &fakeCommands{}
+	ev := menuClick("nudge.cmd")
+	ev.User.Email = "stranger@esb.co.id"
+	res := newSvc(&fakeStates{states: map[string]chat_app_dto.State{}}, cmds, nil).Handle(context.Background(), ev)
+	if len(cmds.got) != 0 || !strings.Contains(res.Text, "belum terdaftar") {
+		t.Errorf("res=%+v calls=%v", res, cmds.got)
 	}
 }
 

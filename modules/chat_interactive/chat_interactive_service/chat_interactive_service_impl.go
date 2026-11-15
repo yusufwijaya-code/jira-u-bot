@@ -2,268 +2,839 @@ package chat_interactive_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"nudge/modules/business_hours/business_hours_dto"
-	"nudge/modules/business_hours/business_hours_service"
-	"nudge/modules/google_chat_notifier/google_chat_notifier_service"
-	"nudge/modules/issue_session/issue_session_dto"
-	"nudge/modules/issue_session/issue_session_repository"
-	"nudge/modules/issue_session/issue_session_service"
-	"nudge/modules/jira_client/jira_client_dto"
-	"nudge/modules/jira_client/jira_client_service"
-	"nudge/modules/jira_credential/jira_credential_service"
-	"nudge/modules/registration/registration_repository"
+	"nudge/modules/registration/registration_dto"
+	"nudge/modules/user_dashboard/user_dashboard_dto"
+	"nudge/modules/user_dashboard/user_dashboard_service"
+	"nudge/modules/user_leave/user_leave_dto"
+	"nudge/modules/user_leave/user_leave_service"
+	"nudge/modules/user_setting/user_setting_dto"
 )
 
-// registerURL is the dashboard's sign-in page: signing in with Google
-// registers the user.
-const registerURL = "https://nudge.labcup.tech/"
-
-// Command prefixes recognized at the start of a DM message. The /n- prefix
-// (operator's choice) keeps these from colliding with any other bot's
-// commands in the same space.
+// Action functions (sent as ActionPrefix + name).
 const (
-	commandMyTickets = "/n-mytickets"
-	commandBudget    = "/n-budget"
-	commandOverdue   = "/n-overdue"
-	commandTeam      = "/n-team"
+	actCommand     = "cmd"          // param cmd: run a command
+	actTicket      = "ticket"       // param key: open one ticket
+	actMove        = "move"         // params key, tid, to: move a ticket
+	actLeaveAdd    = "leave.add"    // form from, to, note
+	actLeaveRemove = "leave.remove" // param date
+	actMute        = "mute"         // param for: minutes | tomorrow | forever
+	actUnmute      = "unmute"
 )
 
-// geserCommandPattern matches /n-geser<ISSUEKEY>:target — e.g.
-// /n-geser<OMS-123>:todo or /n-geser<CORE-456>:code-review.
-var geserCommandPattern = regexp.MustCompile(`^/n-geser<([A-Za-z]+-\d+)>:(\S+)$`)
+// Form field names of the leave card.
+const (
+	fieldFrom = "from"
+	fieldTo   = "to"
+	fieldNote = "note"
+)
 
-// geserTargetStatusNames maps the command's target slug to the Jira status
-// name to search for among the issue's available transitions. Matching is
-// case-insensitive at use (see Geser) because projects spell the
-// same status differently — OMS uses "Code Review", CORE uses "CODE REVIEW".
-var geserTargetStatusNames = map[string]string{
-	"todo":        "To Do",
-	"code-review": "Code Review",
+// maxTicketRows bounds the Papan Tiket card (Chat cards have a size limit).
+const maxTicketRows = 60
+
+type UserFinder interface {
+	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
 }
 
-type chatInteractiveServiceImpl struct {
-	registrationRepo registration_repository.RegistrationRepository
-	issueSessionRepo issue_session_repository.IssueSessionRepository
-	businessHours    business_hours_service.BusinessHoursService
-	holidayCalendar  business_hours_dto.CalendarSource
-	jiraClient       jira_client_service.JiraClientService
-	jiraCredential   jira_credential_service.JiraCredentialService
+// Dashboard is the user_dashboard_service slice the commands use — the same
+// calls the web dashboard and Papan Tiket make.
+type Dashboard interface {
+	GetMyBoard(ctx context.Context, email string, boardID int64) (user_dashboard_dto.Board, error)
+	DescribeBoard(ctx context.Context, boardID int64) (name, projectKey string)
+	ListTransitions(ctx context.Context, email, issueKey string) (user_dashboard_dto.TicketTransitions, error)
+	Transition(ctx context.Context, email, issueKey, transitionID string) (string, error)
 }
 
-func NewChatInteractiveService(
-	registrationRepo registration_repository.RegistrationRepository,
-	issueSessionRepo issue_session_repository.IssueSessionRepository,
-	businessHours business_hours_service.BusinessHoursService,
-	holidayCalendar business_hours_dto.CalendarSource,
-	jiraClient jira_client_service.JiraClientService,
-	jiraCredential jira_credential_service.JiraCredentialService,
-) ChatInteractiveService {
-	return &chatInteractiveServiceImpl{
-		registrationRepo: registrationRepo,
-		issueSessionRepo: issueSessionRepo,
-		businessHours:    businessHours,
-		holidayCalendar:  holidayCalendar,
-		jiraClient:       jiraClient,
-		jiraCredential:   jiraCredential,
+type Leaves interface {
+	List(ctx context.Context, email string) ([]user_leave_dto.Leave, error)
+	Add(ctx context.Context, email, from, to, note string) (user_leave_dto.AddResult, error)
+	Remove(ctx context.Context, email, date string) (bool, error)
+}
+
+type Settings interface {
+	GetEffective(ctx context.Context, userID, boardID int64) (user_setting_dto.UserSetting, error)
+	MuteUntil(ctx context.Context, userID, boardID int64, until time.Time) error
+	Unmute(ctx context.Context, userID, boardID int64) error
+	NotificationSwitch(ctx context.Context, userID int64) (user_setting_dto.NotificationSwitch, error)
+}
+
+type Deps struct {
+	Users     UserFinder
+	Dashboard Dashboard
+	Leaves    Leaves
+	Settings  Settings
+	// WebURL is the dashboard root, e.g. https://nudge.labcup.tech.
+	WebURL string
+	Now    func() time.Time
+}
+
+type service struct {
+	d Deps
+}
+
+func New(d Deps) ChatInteractiveService {
+	if d.Now == nil {
+		d.Now = time.Now
 	}
+	d.WebURL = strings.TrimRight(d.WebURL, "/")
+	if d.WebURL == "" {
+		d.WebURL = defaultWebURL
+	}
+	return &service{d: d}
 }
 
-func (s *chatInteractiveServiceImpl) RouteCommand(ctx context.Context, senderEmail, messageText string) string {
-	_, found, err := s.registrationRepo.FindUserByEmail(ctx, senderEmail)
-	if err != nil || !found {
-		return fmt.Sprintf("Kamu belum terdaftar. Daftar dulu di %s ya 🙏", registerURL)
-	}
+const (
+	defaultWebURL = "https://nudge.labcup.tech"
+	errorBody     = "Lagi ada gangguan, coba lagi sebentar lagi ya 🙏"
+	jiraBody      = "Jira lagi nggak bisa dihubungi, coba lagi sebentar lagi ya 🙏"
+)
 
-	text := strings.TrimSpace(messageText)
+func (s *service) RouteCommand(ctx context.Context, email, text string) string {
+	return s.Command(ctx, email, text).Text
+}
+
+func (s *service) user(ctx context.Context, email string) (*registration_dto.User, *view) {
+	u, found, err := s.d.Users.FindUserByEmail(ctx, email)
 	switch {
-	case text == commandMyTickets:
-		return s.handleMyTickets(ctx, senderEmail)
-	case strings.HasPrefix(text, commandBudget):
-		return s.handleBudget(ctx, strings.TrimSpace(strings.TrimPrefix(text, commandBudget)))
-	case text == commandOverdue:
-		return s.handleOverdue(ctx)
-	case text == commandTeam:
-		return s.handleTeam(ctx)
-	case geserCommandPattern.MatchString(text):
-		matches := geserCommandPattern.FindStringSubmatch(text)
-		return s.Geser(ctx, senderEmail, matches[1], matches[2]).Message
-	default:
-		return s.handleHelp()
+	case err != nil:
+		log.Printf("chat_interactive: FindUserByEmail(%s) failed: %v", email, err)
+		v := note("Ups", errorBody)
+		return nil, &v
+	case !found:
+		v := note("Belum terdaftar", fmt.Sprintf("Kamu belum terdaftar di Nudge. Login dulu di %s ya 🙏", s.d.WebURL+"/"))
+		return nil, &v
+	}
+	return u, nil
+}
+
+func (s *service) Command(ctx context.Context, email, text string) Reply {
+	u, fail := s.user(ctx, email)
+	if fail != nil {
+		return fail.reply()
+	}
+	name, args, known := parseCommand(text)
+	if !known {
+		return s.menu(u, strings.TrimSpace(text)).reply()
+	}
+	switch name {
+	case cmdDashboard:
+		return s.dashboard(ctx, u).reply()
+	case cmdTiket:
+		return s.tiketCommand(ctx, email, args).reply()
+	case cmdCuti:
+		return s.cutiCommand(ctx, email, args).reply()
+	case cmdMute:
+		return s.muteCommand(ctx, u, args).reply()
+	case cmdUnmute:
+		return s.unmute(ctx, u, "").reply()
+	}
+	return s.menu(u, "").reply()
+}
+
+func (s *service) Action(ctx context.Context, email, function string, params map[string]string) ActionReply {
+	u, fail := s.user(ctx, email)
+	if fail != nil {
+		return ActionReply{Reply: fail.reply()}
+	}
+	switch strings.TrimPrefix(function, ActionPrefix) {
+	case actCommand:
+		return ActionReply{Reply: s.Command(ctx, email, params["cmd"])}
+	case actTicket:
+		return ActionReply{Reply: s.ticketDetail(ctx, email, params["key"], "").reply()}
+	case actMove:
+		return ActionReply{Reply: s.move(ctx, email, params["key"], params["tid"], params["to"]).reply(), Update: true}
+	case actLeaveAdd:
+		return ActionReply{Reply: s.addLeave(ctx, email, params[fieldFrom], params[fieldTo], params[fieldNote]).reply(), Update: true}
+	case actLeaveRemove:
+		return ActionReply{Reply: s.removeLeave(ctx, email, params["date"]).reply(), Update: true}
+	case actMute:
+		return ActionReply{Reply: s.mute(ctx, u, params["for"]).reply(), Update: true}
+	case actUnmute:
+		return ActionReply{Reply: s.unmute(ctx, u, "").reply(), Update: true}
+	}
+	return ActionReply{Reply: s.menu(u, "").reply()}
+}
+
+// --- menu ----------------------------------------------------------------------
+
+func (s *service) menu(u *registration_dto.User, typed string) view {
+	greeting := "Hai! Mau ngapain hari ini?"
+	if name := firstName(u.UserName); name != "" {
+		greeting = "Hai " + name + "! Mau ngapain hari ini?"
+	}
+	if typed != "" && strings.HasPrefix(typed, "/") {
+		greeting = fmt.Sprintf("Command %q nggak dikenal. Pilih menu di bawah ya 👇", typed)
+	}
+	entry := func(main, bottom, cmd string) item {
+		b := action("Buka", actCommand, "cmd", cmd)
+		return item{row: &row{main: main, bottom: bottom, button: &b}}
+	}
+	return view{
+		id: "nudge-menu", title: "Nudge", subtitle: "Pengingat budget waktu tiket Jira",
+		sections: []section{
+			{items: []item{paragraph(greeting)}},
+			{items: []item{
+				entry("📊 *Dashboard*", "Tiket yang lagi dikerjakan, sisa budget & overdue", "/n-dashboard"),
+				entry("📋 *Papan Tiket*", "Tiket sprint aktif kamu — geser status dari sini", "/n-tiket"),
+				entry("🌴 *Cuti*", "Lihat, tambah atau hapus hari cuti", "/n-cuti"),
+				entry("🔕 *Mute notifikasi*", "Diamkan pengingat sementara", "/n-mute"),
+			}},
+			{header: "Bisa juga diketik", collapseAfter: 1, items: []item{
+				paragraph("*/n-dashboard* — ringkasan\n" +
+					"*/n-tiket* — Papan Tiket · */n-tiket CORE-123* — buka 1 tiket\n" +
+					"*/n-tiket CORE-123 review* — langsung geser ke Code Review\n" +
+					"*/n-cuti besok* · */n-cuti 20/11* · */n-cuti 20/11 - 22/11 Liburan*\n" +
+					"*/n-mute 1 jam* · */n-mute besok* · */n-unmute*"),
+			}},
+			{items: []item{buttons(link("Buka Nudge Web", s.d.WebURL+"/dashboard"))}},
+		},
+		tip: "Ketik */n-dashboard*, */n-tiket*, */n-cuti*, */n-mute* atau */n-unmute*.",
 	}
 }
 
-// handleGeser implements /n-geser<issueKey>:target — lets the SENDER
-// transition one of their own tracked tickets directly, without opening
-// Jira. Scope is deliberately limited to tickets the sender is themselves
-// assigned to (same ownership check as /n-budget's data, just enforced
-// rather than merely displayed) — this command can change real Jira state,
-// so it must not let anyone move someone else's ticket.
-func (s *chatInteractiveServiceImpl) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) GeserResult {
-	targetStatusName, recognized := geserTargetStatusNames[strings.ToLower(targetSlug)]
-	if !recognized {
+func firstName(name string) string {
+	f := strings.Fields(name)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
+}
+
+// --- dashboard -----------------------------------------------------------------
+
+// working: the ticket's clock is running (Code Process; for CORE also
+// Code Review) — the same rule the web dashboard uses (HasBudgetDetail).
+func working(c user_dashboard_dto.Card) bool { return c.HasBudgetDetail }
+
+func overdue(c user_dashboard_dto.Card) bool {
+	return c.HasBudgetDetail && c.ElapsedSeconds > c.BudgetSeconds
+}
+
+func (s *service) dashboard(ctx context.Context, u *registration_dto.User) view {
+	board, err := s.d.Dashboard.GetMyBoard(ctx, u.Email, 0)
+	if err != nil {
+		log.Printf("chat_interactive: GetMyBoard(%s) failed: %v", u.Email, err)
+		return note("Dashboard", jiraBody)
+	}
+	now := s.d.Now()
+
+	var all, active []user_dashboard_dto.Card
+	counts := map[string]int{}
+	var order []string
+	for _, col := range board.Columns {
+		order = append(order, col.Status)
+		counts[col.Status] = len(col.Cards)
+		all = append(all, col.Cards...)
+	}
+	for _, c := range append(append([]user_dashboard_dto.Card{}, all...), board.Related...) {
+		if working(c) {
+			active = append(active, c)
+		}
+	}
+	sort.SliceStable(active, func(i, j int) bool { return remaining(active[i]) < remaining(active[j]) })
+	late := 0
+	for _, c := range active {
+		if overdue(c) {
+			late++
+		}
+	}
+
+	var summary []string
+	for _, st := range order {
+		summary = append(summary, fmt.Sprintf("%s *%d*", st, counts[st]))
+	}
+	overview := fmt.Sprintf("*%d tiket* di sprint aktif", len(all))
+	if len(summary) > 0 {
+		overview += "\n" + strings.Join(summary, " · ")
+	}
+	if late > 0 {
+		overview += fmt.Sprintf("\n🔴 *%d tiket lewat budget*", late)
+	} else if len(active) > 0 {
+		overview += "\n🟢 Semua tiket yang dikerjakan masih dalam budget"
+	}
+
+	sections := []section{{items: []item{paragraph(overview)}}}
+	if len(active) > 0 {
+		var items []item
+		for _, c := range active {
+			items = append(items, ticketRow(c, now, true))
+		}
+		sections = append(sections, section{header: "⏱ Sedang dikerjakan", items: items})
+	} else if len(all) > 0 {
+		sections = append(sections, section{items: []item{paragraph("_Belum ada tiket yang sedang dikerjakan._")}})
+	}
+
+	var status []item
+	if st, err := s.d.Settings.GetEffective(ctx, u.UserID, 0); err == nil && user_setting_dto.MuteActive(st.MutedUntil, now) {
+		b := action("Nyalakan", actUnmute)
+		status = append(status, item{row: &row{main: "🔕 Notifikasi " + muteLabel(st.MutedUntil, now), button: &b}})
+	} else {
+		b := action("Mute", actCommand, "cmd", "/n-mute")
+		status = append(status, item{row: &row{main: "🔔 Notifikasi aktif", button: &b}})
+	}
+	if next := s.upcomingLeaves(ctx, u.Email, now); len(next) > 0 {
+		b := action("Atur", actCommand, "cmd", "/n-cuti")
+		status = append(status, item{row: &row{main: "🌴 Cuti berikutnya: " + dayLabel(mustDate(next[0].Date)), button: &b}})
+	}
+	sections = append(sections, section{header: "Status", items: status})
+	sections = append(sections, section{items: []item{buttons(
+		action("📋 Papan Tiket", actCommand, "cmd", "/n-tiket"),
+		action("🌴 Cuti", actCommand, "cmd", "/n-cuti"),
+		link("Buka di web", s.d.WebURL+"/dashboard"),
+	)}})
+
+	return view{
+		id: "nudge-dashboard", title: "📊 Dashboard", subtitle: dayLabel(now),
+		sections: sections,
+		tip:      "Buka satu tiket: */n-tiket CORE-123*",
+	}
+}
+
+func remaining(c user_dashboard_dto.Card) int64 { return c.BudgetSeconds - c.ElapsedSeconds }
+
+// ticketRow is one ticket line; withButton adds the "Geser" button.
+func ticketRow(c user_dashboard_dto.Card, now time.Time, withButton bool) item {
+	r := &row{top: c.Status, main: "*" + c.IssueKey + "* " + c.Summary, bottom: budgetLine(c, now)}
+	if c.ParentKey != "" {
+		r.top += " · " + relationLabel(c) + " " + c.ParentKey
+	}
+	if withButton {
+		b := action("Geser", actTicket, "key", c.IssueKey)
+		r.button = &b
+	}
+	return item{row: r}
+}
+
+func relationLabel(c user_dashboard_dto.Card) string {
+	if c.Relation == "subtask" {
+		return "subtask dari"
+	}
+	return c.Relation
+}
+
+func budgetLine(c user_dashboard_dto.Card, now time.Time) string {
+	switch {
+	case c.HasBudgetDetail && overdue(c):
+		return fmt.Sprintf("🔴 Lewat budget %s · %.1f SP", humanDuration(-remaining(c)), c.StoryPoints)
+	case c.HasBudgetDetail:
+		line := fmt.Sprintf("⏱ Sisa %s · %.1f SP", humanDuration(remaining(c)), c.StoryPoints)
+		if t, err := time.Parse(time.RFC3339, c.DeadlineAt); err == nil {
+			line += " · selesai " + whenLabel(t, now)
+		}
+		return line
+	case c.TimeRecorded:
+		return fmt.Sprintf("Tercatat %s dari budget %s", humanDuration(c.ElapsedSeconds), humanDuration(c.BudgetSeconds))
+	case c.StoryPoints > 0:
+		return fmt.Sprintf("%.1f SP", c.StoryPoints)
+	}
+	return ""
+}
+
+// --- Papan Tiket -------------------------------------------------------------
+
+func (s *service) tiketCommand(ctx context.Context, email, args string) view {
+	if args == "" {
+		return s.ticketList(ctx, email)
+	}
+	keyWord, target, _ := strings.Cut(args, " ")
+	key, ok := normalizeKey(keyWord)
+	if !ok {
+		return note("Papan Tiket", fmt.Sprintf("%q bukan kode tiket. Contoh: */n-tiket CORE-123* atau */n-tiket CORE-123 review*", keyWord))
+	}
+	return s.ticketDetail(ctx, email, key, strings.TrimSpace(target))
+}
+
+func (s *service) ticketList(ctx context.Context, email string) view {
+	board, err := s.d.Dashboard.GetMyBoard(ctx, email, 0)
+	if err != nil {
+		log.Printf("chat_interactive: GetMyBoard(%s) failed: %v", email, err)
+		return note("📋 Papan Tiket", jiraBody)
+	}
+	now := s.d.Now()
+
+	type group struct {
+		name  string
+		cards []user_dashboard_dto.Card
+	}
+	groups := map[int64]*group{}
+	var ids []int64
+	total := 0
+	for _, col := range board.Columns {
+		for _, c := range col.Cards {
+			g, ok := groups[c.BoardID]
+			if !ok {
+				name := "Tanpa board"
+				if c.BoardID > 0 {
+					name, _ = s.d.Dashboard.DescribeBoard(ctx, c.BoardID)
+				}
+				g = &group{name: name}
+				groups[c.BoardID] = g
+				ids = append(ids, c.BoardID)
+			}
+			g.cards = append(g.cards, c)
+			total++
+		}
+	}
+	if total == 0 {
+		return view{
+			id: "nudge-tiket", title: "📋 Papan Tiket",
+			sections: []section{{items: []item{
+				paragraph("Kamu belum punya tiket di sprint aktif 👍"),
+				buttons(action("📊 Dashboard", actCommand, "cmd", "/n-dashboard")),
+			}}},
+		}
+	}
+	sort.SliceStable(ids, func(i, j int) bool { return groups[ids[i]].name < groups[ids[j]].name })
+
+	sections := []section{{items: []item{paragraph("Pilih *Geser* di tiket yang mau dipindah statusnya.")}}}
+	shown := 0
+	for _, id := range ids {
+		g := groups[id]
+		var items []item
+		for _, c := range g.cards {
+			if shown == maxTicketRows {
+				break
+			}
+			items = append(items, ticketRow(c, now, true))
+			shown++
+		}
+		if len(items) > 0 {
+			sections = append(sections, section{header: fmt.Sprintf("%s (%d)", g.name, len(g.cards)), collapseAfter: 8, items: items})
+		}
+	}
+	if shown < total {
+		sections = append(sections, section{items: []item{paragraph(fmt.Sprintf("_+%d tiket lain — lihat semua di web._", total-shown))}})
+	}
+	sections = append(sections, section{items: []item{buttons(
+		action("📊 Dashboard", actCommand, "cmd", "/n-dashboard"),
+		link("Buka Papan Tiket di web", s.d.WebURL+"/dashboard/board"),
+	)}})
+	return view{
+		id: "nudge-tiket", title: "📋 Papan Tiket", subtitle: fmt.Sprintf("%d tiket di sprint aktif", total),
+		sections: sections,
+		tip:      "Geser tiket: */n-tiket CORE-123 <status>*, contoh */n-tiket CORE-123 review*",
+	}
+}
+
+// findCard looks key up among the caller's active-sprint tickets.
+func findCard(b user_dashboard_dto.Board, key string) (user_dashboard_dto.Card, bool) {
+	for _, col := range b.Columns {
+		for _, c := range col.Cards {
+			if strings.EqualFold(c.IssueKey, key) {
+				return c, true
+			}
+		}
+	}
+	for _, c := range b.Related {
+		if strings.EqualFold(c.IssueKey, key) {
+			return c, true
+		}
+	}
+	return user_dashboard_dto.Card{}, false
+}
+
+func notOwnView(key string) view {
+	return note("📋 "+key, fmt.Sprintf("*%s* bukan tiket kamu di sprint aktif, jadi nggak bisa dibuka atau digeser dari sini 🙏", key))
+}
+
+// ticketDetail shows one ticket with a button per status its workflow
+// allows. A typed target moves it right away when it names one status.
+func (s *service) ticketDetail(ctx context.Context, email, key, target string) view {
+	key, ok := normalizeKey(key)
+	if !ok {
+		return note("Papan Tiket", "Kode tiketnya nggak valid. Contoh: */n-tiket CORE-123*")
+	}
+	trs, err := s.d.Dashboard.ListTransitions(ctx, email, key)
+	if err != nil {
+		if errors.Is(err, user_dashboard_service.ErrNotOwnTicket) {
+			return notOwnView(key)
+		}
+		log.Printf("chat_interactive: ListTransitions(%s, %s) failed: %v", email, key, err)
+		return note("📋 "+key, jiraBody)
+	}
+
+	var moves []user_dashboard_dto.TransitionOption
+	for _, tr := range trs.Transitions {
+		if !strings.EqualFold(tr.ToStatus, trs.CurrentStatus) {
+			moves = append(moves, tr)
+		}
+	}
+	hint := ""
+	if target != "" {
+		names := make([]string, len(moves))
+		for i, m := range moves {
+			names[i] = m.ToStatus
+		}
+		if i, ok := matchStatus(target, names); ok {
+			return s.move(ctx, email, key, moves[i].ID, moves[i].ToStatus)
+		}
+		hint = fmt.Sprintf("Status %q nggak ketemu dari status sekarang. Pilih salah satu di bawah 👇", target)
+	}
+
+	now := s.d.Now()
+	card := user_dashboard_dto.Card{IssueKey: key, Status: trs.CurrentStatus}
+	if board, err := s.d.Dashboard.GetMyBoard(ctx, email, 0); err == nil {
+		if c, found := findCard(board, key); found {
+			card = c
+		}
+	}
+
+	info := []string{"*Status:* " + card.Status}
+	if card.ParentKey != "" {
+		info = append(info, fmt.Sprintf("*Induk:* %s %s — %s", relationLabel(card), card.ParentKey, card.ParentSummary))
+	}
+	if card.StoryPoints > 0 {
+		info = append(info, fmt.Sprintf("*Story Point:* %.1f SP (budget %s)", card.StoryPoints, humanDuration(int64(card.StoryPoints*3600))))
+	}
+	if card.HasBudgetDetail {
+		info = append(info, "*Waktu berjalan:* "+humanDuration(card.ElapsedSeconds))
+		if overdue(card) {
+			info = append(info, "*Lewat budget:* 🔴 "+humanDuration(-remaining(card)))
+		} else {
+			info = append(info, "*Sisa waktu:* "+humanDuration(remaining(card)))
+		}
+		if t, err := time.Parse(time.RFC3339, card.DeadlineAt); err == nil {
+			info = append(info, "*Harus selesai:* "+whenLabel(t, now)+" WIB")
+		}
+	} else if card.TimeRecorded {
+		info = append(info, "*Waktu tercatat:* "+humanDuration(card.ElapsedSeconds))
+	}
+
+	sections := []section{}
+	if hint != "" {
+		sections = append(sections, section{items: []item{paragraph(hint)}})
+	}
+	sections = append(sections, section{items: []item{paragraph(strings.Join(info, "\n"))}})
+
+	var bs []button
+	for _, m := range moves {
+		bs = append(bs, action("→ "+m.ToStatus, actMove, "key", key, "tid", m.ID, "to", m.ToStatus))
+	}
+	if len(bs) > 0 {
+		sections = append(sections, section{header: "Geser ke", items: []item{buttons(bs...)}})
+	} else {
+		sections = append(sections, section{items: []item{paragraph("_Workflow Jira nggak punya jalur pindah dari status ini._")}})
+	}
+	nav := []button{action("⬅ Papan Tiket", actCommand, "cmd", "/n-tiket")}
+	if card.IssueURL != "" {
+		nav = append(nav, link("Buka di Jira", card.IssueURL))
+	}
+	sections = append(sections, section{items: []item{buttons(nav...)}})
+
+	var names []string
+	for _, m := range moves {
+		names = append(names, m.ToStatus)
+	}
+	tip := ""
+	if len(names) > 0 {
+		tip = fmt.Sprintf("Geser: */n-tiket %s <status>* — pilihan: %s", key, strings.Join(names, ", "))
+	}
+	return view{id: "nudge-ticket-" + key, title: "📋 " + key, subtitle: card.Summary, sections: sections, tip: tip}
+}
+
+func (s *service) move(ctx context.Context, email, key, transitionID, toStatus string) view {
+	key, ok := normalizeKey(key)
+	if !ok || transitionID == "" {
+		return note("Papan Tiket", errorBody)
+	}
+	status, err := s.d.Dashboard.Transition(ctx, email, key, transitionID)
+	switch {
+	case errors.Is(err, user_dashboard_service.ErrNotOwnTicket):
+		return notOwnView(key)
+	case errors.Is(err, user_dashboard_service.ErrTransitionUnavailable):
+		return s.withNote(s.ticketDetail(ctx, email, key, ""),
+			fmt.Sprintf("⚠️ Status tiketnya sudah berubah, jadi pindah ke %s nggak tersedia lagi. Ini pilihan terbarunya 👇", toStatus))
+	case err != nil:
+		log.Printf("chat_interactive: Transition(%s, %s) failed: %v", email, key, err)
+		return note("📋 "+key, jiraBody)
+	}
+	now := s.d.Now()
+	return view{
+		id: "nudge-ticket-" + key, title: "📋 " + key,
+		sections: []section{
+			{items: []item{paragraph(fmt.Sprintf("✅ *%s* berhasil digeser ke *%s* · %s WIB", key, status, now.In(wib).Format("15:04")))}},
+			{items: []item{buttons(
+				action("Geser lagi", actTicket, "key", key),
+				action("⬅ Papan Tiket", actCommand, "cmd", "/n-tiket"),
+			)}},
+		},
+	}
+}
+
+// withNote puts a message above a view's first section.
+func (s *service) withNote(v view, msg string) view {
+	v.sections = append([]section{{items: []item{paragraph(msg)}}}, v.sections...)
+	return v
+}
+
+// Geser keeps the reminder card buttons ("todo" / "code-review") working on
+// top of the Papan Tiket rules: the sender's own active-sprint tickets.
+var geserTargets = map[string]string{"todo": "To Do", "code-review": "Code Review"}
+
+func (s *service) Geser(ctx context.Context, email, issueKey, targetSlug string) GeserResult {
+	target, ok := geserTargets[strings.ToLower(targetSlug)]
+	if !ok {
 		return GeserResult{Message: fmt.Sprintf("Target %q nggak dikenali. Target yang didukung: todo, code-review", targetSlug)}
 	}
-
-	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)
-	if err != nil || !found || !session.FlagActive {
-		return GeserResult{Message: fmt.Sprintf("Tiket %s nggak ditemukan atau nggak lagi aktif di-track 🤔", issueKey)}
+	key, ok := normalizeKey(issueKey)
+	if !ok {
+		return GeserResult{Message: fmt.Sprintf("Tiket %s nggak valid", issueKey)}
 	}
-	if session.AssigneeEmail != senderEmail {
-		return GeserResult{NotOwner: true, Message: fmt.Sprintf("Tiket %s bukan tiket kamu — cuma assignee tiket yang bisa geser statusnya 🙏", issueKey)}
+	trs, err := s.d.Dashboard.ListTransitions(ctx, email, key)
+	if errors.Is(err, user_dashboard_service.ErrNotOwnTicket) {
+		return GeserResult{NotOwner: true, Message: fmt.Sprintf("Tiket %s bukan tiket kamu di sprint aktif — cuma assignee tiket yang bisa geser statusnya 🙏", key)}
 	}
-
-	// Resolve the sender's personal Jira credential if they've set one up
-	// (Tech Spec "Dashboard Jira Manage", AC4.3/AC5.3) — a resolve error
-	// (e.g. decrypt failure) falls back to the central credential rather
-	// than blocking the transition, same resilience contract as
-	// user_dashboard_service.GetMyBoard.
-	var cred *jira_client_dto.Credential
-	if s.jiraCredential != nil {
-		var credErr error
-		cred, credErr = s.jiraCredential.ResolveCredential(ctx, senderEmail)
-		if credErr != nil {
-			log.Printf("chat_interactive_service: ResolveCredential(%s) failed, falling back to central credential: %v", senderEmail, credErr)
-		}
-	}
-
-	transitions, err := s.jiraClient.GetTransitionsAs(ctx, cred, issueKey)
 	if err != nil {
-		return GeserResult{Message: fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", issueKey)}
+		return GeserResult{Message: fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", key)}
 	}
-
-	var matchedID string
-	for _, tr := range transitions {
-		if strings.EqualFold(tr.To.Name, targetStatusName) {
-			matchedID = tr.ID
-			break
+	for _, tr := range trs.Transitions {
+		if !strings.EqualFold(tr.ToStatus, target) {
+			continue
 		}
-	}
-	if matchedID == "" {
-		return GeserResult{Message: fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", issueKey, targetStatusName)}
-	}
-
-	if err := s.jiraClient.TransitionIssueAs(ctx, cred, issueKey, matchedID); err != nil {
-		return GeserResult{Message: fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", issueKey, targetStatusName)}
-	}
-
-	return GeserResult{OK: true, StatusName: targetStatusName, Message: fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", issueKey, targetStatusName)}
-}
-
-func (s *chatInteractiveServiceImpl) handleHelp() string {
-	return "🤖 Command yang tersedia:\n\n" +
-		"*/n-mytickets* — tiket Code Process kamu\n" +
-		"*/n-budget <issueKey>* — detail budget satu tiket\n" +
-		"*/n-overdue* — semua tiket yang lewat budget\n" +
-		"*/n-team* — ringkasan semua tiket aktif per orang\n" +
-		"*/n-geser <issueKey> todo* — geser tiket kamu balik ke To Do (di app Nudge)\n" +
-		"*/n-geser <issueKey> code-review* — geser tiket kamu ke Code Review (di app Nudge)\n" +
-		"*/n-geser<issueKey>:todo* / *:code-review* — format lama, tetap bisa"
-}
-
-func (s *chatInteractiveServiceImpl) handleMyTickets(ctx context.Context, email string) string {
-	sessions, err := s.issueSessionRepo.FindActiveByAssigneeEmail(ctx, email)
-	if err != nil || len(sessions) == 0 {
-		return "Nggak ada tiket aktif saat ini 👍"
-	}
-
-	lines := []string{"⏰ Tiket kamu yang aktif:", ""}
-	for i, session := range sessions {
-		if i > 0 {
-			lines = append(lines, "") // blank line between cards so they don't visually blend together
+		status, err := s.d.Dashboard.Transition(ctx, email, key, tr.ID)
+		if err != nil {
+			return GeserResult{Message: fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", key, target)}
 		}
-		lines = append(lines, s.formatTicketLine(ctx, session))
+		return GeserResult{OK: true, StatusName: status, Message: fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", key, status)}
 	}
-	return strings.Join(lines, "\n")
+	return GeserResult{Message: fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", key, target)}
 }
 
-func (s *chatInteractiveServiceImpl) handleBudget(ctx context.Context, issueKey string) string {
-	issueKey = strings.TrimSpace(issueKey)
-	if issueKey == "" {
-		return "Pakai gini: */n-budget <issueKey>* — contoh: /n-budget CORE-10765"
-	}
+// --- Cuti -----------------------------------------------------------------------
 
-	session, found, err := s.issueSessionRepo.GetSessionByIssueKey(ctx, issueKey)
-	if err != nil || !found || !session.FlagActive {
-		return fmt.Sprintf("Tiket %s tidak ditemukan atau belum/tidak lagi di-track 🤔", issueKey)
-	}
-
-	return "📊 " + s.formatTicketLine(ctx, *session)
+func mustDate(s string) time.Time {
+	t, _ := time.ParseInLocation("2006-01-02", s, wib)
+	return t
 }
 
-// formatTicketLine renders one ticket's SP/elapsed/remaining in the same
-// bold-label style as reminder messages.
-func (s *chatInteractiveServiceImpl) formatTicketLine(ctx context.Context, session issue_session_dto.IssueSession) string {
-	cal := s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail)
-	budgetSeconds := int64(session.StoryPoints * 3600)
-	elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, cal)
-	remainingSeconds := budgetSeconds - elapsedSeconds
-	deadline := s.businessHours.DeadlineAfterBusinessSeconds(time.Now(), remainingSeconds, cal)
-
-	return fmt.Sprintf(
-		"*%s* — %s\n*Story Point:* %.1f SP (budget %.1f jam)\n*Waktu berjalan:* %.1f jam\n*Sisa waktu:* %s\n*Harus Selesai Pass:* %s",
-		session.IssueKey, session.IssueSummary,
-		session.StoryPoints, float64(budgetSeconds)/3600,
-		float64(elapsedSeconds)/3600,
-		google_chat_notifier_service.FormatDuration(remainingSeconds),
-		google_chat_notifier_service.FormatDeadline(deadline),
-	)
-}
-
-func (s *chatInteractiveServiceImpl) handleOverdue(ctx context.Context) string {
-	sessions, err := s.issueSessionRepo.GetActiveSessions(ctx)
+func (s *service) upcomingLeaves(ctx context.Context, email string, now time.Time) []user_leave_dto.Leave {
+	all, err := s.d.Leaves.List(ctx, email)
 	if err != nil {
-		return "Nggak ada tiket aktif saat ini 👍"
+		log.Printf("chat_interactive: leave List(%s) failed: %v", email, err)
+		return nil
 	}
-
-	var overdue []issue_session_dto.IssueSession
-	for _, session := range sessions {
-		budgetSeconds := int64(session.StoryPoints * 3600)
-		elapsedSeconds := issue_session_service.CalculateElapsedSeconds(session, s.businessHours, s.holidayCalendar.ForEmail(ctx, session.AssigneeEmail))
-		if elapsedSeconds > budgetSeconds {
-			overdue = append(overdue, session)
+	base := today(now)
+	var out []user_leave_dto.Leave
+	for _, l := range all {
+		if !mustDate(l.Date).Before(base) {
+			out = append(out, l)
 		}
 	}
-
-	if len(overdue) == 0 {
-		return "Semua tiket masih dalam budget 🎉"
-	}
-
-	lines := []string{"🔴 Tiket yang sudah lewat budget:", ""}
-	for _, session := range overdue {
-		lines = append(lines, fmt.Sprintf("*%s* (%s) — %s", session.IssueKey, session.AssigneeEmail, session.IssueSummary))
-	}
-	return strings.Join(lines, "\n")
+	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })
+	return out
 }
 
-func (s *chatInteractiveServiceImpl) handleTeam(ctx context.Context) string {
-	sessions, err := s.issueSessionRepo.GetActiveSessions(ctx)
-	if err != nil || len(sessions) == 0 {
-		return "Tidak ada aktivitas Code Process saat ini"
+func (s *service) cutiCommand(ctx context.Context, email, args string) view {
+	if args == "" {
+		return s.leaveView(ctx, email, "")
+	}
+	word, rest, _ := strings.Cut(args, " ")
+	switch strings.ToLower(word) {
+	case "hapus", "batal", "remove", "delete":
+		day, _, ok := parseDate(strings.Fields(rest), s.d.Now())
+		if !ok {
+			return s.leaveView(ctx, email, "⚠️ Tanggalnya nggak kebaca. Contoh: */n-cuti hapus 20/11*")
+		}
+		return s.removeLeave(ctx, email, day.Format("2006-01-02"))
+	case "tambah", "add":
+		args = rest
+	}
+	from, to, noteText, ok := parseLeaveArgs(args, s.d.Now())
+	if !ok {
+		return s.leaveView(ctx, email, "⚠️ Tanggalnya nggak kebaca. Contoh: */n-cuti besok*, */n-cuti 20/11*, */n-cuti 20/11 - 22/11 Liburan*")
+	}
+	return s.addLeave(ctx, email, from.Format("2006-01-02"), to.Format("2006-01-02"), noteText)
+}
+
+func (s *service) leaveView(ctx context.Context, email, msg string) view {
+	now := s.d.Now()
+	leaves := s.upcomingLeaves(ctx, email, now)
+
+	sections := []section{}
+	if msg != "" {
+		sections = append(sections, section{items: []item{paragraph(msg)}})
+	}
+	var rows []item
+	for _, l := range leaves {
+		b := action("Hapus", actLeaveRemove, "date", l.Date)
+		r := &row{main: dayLabel(mustDate(l.Date)), bottom: l.Note, button: &b}
+		rows = append(rows, item{row: r})
+	}
+	if len(rows) == 0 {
+		rows = []item{paragraph("_Belum ada cuti yang akan datang._")}
+	}
+	sections = append(sections, section{header: "Cuti mendatang", collapseAfter: 10, items: rows})
+	sections = append(sections, section{header: "Tambah cuti", items: []item{
+		{date: &dateField{name: fieldFrom, label: "Dari tanggal"}},
+		{date: &dateField{name: fieldTo, label: "Sampai tanggal (kosongkan kalau 1 hari)"}},
+		{input: &inputField{name: fieldNote, label: "Catatan (opsional)", hint: "mis. Liburan keluarga"}},
+		buttons(action("Simpan cuti", actLeaveAdd)),
+		paragraph("_Atau ketik: /n-cuti besok · /n-cuti 20/11 - 22/11 Liburan_"),
+	}})
+	sections = append(sections, section{items: []item{paragraph("_Hari cuti nggak dihitung ke waktu tiket. Sabtu, Minggu & libur nasional dilewati otomatis._")}})
+	return view{
+		id: "nudge-cuti", title: "🌴 Cuti", subtitle: fmt.Sprintf("%d hari cuti mendatang", len(leaves)),
+		sections: sections,
+		tip:      "Tambah: */n-cuti 20/11* atau */n-cuti 20/11 - 22/11 catatan* · Hapus: */n-cuti hapus 20/11*",
+	}
+}
+
+func (s *service) addLeave(ctx context.Context, email, from, to, noteText string) view {
+	if from == "" {
+		return s.leaveView(ctx, email, "⚠️ Pilih *Dari tanggal* dulu ya.")
+	}
+	if to == "" {
+		to = from
+	}
+	res, err := s.d.Leaves.Add(ctx, email, from, to, strings.TrimSpace(noteText))
+	switch {
+	case errors.Is(err, user_leave_service.ErrNoWorkingDay):
+		return s.leaveView(ctx, email, "⚠️ Tanggal itu Sabtu/Minggu atau libur nasional, jadi nggak perlu cuti 🙂")
+	case errors.Is(err, user_leave_service.ErrInvalidRange):
+		return s.leaveView(ctx, email, "⚠️ "+leaveRangeMessage(err))
+	case err != nil:
+		log.Printf("chat_interactive: leave Add(%s) failed: %v", email, err)
+		return s.leaveView(ctx, email, "⚠️ "+errorBody)
+	}
+	msg := "✅ Cuti disimpan"
+	if len(res.Added) > 0 {
+		var days []string
+		for _, d := range res.Added {
+			days = append(days, dayLabel(mustDate(d)))
+		}
+		msg = "✅ Cuti disimpan: " + strings.Join(days, ", ")
+	} else {
+		msg = "Tanggal itu sudah tercatat sebagai cuti 👍"
+	}
+	if len(res.Skipped) > 0 {
+		msg += fmt.Sprintf("\n_%d hari dilewati (akhir pekan, libur nasional, atau sudah ada)._", len(res.Skipped))
+	}
+	if res.Recalculating {
+		msg += "\n_Waktu tiket kamu sedang dihitung ulang._"
+	}
+	return s.leaveView(ctx, email, msg)
+}
+
+func leaveRangeMessage(err error) string {
+	e := err.Error()
+	switch {
+	case strings.Contains(e, "end before start"):
+		return "Tanggal akhir lebih awal dari tanggal mulai."
+	case strings.Contains(e, "more than") && strings.Contains(e, "days ago"):
+		return "Tanggalnya terlalu jauh ke belakang (maksimal 60 hari lalu)."
+	case strings.Contains(e, "more than"):
+		return "Rentangnya kepanjangan (maksimal 31 hari sekali simpan)."
+	case strings.Contains(e, "note too long"):
+		return "Catatannya kepanjangan (maksimal 200 karakter)."
+	}
+	return "Tanggalnya nggak valid."
+}
+
+func (s *service) removeLeave(ctx context.Context, email, date string) view {
+	t, err := time.ParseInLocation("2006-01-02", date, wib)
+	if err != nil {
+		return s.leaveView(ctx, email, "⚠️ Tanggalnya nggak valid.")
+	}
+	_, err = s.d.Leaves.Remove(ctx, email, date)
+	switch {
+	case errors.Is(err, user_leave_service.ErrNotFound):
+		return s.leaveView(ctx, email, fmt.Sprintf("%s memang bukan hari cuti kamu.", dayLabel(t)))
+	case err != nil:
+		log.Printf("chat_interactive: leave Remove(%s, %s) failed: %v", email, date, err)
+		return s.leaveView(ctx, email, "⚠️ "+errorBody)
+	}
+	return s.leaveView(ctx, email, "🗑 Cuti "+dayLabel(t)+" dihapus.")
+}
+
+// --- Mute ----------------------------------------------------------------------
+
+func (s *service) muteCommand(ctx context.Context, u *registration_dto.User, args string) view {
+	if args == "" {
+		return s.muteView(ctx, u, "")
+	}
+	switch strings.ToLower(args) {
+	case "nyalakan", "on", "stop", "batal":
+		return s.unmute(ctx, u, "")
+	}
+	choice, ok := parseMute(args, s.d.Now())
+	if !ok {
+		return s.muteView(ctx, u, "⚠️ Durasinya nggak kebaca. Contoh: */n-mute 30m*, */n-mute 2 jam*, */n-mute besok*")
+	}
+	return s.applyMute(ctx, u, choice)
+}
+
+func (s *service) mute(ctx context.Context, u *registration_dto.User, param string) view {
+	choice, ok := parseMute(param, s.d.Now())
+	if !ok {
+		return s.muteView(ctx, u, "⚠️ Pilihan durasinya nggak dikenal.")
+	}
+	return s.applyMute(ctx, u, choice)
+}
+
+func (s *service) applyMute(ctx context.Context, u *registration_dto.User, c muteChoice) view {
+	until := c.until
+	if c.forever {
+		until = user_setting_dto.MuteForeverUntil
+	}
+	if err := s.d.Settings.MuteUntil(ctx, u.UserID, 0, until); err != nil {
+		log.Printf("chat_interactive: MuteUntil(%d) failed: %v", u.UserID, err)
+		return s.muteView(ctx, u, "⚠️ "+errorBody)
+	}
+	return s.muteView(ctx, u, "🔕 Oke, notifikasi "+muteLabel(&until, s.d.Now())+".")
+}
+
+func (s *service) unmute(ctx context.Context, u *registration_dto.User, _ string) view {
+	if err := s.d.Settings.Unmute(ctx, u.UserID, 0); err != nil {
+		log.Printf("chat_interactive: Unmute(%d) failed: %v", u.UserID, err)
+		return s.muteView(ctx, u, "⚠️ "+errorBody)
+	}
+	return s.muteView(ctx, u, "🔔 Notifikasi nyala lagi.")
+}
+
+func (s *service) muteView(ctx context.Context, u *registration_dto.User, msg string) view {
+	now := s.d.Now()
+	sections := []section{}
+	if msg != "" {
+		sections = append(sections, section{items: []item{paragraph(msg)}})
 	}
 
-	byAssignee := map[string][]issue_session_dto.IssueSession{}
-	var assignees []string
-	for _, session := range sessions {
-		if _, seen := byAssignee[session.AssigneeEmail]; !seen {
-			assignees = append(assignees, session.AssigneeEmail)
-		}
-		byAssignee[session.AssigneeEmail] = append(byAssignee[session.AssigneeEmail], session)
+	muted := false
+	state := "🔔 Notifikasi *aktif*"
+	if st, err := s.d.Settings.GetEffective(ctx, u.UserID, 0); err != nil {
+		log.Printf("chat_interactive: GetEffective(%d) failed: %v", u.UserID, err)
+	} else if user_setting_dto.MuteActive(st.MutedUntil, now) {
+		muted = true
+		state = "🔕 Notifikasi *" + muteLabel(st.MutedUntil, now) + "*"
 	}
-	sort.Strings(assignees)
+	if sw, err := s.d.Settings.NotificationSwitch(ctx, u.UserID); err == nil && !sw.Enabled {
+		state += "\n⚠️ _Notifikasi otomatis kamu sedang OFF di Pengaturan — nyalakan dulu di web supaya pengingat terkirim._"
+	}
+	sections = append(sections, section{items: []item{paragraph(state)}})
 
-	lines := []string{"👥 Ringkasan tim:", ""}
-	for _, email := range assignees {
-		lines = append(lines, fmt.Sprintf("*%s*", email))
-		for _, session := range byAssignee[email] {
-			lines = append(lines, fmt.Sprintf("  • %s — %s", session.IssueKey, session.IssueSummary))
-		}
+	if muted {
+		sections = append(sections, section{items: []item{buttons(action("🔔 Nyalakan sekarang", actUnmute))}})
 	}
-	return strings.Join(lines, "\n")
+	header := "Mute selama"
+	if muted {
+		header = "Ganti durasi mute"
+	}
+	sections = append(sections, section{header: header, items: []item{buttons(
+		action("30 menit", actMute, "for", "30m"),
+		action("1 jam", actMute, "for", "1j"),
+		action("2 jam", actMute, "for", "2j"),
+		action("4 jam", actMute, "for", "4j"),
+		action("Sampai besok pagi", actMute, "for", "besok"),
+		action("Matikan", actMute, "for", "selamanya"),
+	)}})
+	sections = append(sections, section{items: []item{buttons(link("Pengaturan notifikasi", s.d.WebURL+"/dashboard/settings"))}})
+	return view{
+		id: "nudge-mute", title: "🔕 Mute notifikasi", sections: sections,
+		tip: "Ketik */n-mute 30m*, */n-mute 2 jam*, */n-mute besok*, */n-mute selamanya* atau */n-unmute*",
+	}
 }
