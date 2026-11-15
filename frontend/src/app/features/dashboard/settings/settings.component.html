@@ -1,4 +1,16 @@
 <div class="page-stack">
+  <!-- Umum = applies to every board; Per board = notification settings of one board / the default -->
+  <nav class="settings-tabs" role="tablist" aria-label="Bagian pengaturan">
+    <button type="button" role="tab" class="settings-tab" data-tab="umum" [class.active]="tab() === 'umum'" [attr.aria-selected]="tab() === 'umum'" (click)="tab.set('umum')">
+      <app-icon name="settings" [size]="16" />
+      <span><strong>Umum</strong><small>Berlaku untuk semua board</small></span>
+    </button>
+    <button type="button" role="tab" class="settings-tab" data-tab="board" [class.active]="tab() === 'board'" [attr.aria-selected]="tab() === 'board'" (click)="tab.set('board')">
+      <app-icon name="layers" [size]="16" />
+      <span><strong>Per board</strong><small>Reminder, status &amp; mute tiap board</small></span>
+    </button>
+  </nav>
+
   @if (loading) {
     @for (i of [1, 2]; track i) {
       <section class="card skeleton-card" aria-busy="true" aria-label="Memuat pengaturan">
@@ -24,6 +36,7 @@
   }
 
   @if (!loading && !error && draft(); as d) {
+    @if (tab() === 'umum') {
     <!-- Master on/off switch (Tech Spec "Notification On-Off Consent") -->
     @if (!isAdminMode && notifSwitch.state(); as ns) {
       <section class="card" data-card="master-switch">
@@ -95,6 +108,30 @@
         (credentialChanged)="onCredentialChanged()"
       ></app-jira-credential>
     </section>
+    } @else {
+
+    <!-- Which board this tab configures (shares the navbar choice) -->
+    <div class="settings-boards" role="tablist" aria-label="Pilih board">
+      <button type="button" role="tab" class="settings-board" data-scope-chip="default" [class.active]="scopeBoardId() === null" [attr.aria-selected]="scopeBoardId() === null" (click)="boardContext.select(null)">
+        <span class="settings-board-icon"><app-icon name="layers" [size]="18" /></span>
+        <span class="settings-board-text">
+          <strong>Default semua board</strong>
+          <small>Dipakai board tanpa pengaturan khusus</small>
+        </span>
+      </button>
+      @for (b of boardContext.boards(); track b.boardId) {
+        <button type="button" role="tab" class="settings-board" [attr.data-scope-chip]="b.boardId" [class.active]="scopeBoardId() === b.boardId" [attr.aria-selected]="scopeBoardId() === b.boardId" (click)="boardContext.select(b.boardId)">
+          <app-board-avatar [boardId]="b.boardId" [projectKey]="b.projectKey" [size]="32" />
+          <span class="settings-board-text">
+            <strong>{{ b.name }}</strong>
+            <small>
+              <span class="board-state" [class.custom]="b.hasCustomSettings">{{ b.hasCustomSettings ? 'Pengaturan khusus' : 'Ikut default' }}</span>
+              @if (otherBoardMuteLabel(b)) { <span class="board-state muted">🔕 Dimute</span> }
+            </small>
+          </span>
+        </button>
+      }
+    </div>
 
     <!-- Scope: default for every board vs one board -->
     <section class="scope-bar" [attr.data-scope]="scopeBoardId() === null ? 'default' : useDefault() && !editingCustom() ? 'following' : 'custom'">
@@ -102,7 +139,7 @@
       <div class="scope-text">
         @if (scopeBoardId() === null) {
           <strong>Pengaturan default semua board</strong>
-          <span>Dipakai oleh setiap board yang belum punya pengaturan khusus. Pilih board di navbar untuk mengatur board tertentu.</span>
+          <span>Dipakai oleh setiap board yang belum punya pengaturan khusus. Pilih board di atas untuk mengatur board tertentu.</span>
         } @else if (useDefault() && !editingCustom()) {
           <strong>{{ scopeName() }} mengikuti pengaturan default</strong>
           <span>Perubahan di "Semua board" otomatis berlaku di sini. Atur khusus kalau board ini butuh ritme yang berbeda.</span>
@@ -346,6 +383,7 @@
       </div>
       <ng-container *ngTemplateOutlet="footer; context: { card: 'quiet' }" />
     </section>
+    }
   }
 </div>
 
