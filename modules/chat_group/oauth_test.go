@@ -33,3 +33,14 @@ func TestTokenSource_OffWhenGroupOrTokenMissing(t *testing.T) {
 		t.Fatalf("broken token file: on=%v err=%v, want an error", on, err)
 	}
 }
+
+func TestClient_PrefersTheGroupsClient(t *testing.T) {
+	cfg := &config.AppConfig{GoogleOAuthClientID: "chat", GoogleOAuthClientSecret: "s1"}
+	if id, _ := client(cfg); id != "chat" {
+		t.Errorf("fallback client = %q, want the Chat one", id)
+	}
+	cfg.GoogleGroupsClientID, cfg.GoogleGroupsClientSecret = "groups", "s2"
+	if id, secret := client(cfg); id != "groups" || secret != "s2" {
+		t.Errorf("client = %q/%q, want the Groups one", id, secret)
+	}
+}

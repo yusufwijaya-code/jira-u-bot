@@ -19,9 +19,19 @@ import (
 // Scope is the only scope the operator grants for this feature.
 const Scope = "https://www.googleapis.com/auth/cloud-identity.groups"
 
+// client is the Groups-specific OAuth client, else the Chat operator's one.
+// The token must be refreshed with the same client that issued it.
+func client(cfg *config.AppConfig) (string, string) {
+	if cfg.GoogleGroupsClientID != "" && cfg.GoogleGroupsClientSecret != "" {
+		return cfg.GoogleGroupsClientID, cfg.GoogleGroupsClientSecret
+	}
+	return cfg.GoogleOAuthClientID, cfg.GoogleOAuthClientSecret
+}
+
 func oauthConfig(cfg *config.AppConfig, redirect string) *oauth2.Config {
+	id, secret := client(cfg)
 	return &oauth2.Config{
-		ClientID: cfg.GoogleOAuthClientID, ClientSecret: cfg.GoogleOAuthClientSecret,
+		ClientID: id, ClientSecret: secret,
 		Endpoint: google.Endpoint, Scopes: []string{Scope}, RedirectURL: redirect,
 	}
 }
@@ -29,7 +39,7 @@ func oauthConfig(cfg *config.AppConfig, redirect string) *oauth2.Config {
 // TokenSource returns the operator's Groups token; on=false (no error) when
 // the feature is not configured: no group email, no client, or no token file.
 func TokenSource(cfg *config.AppConfig) (oauth2.TokenSource, bool, error) {
-	if cfg.NudgeGroupEmail == "" || cfg.GoogleOAuthClientID == "" || cfg.GoogleOAuthClientSecret == "" {
+	if id, secret := client(cfg); cfg.NudgeGroupEmail == "" || id == "" || secret == "" {
 		return nil, false, nil
 	}
 	b, err := os.ReadFile(cfg.GoogleGroupsTokenPath)
@@ -49,8 +59,8 @@ func TokenSource(cfg *config.AppConfig) (oauth2.TokenSource, bool, error) {
 // RunSetupFlow is the one-time consent for `--setup-groups-oauth`: the same
 // loopback flow as the Chat token, but its own scope and token file.
 func RunSetupFlow(cfg *config.AppConfig) error {
-	if cfg.GoogleOAuthClientID == "" || cfg.GoogleOAuthClientSecret == "" {
-		return fmt.Errorf("GOOGLE_OAUTH_CLIENT_ID/GOOGLE_OAUTH_CLIENT_SECRET are required")
+	if id, secret := client(cfg); id == "" || secret == "" {
+		return fmt.Errorf("GOOGLE_GROUPS_CLIENT_ID/SECRET (or GOOGLE_OAUTH_CLIENT_ID/SECRET) are required")
 	}
 	oc := oauthConfig(cfg, "http://localhost:8089/")
 	codeCh := make(chan string)
