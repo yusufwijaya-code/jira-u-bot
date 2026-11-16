@@ -2757,11 +2757,26 @@ table.admin-users {
 }
 
 .chat-app-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-app-banner app-google-unverified-note { flex: 1 1 100%; }
 
 .chat-app-manual {
   text-align: left;
   ol { margin: 14px 0 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.7; }
   .btn-block { width: 100%; margin-top: 18px; justify-content: center; }
+}
+
+// Doubled class so it beats `.chat-app-banner p` and modal text rules.
+p.google-unverified-note.google-unverified-note {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: left;
+  strong { color: var(--text); }
 }
 
 .sender-choices { display: grid; gap: 10px; }

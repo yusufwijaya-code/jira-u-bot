@@ -3,6 +3,7 @@ import { ChatAppService, ChatAppStatus, ChatSender } from '../../../core/service
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
 import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual-dialog.component';
+import { GoogleUnverifiedNoteComponent } from '../../../shared/ui/google-unverified-note.component';
 
 /**
  * Pengaturan › Pengirim pesan (Tech Spec "Nudge sebagai Google Chat App",
@@ -12,7 +13,7 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
 @Component({
   selector: 'app-chat-sender-card',
   standalone: true,
-  imports: [IconComponent, ChatAppManualDialogComponent],
+  imports: [IconComponent, ChatAppManualDialogComponent, GoogleUnverifiedNoteComponent],
   template: `
     @if (status(); as s) {
       @if (s.enabled) {
@@ -56,6 +57,9 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
                 <a class="btn btn-primary btn-sm" [href]="chatApp.activateUrl('sender')">Aktifkan Nudge</a>
               }
               <button type="button" class="btn btn-ghost btn-sm" (click)="manualOpen.set(true)">Cara manual</button>
+              @if (s.oneClick) {
+                <app-google-unverified-note />
+              }
             </div>
           }
         </section>
@@ -72,6 +76,9 @@ import { ChatAppManualDialogComponent } from '../../../shared/ui/chat-app-manual
               <div class="modal-icon"><app-icon name="send" [size]="22" /></div>
               <h3 id="activate-first-title">Aktifkan Nudge dulu</h3>
               <p>Pesan baru bisa dikirim dari app Nudge setelah app-nya diaktifkan di Google Chat kamu.</p>
+              @if (s.oneClick) {
+                <app-google-unverified-note />
+              }
               <div class="modal-actions">
                 @if (s.oneClick) {
                   <button type="button" class="btn btn-ghost" (click)="openManual()">Cara manual</button>
@@ -104,7 +111,7 @@ export class ChatSenderCardComponent implements OnInit {
     this.reload();
   }
 
-  /** Coming back from Google Chat (manual install) refreshes the status. */
+  /** Coming back from Google Chat (install there) refreshes the status. */
   @HostListener('window:focus')
   protected onFocus(): void {
     this.reload();

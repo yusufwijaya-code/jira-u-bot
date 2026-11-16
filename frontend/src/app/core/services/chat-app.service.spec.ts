@@ -5,7 +5,7 @@ import { ChatAppService, ChatAppStatus } from './chat-app.service';
 
 const STATUS: ChatAppStatus = {
   enabled: true, activated: false, activatedDate: null, oneClick: true,
-  sender: null, effectiveSender: 'operator', operatorAccount: false, operatorName: 'Yusuf Wijaya',
+  sender: null, effectiveSender: 'operator', operatorAccount: false, operatorName: 'Yusuf Wijaya', groupState: 'none',
 };
 
 describe('ChatAppService', () => {

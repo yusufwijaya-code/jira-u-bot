@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { CHAT_APP_RESULTS, ChatAppService } from '../../core/services/chat-app.service';
 import { ToastService } from '../../core/ui/toast.service';
 import { IconComponent } from './icon.component';
+import { GoogleUnverifiedNoteComponent } from './google-unverified-note.component';
 import { ChatAppManualDialogComponent } from './chat-app-manual-dialog.component';
 
 const SNOOZE_KEY = 'nudge.chatAppBanner.snoozedUntil';
@@ -24,13 +25,17 @@ function readSnooze(): number {
 @Component({
   selector: 'app-chat-app-banner',
   standalone: true,
-  imports: [IconComponent, ChatAppManualDialogComponent],
+  imports: [IconComponent, GoogleUnverifiedNoteComponent, ChatAppManualDialogComponent],
   template: `
     @if (visible(); as s) {
       <section class="chat-app-banner" [class.required]="s.operatorAccount" role="status">
         <app-icon name="zap" [size]="20" />
         <p>
-          @if (s.operatorAccount) {
+          @if (s.groupState === 'pending') {
+            <span data-group-pending>App Nudge sedang disiapkan untuk akunmu (maks. 24 jam).{{ s.operatorAccount ? '' : ' Sementara itu notifikasi tetap dikirim lewat DM.' }}</span>
+          } @else if (s.groupState === 'failed') {
+            <span data-group-failed>Akunmu belum bisa ditambahkan ke app Nudge. Hubungi admin Nudge.</span>
+          } @else if (s.operatorAccount) {
             Akunmu hanya bisa menerima notifikasi lewat app <strong>Nudge</strong>. Aktifkan sekarang.
           } @else {
             Notifikasi bisa datang langsung dari app <strong>Nudge</strong> di Google Chat, bukan dari akun {{ s.operatorName }}.
@@ -47,6 +52,9 @@ function readSnooze(): number {
             <button type="button" class="btn btn-ghost btn-sm" data-snooze (click)="snooze()">Nanti saja</button>
           }
         </div>
+        @if (s.oneClick) {
+          <app-google-unverified-note />
+        }
       </section>
     }
     <app-chat-app-manual-dialog [open]="manualOpen()" (closed)="manualOpen.set(false)" />
@@ -81,7 +89,7 @@ export class ChatAppBannerComponent implements OnInit {
     });
   }
 
-  /** Coming back from Google Chat (manual install) refreshes the status. */
+  /** Coming back from Google Chat (install there) refreshes the status. */
   @HostListener('window:focus')
   protected onFocus(): void {
     if (this.chatApp.status() && !this.chatApp.status()!.activated) this.chatApp.refresh();

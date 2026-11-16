@@ -269,3 +269,26 @@ func TestCallback_StateAndThenGuards(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupState(t *testing.T) {
+	now := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	ago := func(h int) *time.Time { v := now.Add(-time.Duration(h) * time.Hour); return &v }
+	cases := []struct {
+		name    string
+		s       chat_app_dto.State
+		enabled bool
+		want    string
+	}{
+		{"feature off", chat_app_dto.State{}, false, "none"},
+		{"activated", chat_app_dto.State{SpaceID: "spaces/x", GroupError: "boom"}, true, "ready"},
+		{"failed", chat_app_dto.State{GroupError: "boom"}, true, "failed"},
+		{"not processed yet", chat_app_dto.State{}, true, "pending"},
+		{"added 2h ago", chat_app_dto.State{GroupAddedDate: ago(2)}, true, "pending"},
+		{"added 25h ago", chat_app_dto.State{GroupAddedDate: ago(25)}, true, "ready"},
+	}
+	for _, c := range cases {
+		if got := GroupState(c.s, c.enabled, now); got != c.want {
+			t.Errorf("%s: GroupState = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

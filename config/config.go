@@ -70,6 +70,10 @@ type AppConfig struct {
 	// Gemini (Buat Card normalize): AI Studio API key (empty = AI off) and model.
 	GeminiAPIKey string
 	GeminiModel  string
+	// Auto Join Google Group: the group in the Chat App's Visibility list
+	// (empty = feature off) and the operator's Groups-scoped OAuth token.
+	NudgeGroupEmail       string
+	GoogleGroupsTokenPath string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -92,6 +96,7 @@ func LoadConfig(cfg *AppConfig) error {
 	v.SetDefault("GOOGLE_OAUTH_TOKEN_PATH", "./data/chat_oauth_token.json")
 	v.SetDefault("GOOGLE_CHAT_APP_ONE_CLICK", true)
 	v.SetDefault("GEMINI_MODEL", "gemini-flash-lite-latest")
+	v.SetDefault("GOOGLE_GROUPS_TOKEN_PATH", "./data/groups_oauth_token.json")
 
 	cfg.JiraBaseURL = v.GetString("JIRA_BASE_URL")
 	cfg.JiraEmail = v.GetString("JIRA_EMAIL")
@@ -121,6 +126,8 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.GoogleChatAppActivationRedirectURL = v.GetString("GOOGLE_CHAT_APP_ACTIVATION_REDIRECT_URL")
 	cfg.GeminiAPIKey = v.GetString("GEMINI_API_KEY")
 	cfg.GeminiModel = v.GetString("GEMINI_MODEL")
+	cfg.NudgeGroupEmail = strings.TrimSpace(v.GetString("NUDGE_GROUP_EMAIL"))
+	cfg.GoogleGroupsTokenPath = v.GetString("GOOGLE_GROUPS_TOKEN_PATH")
 
 	return nil
 }

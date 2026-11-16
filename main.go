@@ -15,6 +15,7 @@ import (
 	"nudge/base/helpers/shutdown"
 	"nudge/config"
 	"nudge/migrations"
+	"nudge/modules/chat_group"
 	"nudge/modules/admin_dashboard/admin_dashboard_handler"
 	"nudge/modules/admin_dashboard/admin_dashboard_service"
 	"nudge/modules/auth/auth_dto"
@@ -75,13 +76,15 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func shouldRunSetupMode(args []string) bool {
+// setupMode returns the one-time OAuth consent flow requested on the
+// command line ("" = normal start).
+func setupMode(args []string) string {
 	for _, a := range args[1:] {
-		if a == "--setup-oauth" {
-			return true
+		if a == "--setup-oauth" || a == "--setup-groups-oauth" {
+			return a
 		}
 	}
-	return false
+	return ""
 }
 
 // mysqlDSN's time_zone param sets this connection's MySQL SESSION
@@ -103,12 +106,16 @@ func mysqlDSN(cfg config.AppConfig) string {
 const chatLogRetention = 90 * 24 * time.Hour
 
 func main() {
-	if shouldRunSetupMode(os.Args) {
+	if mode := setupMode(os.Args); mode != "" {
 		var cfg config.AppConfig
 		if err := config.LoadConfig(&cfg); err != nil {
 			log.Fatalf("failed to load config: %v", err)
 		}
-		if err := chat_oauth_service.RunSetupFlow(&cfg); err != nil {
+		run := chat_oauth_service.RunSetupFlow
+		if mode == "--setup-groups-oauth" {
+			run = chat_group.RunSetupFlow
+		}
+		if err := run(&cfg); err != nil {
 			log.Fatalf("oauth setup failed: %v", err)
 		}
 		return
@@ -316,13 +323,38 @@ func main() {
 	// Google profile pictures: stored from the Sign-In ID token on every
 	// login, served through /me/avatar and the admin avatar endpoint.
 	userAvatarSvc := user_avatar_service.NewUserAvatarService(user_avatar_repository.NewUserAvatarRepository(db), nil)
+	// Auto Join Google Group (Tech Spec "Auto Join Google Group Nudge"): off
+	// unless NUDGE_GROUP_EMAIL and the operator's Groups token are set.
+	var chatGroupSvc *chat_group.Service
+	if ts, on, err := chat_group.TokenSource(&cfg); err != nil {
+		log.Printf("main: Groups token unreadable, auto join off: %v", err)
+	} else if on {
+		chatGroupSvc = chat_group.NewService(chat_group.NewClient(ts, cfg.NudgeGroupEmail, chat_group.DefaultBaseURL), chat_group.NewRepository(db))
+		log.Printf("main: auto join Google Group %s on", cfg.NudgeGroupEmail)
+	}
 	authHandler := auth_handler.NewAuthHandler(authSvc, &cfg, auth_handler.WithLoginHook(
 		func(ctx context.Context, userID int64, claims auth_dto.GoogleClaims) {
 			if err := userAvatarSvc.SavePicture(ctx, userID, claims.Picture); err != nil {
 				log.Printf("main: saving profile picture of user %d failed: %v", userID, err)
 			}
+			// Never delays or fails the login: runs on its own after the redirect.
+			if chatGroupSvc != nil {
+				email := claims.Email
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					chatGroupSvc.EnsureMember(ctx, email)
+				}()
+			}
 		},
 	))
+	if chatGroupSvc != nil {
+		shutdownMgr.AddWorker()
+		go func() {
+			defer shutdownMgr.WorkerDone()
+			chatGroupSvc.Run(shutdownMgr.Context())
+		}()
+	}
 
 	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc)
 
@@ -365,7 +397,7 @@ func main() {
 	}
 	chatAppRoutes.Activation = chat_app_activation.New(chat_app_activation.Deps{
 		States: chatAppRepo, OAuth: activationOAuth, Notify: deliveryRouter,
-		AppEnabled: chatAppClient != nil, OneClick: cfg.GoogleChatAppOneClick,
+		AppEnabled: chatAppClient != nil, OneClick: cfg.GoogleChatAppOneClick, GroupEnabled: chatGroupSvc != nil,
 		OperatorEmail: cfg.JiraEmail, OperatorName: operatorName,
 		AppURL: cfg.FrontendURL + cfg.BasePath, CookiePath: cfg.BasePath,
 	})

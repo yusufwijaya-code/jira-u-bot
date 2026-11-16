@@ -6,7 +6,7 @@ import { ToastService } from '../../../core/ui/toast.service';
 
 const BASE: ChatAppStatus = {
   enabled: true, activated: true, activatedDate: '2026-11-15T02:00:00Z', oneClick: true,
-  sender: null, effectiveSender: 'nudge', operatorAccount: false, operatorName: 'Yusuf Wijaya',
+  sender: null, effectiveSender: 'nudge', operatorAccount: false, operatorName: 'Yusuf Wijaya', groupState: 'ready',
 };
 
 describe('ChatSenderCardComponent', () => {
@@ -68,6 +68,18 @@ describe('ChatSenderCardComponent', () => {
     fixture.detectChanges();
     expect(el().querySelector('[data-activate-first]')).toBeNull();
     expect(el().querySelector('.chat-app-manual')).not.toBeNull();
+  });
+
+  it('explains the Google unverified-app screen next to one-click only', () => {
+    setup({ ...BASE, activated: false, effectiveSender: 'operator' });
+    radio('nudge').click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-activate-first] [data-unverified-note]')?.textContent).toContain('Go to labcup.tech (unsafe)');
+    TestBed.resetTestingModule();
+    setup({ ...BASE, activated: false, effectiveSender: 'operator', oneClick: false });
+    radio('nudge').click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-unverified-note]')).toBeNull();
   });
 
   it('closes the activate-first dialog on the backdrop', () => {

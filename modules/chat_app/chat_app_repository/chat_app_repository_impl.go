@@ -17,7 +17,7 @@ func NewRepository(db *sql.DB) Repository {
 	return &repositoryImpl{db: db}
 }
 
-const stateColumns = `email, chatAppSpaceID, chatAppUserID, chatAppActivatedDate, chatSender`
+const stateColumns = `email, chatAppSpaceID, chatAppUserID, chatAppActivatedDate, chatSender, chatGroupAddedDate, chatGroupError`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -25,9 +25,9 @@ type rowScanner interface {
 
 func scanState(row rowScanner) (chat_app_dto.State, error) {
 	var s chat_app_dto.State
-	var space, user, sender sql.NullString
-	var activated sql.NullTime
-	if err := row.Scan(&s.Email, &space, &user, &activated, &sender); err != nil {
+	var space, user, sender, groupErr sql.NullString
+	var activated, groupAdded sql.NullTime
+	if err := row.Scan(&s.Email, &space, &user, &activated, &sender, &groupAdded, &groupErr); err != nil {
 		return chat_app_dto.State{}, err
 	}
 	s.SpaceID = space.String
@@ -40,6 +40,11 @@ func scanState(row rowScanner) (chat_app_dto.State, error) {
 		v := sender.String
 		s.Sender = &v
 	}
+	if groupAdded.Valid {
+		t := groupAdded.Time
+		s.GroupAddedDate = &t
+	}
+	s.GroupError = groupErr.String
 	return s, nil
 }
 

@@ -85,6 +85,9 @@ var chatLogSQL string
 //go:embed 0019_board_scope.sql
 var boardScopeSQL string
 
+//go:embed 0020_chat_group.sql
+var chatGroupSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -184,6 +187,10 @@ func apply(db *sql.DB) error {
 	}
 	// The web's board choice, shared with chat commands — one ADD COLUMN.
 	if err := addColumnIfNotExists(db, boardScopeSQL); err != nil {
+		return err
+	}
+	// Auto Join Google Group — one ALTER, so a duplicate-column error means it already ran.
+	if err := addColumnIfNotExists(db, chatGroupSQL); err != nil {
 		return err
 	}
 	// The new toggle starts ON when either old toggle was ON — exactly once

@@ -39,6 +39,20 @@ func TestFindByEmail_NewUserIsNotActivated(t *testing.T) {
 	}
 }
 
+func TestFindByEmail_ReadsGroupJoinState(t *testing.T) {
+	repo, exec := setup(t)
+	ctx := context.Background()
+	s, _, err := repo.FindByEmail(ctx, testEmail)
+	if err != nil || s.GroupAddedDate != nil || s.GroupError != "" {
+		t.Fatalf("fresh user = %+v, %v; want no group state", s, err)
+	}
+	exec(`UPDATE ms_user SET chatGroupAddedDate = '2026-11-16 09:00:00', chatGroupError = 'boom' WHERE email = ?`, testEmail)
+	s, _, err = repo.FindByEmail(ctx, testEmail)
+	if err != nil || s.GroupAddedDate == nil || s.GroupError != "boom" {
+		t.Fatalf("after update = %+v, %v; want added date and error", s, err)
+	}
+}
+
 func TestFindByEmail_UnknownUser(t *testing.T) {
 	repo, _ := setup(t)
 	s, found, err := repo.FindByEmail(context.Background(), "testmysql-nobody@esb.co.id")
