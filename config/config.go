@@ -74,6 +74,10 @@ type AppConfig struct {
 	// (empty = feature off) and the operator's Groups-scoped OAuth token.
 	NudgeGroupEmail       string
 	GoogleGroupsTokenPath string
+	// GoogleGroupsClientID/Secret: the Desktop OAuth client of the project
+	// where the Cloud Identity API is enabled (empty = GOOGLE_OAUTH_CLIENT_*).
+	GoogleGroupsClientID     string
+	GoogleGroupsClientSecret string
 }
 
 func LoadConfig(cfg *AppConfig) error {
@@ -128,6 +132,8 @@ func LoadConfig(cfg *AppConfig) error {
 	cfg.GeminiModel = v.GetString("GEMINI_MODEL")
 	cfg.NudgeGroupEmail = strings.TrimSpace(v.GetString("NUDGE_GROUP_EMAIL"))
 	cfg.GoogleGroupsTokenPath = v.GetString("GOOGLE_GROUPS_TOKEN_PATH")
+	cfg.GoogleGroupsClientID = v.GetString("GOOGLE_GROUPS_CLIENT_ID")
+	cfg.GoogleGroupsClientSecret = v.GetString("GOOGLE_GROUPS_CLIENT_SECRET")
 
 	return nil
 }
