@@ -16,6 +16,8 @@ export interface ChatAppStatus {
   effectiveSender: ChatSender;
   operatorAccount: boolean;
   operatorName: string;
+  /** Visibility through the Nudge Google Group (Tech Spec "Auto Join Google Group Nudge"). */
+  groupState: 'none' | 'pending' | 'ready' | 'failed';
 }
 
 /** Toasts for the ?chatApp=<code> the activation callback redirects with. */

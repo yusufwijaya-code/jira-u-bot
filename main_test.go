@@ -31,22 +31,22 @@ func TestMysqlDSN_SetsSessionTimeZoneToWIB(t *testing.T) {
 	}
 }
 
-func TestShouldRunSetupMode_DetectsSetupOAuthFlag(t *testing.T) {
+func TestSetupMode_DetectsSetupFlags(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
-		want bool
+		want string
 	}{
-		{"no args", []string{"nudge"}, false},
-		{"unrelated flag", []string{"nudge", "--help"}, false},
-		{"setup flag present", []string{"nudge", "--setup-oauth"}, true},
-		{"setup flag among others", []string{"nudge", "-x", "--setup-oauth"}, true},
+		{"no args", []string{"nudge"}, ""},
+		{"unrelated flag", []string{"nudge", "--help"}, ""},
+		{"chat setup flag", []string{"nudge", "--setup-oauth"}, "--setup-oauth"},
+		{"chat setup flag among others", []string{"nudge", "-x", "--setup-oauth"}, "--setup-oauth"},
+		{"groups setup flag", []string{"nudge", "--setup-groups-oauth"}, "--setup-groups-oauth"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := shouldRunSetupMode(c.args)
-			if got != c.want {
-				t.Errorf("shouldRunSetupMode(%v) = %v, want %v", c.args, got, c.want)
+			if got := setupMode(c.args); got != c.want {
+				t.Errorf("setupMode(%v) = %q, want %q", c.args, got, c.want)
 			}
 		})
 	}

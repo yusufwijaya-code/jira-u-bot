@@ -50,6 +50,9 @@ type Deps struct {
 	Notify        Notifier
 	AppEnabled    bool
 	OneClick      bool
+	// GroupEnabled: users join the Visibility group automatically (Tech Spec
+	// "Auto Join Google Group Nudge"); off = groupState "none".
+	GroupEnabled bool
 	OperatorEmail string
 	OperatorName  string
 	// AppURL is FrontendURL + BasePath; CookiePath is BasePath.
@@ -77,6 +80,26 @@ type StatusResponse struct {
 	EffectiveSender string     `json:"effectiveSender"`
 	OperatorAccount bool       `json:"operatorAccount"`
 	OperatorName    string     `json:"operatorName"`
+	GroupState      string     `json:"groupState"`
+}
+
+// groupPropagation is how long Google may take to apply a group change.
+const groupPropagation = 24 * time.Hour
+
+// GroupState says whether the app is visible to the user yet (Tech Spec
+// "Auto Join Google Group Nudge", AC2.1): none | pending | ready | failed.
+func GroupState(s chat_app_dto.State, enabled bool, now time.Time) string {
+	switch {
+	case !enabled:
+		return "none"
+	case s.Activated():
+		return "ready"
+	case s.GroupError != "":
+		return "failed"
+	case s.GroupAddedDate == nil || now.Sub(*s.GroupAddedDate) < groupPropagation:
+		return "pending"
+	}
+	return "ready"
 }
 
 func (h *Handler) status(ctx context.Context, email string) (StatusResponse, error) {
@@ -94,6 +117,7 @@ func (h *Handler) status(ctx context.Context, email string) (StatusResponse, err
 		EffectiveSender: chat_delivery.EffectiveSender(s, isOp, h.d.AppEnabled),
 		OperatorAccount: isOp,
 		OperatorName:    h.d.OperatorName,
+		GroupState:      GroupState(s, h.d.GroupEnabled && h.d.AppEnabled, time.Now()),
 	}, nil
 }
 

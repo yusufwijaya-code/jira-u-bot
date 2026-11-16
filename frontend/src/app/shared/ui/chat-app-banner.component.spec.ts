@@ -8,7 +8,7 @@ import { ToastService } from '../../core/ui/toast.service';
 
 const BASE: ChatAppStatus = {
   enabled: true, activated: false, activatedDate: null, oneClick: true,
-  sender: null, effectiveSender: 'operator', operatorAccount: false, operatorName: 'Yusuf Wijaya',
+  sender: null, effectiveSender: 'operator', operatorAccount: false, operatorName: 'Yusuf Wijaya', groupState: 'ready',
 };
 
 describe('ChatAppBannerComponent', () => {
@@ -72,6 +72,33 @@ describe('ChatAppBannerComponent', () => {
     setup({ ...BASE, oneClick: false });
     expect(el().querySelector('[data-activate]')).toBeNull();
     expect(el().querySelector('[data-open-chat]')).not.toBeNull();
+  });
+
+  it('keeps the manual steps and explains the Google unverified-app screen next to one-click', () => {
+    setup(BASE);
+    expect(el().querySelector('[data-manual]')).not.toBeNull();
+    expect(el().querySelector('[data-unverified-note]')?.textContent).toContain('Go to labcup.tech (unsafe)');
+    TestBed.resetTestingModule();
+    setup({ ...BASE, oneClick: false });
+    expect(el().querySelector('[data-unverified-note]')).toBeNull();
+  });
+
+  it('explains the wait while the group change propagates', () => {
+    setup({ ...BASE, groupState: 'pending' });
+    expect(el().querySelector('[data-group-pending]')?.textContent).toContain('App Nudge sedang disiapkan untuk akunmu (maks. 24 jam)');
+    expect(el().querySelector('[data-activate]')).not.toBeNull();
+  });
+
+  it('does not promise a DM fallback to the operator account while pending', () => {
+    setup({ ...BASE, operatorAccount: true, groupState: 'pending' });
+    const text = el().querySelector('[data-group-pending]')?.textContent ?? '';
+    expect(text).toContain('maks. 24 jam');
+    expect(text).not.toContain('lewat DM');
+  });
+
+  it('tells the user to contact the admin when joining the group failed', () => {
+    setup({ ...BASE, groupState: 'failed' });
+    expect(el().querySelector('[data-group-failed]')?.textContent).toContain('Hubungi admin Nudge');
   });
 
   it('turns ?chatApp= into a toast, clears it and refreshes', () => {

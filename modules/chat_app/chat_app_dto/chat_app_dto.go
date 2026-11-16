@@ -28,6 +28,10 @@ type State struct {
 	ChatUserID    string
 	ActivatedDate *time.Time
 	Sender        *string
+	// GroupAddedDate: when the email joined the group that makes the app
+	// visible (nil = not yet); GroupError: the last failure doing so.
+	GroupAddedDate *time.Time
+	GroupError     string
 }
 
 // Activated reports whether the user has a DM with the Nudge app.
