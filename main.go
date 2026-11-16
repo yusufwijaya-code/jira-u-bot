@@ -352,8 +352,8 @@ func main() {
 		chatAppSvc := chat_app_service.New(chat_app_service.Deps{
 			Users: registrationRepo, States: chatAppRepo, Commands: chatInteractiveSvc, App: chatAppClient,
 			Log: chatLogRepo,
-			// Installing the app signs up a new @esb.co.id user (same Jira check as the web login).
-			Register: registrationService, Notifications: userSettingSvc,
+			// Welcome card's "Nyalakan notifikasi" button. Registration stays web-only.
+			Notifications: userSettingSvc,
 		})
 		chatAppRoutes.Events = chat_app_handler.New(chat_app_auth.NewVerifier(cfg.GoogleChatAppProjectNumber), chatAppSvc).Events
 	} else if chatAppClient != nil {

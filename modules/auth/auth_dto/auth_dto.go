@@ -43,11 +43,5 @@ func IsAllowedDomain(claims GoogleClaims) bool {
 	if !claims.EmailVerified {
 		return false
 	}
-	return IsAllowedEmail(claims.Email)
-}
-
-// IsAllowedEmail is the domain half of IsAllowedDomain, for an email that is
-// already verified elsewhere (a Google Chat event, whose JWT Google signs).
-func IsAllowedEmail(email string) bool {
-	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(email)), allowedEmailDomain)
+	return strings.HasSuffix(strings.ToLower(claims.Email), allowedEmailDomain)
 }
