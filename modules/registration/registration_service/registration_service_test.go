@@ -205,19 +205,6 @@ func TestRegister_SkipsThankYouDMForSelfRegistration(t *testing.T) {
 	}
 }
 
-func TestRegister_SkipsThankYouDMWhenTheCallerGreetsItself(t *testing.T) {
-	repo := &fakeRegistrationRepositoryForService{}
-	dmNotifier := &fakeChatDMNotifierServiceForRegistration{}
-	svc := NewRegistrationService(&fakeJiraClientServiceForRegistration{found: true}, repo, dmNotifier, "yusuf.wijaya@esb.co.id")
-
-	if err := svc.Register(WithoutThankYouDM(context.Background()), "Teammate", "teammate@esb.co.id"); err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
-	if len(dmNotifier.sentToEmails) != 0 {
-		t.Errorf("sentToEmails = %v, want none (the Chat App install sends its own welcome)", dmNotifier.sentToEmails)
-	}
-}
-
 func TestRegister_SkipsThankYouDMWhenDMNotifierNil(t *testing.T) {
 	jiraClient := &fakeJiraClientServiceForRegistration{found: true}
 	repo := &fakeRegistrationRepositoryForService{}

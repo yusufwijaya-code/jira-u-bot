@@ -4,7 +4,6 @@ package chat_app_service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -12,13 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"nudge/modules/auth/auth_dto"
 	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_dto"
 	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/chat_log/chat_log_dto"
 	"nudge/modules/registration/registration_dto"
-	"nudge/modules/registration/registration_service"
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
@@ -29,37 +26,22 @@ const (
 
 	processingText    = "⏳ Sedang diproses…"
 	errorText         = "Terjadi kesalahan, coba lagi."
-	notRegisteredText = "Kamu belum terdaftar di Nudge. Login dulu ke https://nudge.labcup.tech lalu kirim pesan apa saja di sini."
-	inactiveText      = "Akun Nudge kamu sedang dinonaktifkan admin."
-	welcomeText       = "✅ App Nudge aktif! Notifikasi Nudge sekarang bisa datang langsung dari sini.\n\n" +
+	// Registration happens only on the web (first Google login); the app
+	// never signs anyone up.
+	notRegisteredText = "👋 Kamu belum terdaftar di Nudge.\n\n" +
+		"Daftar dulu lewat web: buka https://nudge.labcup.tech lalu login dengan akun Google @esb.co.id. " +
+		"Setelah itu kembali ke sini dan kirim pesan apa saja (mis. /n-help) — app Nudge langsung terhubung."
+	inactiveText = "Akun Nudge kamu sedang dinonaktifkan admin."
+	welcomeText  = "✅ App Nudge aktif! Notifikasi Nudge sekarang bisa datang langsung dari sini.\n\n" +
 		"Atur pengirim pesan di *Pengaturan*: https://nudge.labcup.tech/dashboard/settings\n\n" +
 		"💡 Ketik */n-help* buat lihat command"
-	// newUserWelcomeText greets someone the install just registered.
-	newUserWelcomeText = "🎉 Selamat datang di Nudge! Akun kamu sudah terdaftar otomatis.\n\n" +
-		"🤖 Setiap tiket Code Process yang kamu pegang dipantau otomatis. Kalau notifikasi menyala:\n" +
-		"⏰ Diingetin sebelum budget waktu habis\n" +
-		"🔴 Dapet notif kalau sudah lewat budget\n" +
-		"🎉 Dapet apresiasi kalau selesai lebih awal\n\n" +
-		"Dashboard & pengaturan: https://nudge.labcup.tech (login dengan akun @esb.co.id). " +
-		"Untuk geser status atau Buat Card atas nama kamu, isi *token Jira* di Pengaturan.\n\n" +
-		"💡 Ketik */n-help* buat lihat command"
-	askNotifLine      = "\n\n🔕 Notifikasi kamu masih *mati* — nyalakan di bawah ini."
-	notJiraText       = "Email kamu belum terdaftar sebagai akun Jira esb-id, jadi belum bisa memakai Nudge. Hubungi admin Jira kalau ini keliru."
-	jiraDownText      = "Gagal memverifikasi akun kamu ke Jira. Coba kirim pesan apa saja di sini sebentar lagi."
-	notAllowedText    = "Nudge hanya untuk akun @esb.co.id."
-	notifOnText       = "🔔 Notifikasi dinyalakan. Atur jadwal & jenisnya kapan saja di Pengaturan: https://nudge.labcup.tech/dashboard/settings"
+	askNotifLine = "\n\n🔕 Notifikasi kamu masih *mati* — nyalakan di bawah ini."
+	notifOnText  = "🔔 Notifikasi dinyalakan. Atur jadwal & jenisnya kapan saja di Pengaturan: https://nudge.labcup.tech/dashboard/settings"
 	notifLaterText    = "Oke, notifikasi masih mati. Nyalakan kapan saja di Pengaturan: https://nudge.labcup.tech/dashboard/settings"
 )
 
 type UserFinder interface {
 	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
-}
-
-// Registrar signs up an @esb.co.id user whose Jira account exists
-// (registration_service.Register: ErrJiraAccountNotFound /
-// ErrJiraLookupUnavailable on failure).
-type Registrar interface {
-	Register(ctx context.Context, name, email string) error
 }
 
 // NotificationSwitch is the master notification switch (user_setting_service).
@@ -92,9 +74,6 @@ type Deps struct {
 	CommandTimeout time.Duration
 	// Log records events and replies for the admin "Riwayat pesan" (nil = off).
 	Log chat_log_dto.Recorder
-	// Register signs up an unknown sender on install or first message
-	// (nil = they are told to log in on the web first).
-	Register Registrar
 	// Notifications backs the welcome card's "Nyalakan notifikasi" button
 	// (nil = the buttons are not offered).
 	Notifications NotificationSwitch
@@ -222,57 +201,10 @@ func (s *service) findUser(ctx context.Context, email string) (*registration_dto
 	return u, "", true
 }
 
-// userOrRegister is findUser that signs up an unknown @esb.co.id sender
-// whose Jira account exists (the same registration as the first web
-// login). registered is true when this call created the account.
-func (s *service) userOrRegister(ctx context.Context, ev chat_app_dto.Event) (u *registration_dto.User, registered bool, reply string, ok bool) {
-	email := ev.User.Email
-	u, found, err := s.d.Users.FindUserByEmail(ctx, email)
-	switch {
-	case err != nil:
-		log.Printf("chat_app_service: FindUserByEmail(%s) failed: %v", email, err)
-		return nil, false, errorText, false
-	case found && !u.FlagActive:
-		return nil, false, inactiveText, false
-	case found:
-		return u, false, "", true
-	case s.d.Register == nil:
-		return nil, false, notRegisteredText, false
-	case !auth_dto.IsAllowedEmail(email):
-		return nil, false, notAllowedText, false
-	}
-	name := strings.TrimSpace(ev.User.DisplayName)
-	if name == "" {
-		name = email
-	}
-	// The install reply is the welcome, so no separate thank-you DM.
-	if err := s.d.Register.Register(registration_service.WithoutThankYouDM(ctx), name, email); err != nil {
-		switch {
-		case errors.Is(err, registration_service.ErrJiraAccountNotFound):
-			return nil, false, notJiraText, false
-		case errors.Is(err, registration_service.ErrJiraLookupUnavailable):
-			log.Printf("chat_app_service: registering %s: %v", email, err)
-			return nil, false, jiraDownText, false
-		}
-		log.Printf("chat_app_service: registering %s failed: %v", email, err)
-		return nil, false, errorText, false
-	}
-	log.Printf("chat_app_service: %s registered from the Chat App", email)
-	u, found, err = s.d.Users.FindUserByEmail(ctx, email)
-	if err != nil || !found {
-		log.Printf("chat_app_service: %s not found right after registration (found=%v): %v", email, found, err)
-		return nil, false, errorText, false
-	}
-	return u, true, "", true
-}
-
-// welcome is the install greeting; a new account gets the full intro, and
-// anyone whose notifications are still off gets the buttons to turn them on.
-func (s *service) welcome(u *registration_dto.User, registered bool) chat_app_dto.Response {
+// welcome is the install greeting; a user whose notifications are still
+// off also gets the buttons to turn them on.
+func (s *service) welcome(u *registration_dto.User) chat_app_dto.Response {
 	text := welcomeText
-	if registered {
-		text = newUserWelcomeText
-	}
 	askNotif := s.d.Notifications != nil && !u.NotificationsEnabled
 	if askNotif {
 		// Before the "/n-help" hint, which the card turns into a button.
@@ -283,8 +215,10 @@ func (s *service) welcome(u *registration_dto.User, registered bool) chat_app_dt
 	return chat_app_dto.Response{Text: short, CardsV2: cards, FallbackText: short, LogText: text}
 }
 
+// added connects a registered user's DM. Unknown senders are told to
+// register on the web first — the app never signs anyone up.
 func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
-	u, registered, reply, ok := s.userOrRegister(ctx, ev)
+	u, reply, ok := s.findUser(ctx, ev.User.Email)
 	if !ok {
 		return chat_app_dto.Response{Text: reply}
 	}
@@ -292,22 +226,13 @@ func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto
 		log.Printf("chat_app_service: storing the DM of %s failed: %v", ev.User.Email, err)
 		return chat_app_dto.Response{Text: errorText}
 	}
-	return s.welcome(u, registered)
+	return s.welcome(u)
 }
 
 func (s *service) message(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
 	email := ev.User.Email
-	u, registered, reply, ok := s.userOrRegister(ctx, ev)
-	if !ok {
+	if reply, ok := s.checkUser(ctx, email); !ok {
 		return chat_app_dto.Response{Text: reply}
-	}
-	// Installed before this existed (or the install event was missed): the
-	// first message signs them up — greet instead of running the command.
-	if registered {
-		if err := s.d.States.SetSpace(ctx, email, ev.Space.Name, ev.User.Name); err != nil {
-			log.Printf("chat_app_service: storing the DM of %s failed: %v", email, err)
-		}
-		return s.welcome(u, true)
 	}
 	// The install event may have been missed: remember the DM on any message.
 	if state, _, err := s.d.States.FindByEmail(ctx, email); err == nil && state.SpaceID != ev.Space.Name {
