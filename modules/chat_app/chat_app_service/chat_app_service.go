@@ -4,6 +4,7 @@ package chat_app_service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -11,11 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"nudge/modules/auth/auth_dto"
 	"nudge/modules/chat_app/chat_app_card"
 	"nudge/modules/chat_app/chat_app_dto"
 	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/chat_log/chat_log_dto"
 	"nudge/modules/registration/registration_dto"
+	"nudge/modules/registration/registration_service"
 	"nudge/modules/user_setting/user_setting_dto"
 )
 
@@ -31,10 +34,37 @@ const (
 	welcomeText       = "✅ App Nudge aktif! Notifikasi Nudge sekarang bisa datang langsung dari sini.\n\n" +
 		"Atur pengirim pesan di *Pengaturan*: https://nudge.labcup.tech/dashboard/settings\n\n" +
 		"💡 Ketik */n-help* buat lihat command"
+	// newUserWelcomeText greets someone the install just registered.
+	newUserWelcomeText = "🎉 Selamat datang di Nudge! Akun kamu sudah terdaftar otomatis.\n\n" +
+		"🤖 Setiap tiket Code Process yang kamu pegang dipantau otomatis. Kalau notifikasi menyala:\n" +
+		"⏰ Diingetin sebelum budget waktu habis\n" +
+		"🔴 Dapet notif kalau sudah lewat budget\n" +
+		"🎉 Dapet apresiasi kalau selesai lebih awal\n\n" +
+		"Dashboard & pengaturan: https://nudge.labcup.tech (login dengan akun @esb.co.id). " +
+		"Untuk geser status atau Buat Card atas nama kamu, isi *token Jira* di Pengaturan.\n\n" +
+		"💡 Ketik */n-help* buat lihat command"
+	askNotifLine      = "\n\n🔕 Notifikasi kamu masih *mati* — nyalakan di bawah ini."
+	notJiraText       = "Email kamu belum terdaftar sebagai akun Jira esb-id, jadi belum bisa memakai Nudge. Hubungi admin Jira kalau ini keliru."
+	jiraDownText      = "Gagal memverifikasi akun kamu ke Jira. Coba kirim pesan apa saja di sini sebentar lagi."
+	notAllowedText    = "Nudge hanya untuk akun @esb.co.id."
+	notifOnText       = "🔔 Notifikasi dinyalakan. Atur jadwal & jenisnya kapan saja di Pengaturan: https://nudge.labcup.tech/dashboard/settings"
+	notifLaterText    = "Oke, notifikasi masih mati. Nyalakan kapan saja di Pengaturan: https://nudge.labcup.tech/dashboard/settings"
 )
 
 type UserFinder interface {
 	FindUserByEmail(ctx context.Context, email string) (*registration_dto.User, bool, error)
+}
+
+// Registrar signs up an @esb.co.id user whose Jira account exists
+// (registration_service.Register: ErrJiraAccountNotFound /
+// ErrJiraLookupUnavailable on failure).
+type Registrar interface {
+	Register(ctx context.Context, name, email string) error
+}
+
+// NotificationSwitch is the master notification switch (user_setting_service).
+type NotificationSwitch interface {
+	SetNotificationsEnabled(ctx context.Context, userID int64, enabled bool) (user_setting_dto.NotificationSwitch, error)
 }
 
 type StateStore interface {
@@ -62,6 +92,12 @@ type Deps struct {
 	CommandTimeout time.Duration
 	// Log records events and replies for the admin "Riwayat pesan" (nil = off).
 	Log chat_log_dto.Recorder
+	// Register signs up an unknown sender on install or first message
+	// (nil = they are told to log in on the web first).
+	Register Registrar
+	// Notifications backs the welcome card's "Nyalakan notifikasi" button
+	// (nil = the buttons are not offered).
+	Notifications NotificationSwitch
 }
 
 type Service interface {
@@ -168,38 +204,110 @@ func (s *service) handle(ctx context.Context, ev chat_app_dto.Event) chat_app_dt
 
 // checkUser returns the reply for a sender that may not use Nudge.
 func (s *service) checkUser(ctx context.Context, email string) (string, bool) {
+	_, reply, ok := s.findUser(ctx, email)
+	return reply, ok
+}
+
+func (s *service) findUser(ctx context.Context, email string) (*registration_dto.User, string, bool) {
 	u, found, err := s.d.Users.FindUserByEmail(ctx, email)
 	switch {
 	case err != nil:
 		log.Printf("chat_app_service: FindUserByEmail(%s) failed: %v", email, err)
-		return errorText, false
+		return nil, errorText, false
 	case !found:
-		return notRegisteredText, false
+		return nil, notRegisteredText, false
 	case !u.FlagActive:
-		return inactiveText, false
+		return nil, inactiveText, false
 	}
-	return "", true
+	return u, "", true
+}
+
+// userOrRegister is findUser that signs up an unknown @esb.co.id sender
+// whose Jira account exists (the same registration as the first web
+// login). registered is true when this call created the account.
+func (s *service) userOrRegister(ctx context.Context, ev chat_app_dto.Event) (u *registration_dto.User, registered bool, reply string, ok bool) {
+	email := ev.User.Email
+	u, found, err := s.d.Users.FindUserByEmail(ctx, email)
+	switch {
+	case err != nil:
+		log.Printf("chat_app_service: FindUserByEmail(%s) failed: %v", email, err)
+		return nil, false, errorText, false
+	case found && !u.FlagActive:
+		return nil, false, inactiveText, false
+	case found:
+		return u, false, "", true
+	case s.d.Register == nil:
+		return nil, false, notRegisteredText, false
+	case !auth_dto.IsAllowedEmail(email):
+		return nil, false, notAllowedText, false
+	}
+	name := strings.TrimSpace(ev.User.DisplayName)
+	if name == "" {
+		name = email
+	}
+	// The install reply is the welcome, so no separate thank-you DM.
+	if err := s.d.Register.Register(registration_service.WithoutThankYouDM(ctx), name, email); err != nil {
+		switch {
+		case errors.Is(err, registration_service.ErrJiraAccountNotFound):
+			return nil, false, notJiraText, false
+		case errors.Is(err, registration_service.ErrJiraLookupUnavailable):
+			log.Printf("chat_app_service: registering %s: %v", email, err)
+			return nil, false, jiraDownText, false
+		}
+		log.Printf("chat_app_service: registering %s failed: %v", email, err)
+		return nil, false, errorText, false
+	}
+	log.Printf("chat_app_service: %s registered from the Chat App", email)
+	u, found, err = s.d.Users.FindUserByEmail(ctx, email)
+	if err != nil || !found {
+		log.Printf("chat_app_service: %s not found right after registration (found=%v): %v", email, found, err)
+		return nil, false, errorText, false
+	}
+	return u, true, "", true
+}
+
+// welcome is the install greeting; a new account gets the full intro, and
+// anyone whose notifications are still off gets the buttons to turn them on.
+func (s *service) welcome(u *registration_dto.User, registered bool) chat_app_dto.Response {
+	text := welcomeText
+	if registered {
+		text = newUserWelcomeText
+	}
+	askNotif := s.d.Notifications != nil && !u.NotificationsEnabled
+	if askNotif {
+		// Before the "/n-help" hint, which the card turns into a button.
+		head, hint, _ := strings.Cut(text, "\n\n💡")
+		text = head + askNotifLine + "\n\n💡" + hint
+	}
+	short, cards := chat_app_card.WelcomeCard(text, askNotif)
+	return chat_app_dto.Response{Text: short, CardsV2: cards, FallbackText: short, LogText: text}
 }
 
 func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
-	if reply, ok := s.checkUser(ctx, ev.User.Email); !ok {
+	u, registered, reply, ok := s.userOrRegister(ctx, ev)
+	if !ok {
 		return chat_app_dto.Response{Text: reply}
 	}
 	if err := s.d.States.SetSpace(ctx, ev.User.Email, ev.Space.Name, ev.User.Name); err != nil {
 		log.Printf("chat_app_service: storing the DM of %s failed: %v", ev.User.Email, err)
 		return chat_app_dto.Response{Text: errorText}
 	}
-	// The "/n-help" hint becomes a menu button.
-	if short, cards, ok := chat_app_card.TextCard(welcomeText); ok {
-		return chat_app_dto.Response{Text: short, CardsV2: cards, FallbackText: short, LogText: welcomeText}
-	}
-	return chat_app_dto.Response{Text: welcomeText}
+	return s.welcome(u, registered)
 }
 
 func (s *service) message(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
 	email := ev.User.Email
-	if reply, ok := s.checkUser(ctx, email); !ok {
+	u, registered, reply, ok := s.userOrRegister(ctx, ev)
+	if !ok {
 		return chat_app_dto.Response{Text: reply}
+	}
+	// Installed before this existed (or the install event was missed): the
+	// first message signs them up — greet instead of running the command.
+	if registered {
+		if err := s.d.States.SetSpace(ctx, email, ev.Space.Name, ev.User.Name); err != nil {
+			log.Printf("chat_app_service: storing the DM of %s failed: %v", email, err)
+		}
+		return s.welcome(u, true)
 	}
 	// The install event may have been missed: remember the DM on any message.
 	if state, _, err := s.d.States.FindByEmail(ctx, email); err == nil && state.SpaceID != ev.Space.Name {
@@ -336,6 +444,9 @@ func (s *service) cardClicked(ctx context.Context, ev chat_app_dto.Event) chat_a
 	if strings.HasPrefix(ev.Action.ActionMethodName, chat_interactive_service.ActionPrefix) {
 		return s.menuClicked(ctx, ev)
 	}
+	if ev.Action.ActionMethodName == chat_app_card.NotifChoiceFunction {
+		return s.notifChoice(ctx, ev)
+	}
 	if ev.Action.ActionMethodName != chat_app_card.GeserFunction {
 		return chat_app_dto.Response{}
 	}
@@ -360,6 +471,34 @@ func (s *service) cardClicked(ctx context.Context, ev chat_app_dto.Event) chat_a
 		})
 		return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseNewMessage}, Text: processingText}
 	}
+}
+
+// notifChoice answers the welcome card's notification buttons for the
+// clicking user. "Nanti saja" records nothing, so the web still asks.
+func (s *service) notifChoice(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
+	u, reply, ok := s.findUser(ctx, ev.User.Email)
+	if !ok {
+		return s.private(ev, reply)
+	}
+	status := notifLaterText
+	if ev.Action.Param("on") == "1" {
+		if s.d.Notifications == nil {
+			return s.private(ev, errorText)
+		}
+		if _, err := s.d.Notifications.SetNotificationsEnabled(ctx, u.UserID, true); err != nil {
+			log.Printf("chat_app_service: turning notifications on for %s failed: %v", ev.User.Email, err)
+			return s.private(ev, errorText)
+		}
+		status = notifOnText
+	}
+	if ev.Message == nil || len(ev.Message.CardsV2) == 0 {
+		return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseNewMessage}, Text: status, LogText: status}
+	}
+	cards := make([]chat_app_dto.CardWithID, 0, len(ev.Message.CardsV2))
+	for _, c := range ev.Message.CardsV2 {
+		cards = append(cards, chat_app_dto.CardWithID{CardID: c.CardID, Card: chat_app_card.AnswerNotifChoice(c.Card, chat_app_card.ToCardHTML(status))})
+	}
+	return chat_app_dto.Response{ActionResponse: &chat_app_dto.ActionResponse{Type: chat_app_dto.ResponseUpdateMessage}, CardsV2: cards, LogText: status}
 }
 
 // menuClicked answers the buttons of command cards: the reply replaces the

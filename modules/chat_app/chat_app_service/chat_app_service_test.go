@@ -81,7 +81,7 @@ const dev = "dev@esb.co.id"
 
 func newSvc(states *fakeStates, cmds *fakeCommands, app *fakeApp) Service {
 	return New(Deps{
-		Users:    fakeUsers{dev: {Email: dev, FlagActive: true}, "off@esb.co.id": {Email: "off@esb.co.id", FlagActive: false}},
+		Users:    fakeUsers{dev: {Email: dev, FlagActive: true, NotificationsEnabled: true}, "off@esb.co.id": {Email: "off@esb.co.id", FlagActive: false}},
 		States:   states,
 		Commands: cmds,
 		App:      app,

@@ -41,8 +41,24 @@ func (s *registrationServiceImpl) Register(ctx context.Context, name, email stri
 		return fmt.Errorf("registration_service: UpsertUser failed: %w", err)
 	}
 
-	s.sendThankYouDM(ctx, email)
+	if !ShouldSkipThankYouDM(ctx) {
+		s.sendThankYouDM(ctx, email)
+	}
 	return nil
+}
+
+type skipThankYouKey struct{}
+
+// WithoutThankYouDM marks a registration whose caller sends its own welcome
+// (the Chat App install replies in the same DM), so the user isn't greeted twice.
+func WithoutThankYouDM(ctx context.Context) context.Context {
+	return context.WithValue(ctx, skipThankYouKey{}, true)
+}
+
+// ShouldSkipThankYouDM reports whether ctx came from WithoutThankYouDM.
+func ShouldSkipThankYouDM(ctx context.Context) bool {
+	skip, _ := ctx.Value(skipThankYouKey{}).(bool)
+	return skip
 }
 
 // sendThankYouDM is best-effort (spec AC3.2): registration is NOT affected

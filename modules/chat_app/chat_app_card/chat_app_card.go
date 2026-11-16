@@ -69,6 +69,31 @@ func TextCard(text string) (string, []chat_app_dto.CardWithID, bool) {
 	return short, []chat_app_dto.CardWithID{{CardID: "nudge-notice", Card: card}}, true
 }
 
+// NotifChoiceFunction is the welcome card's notification buttons ("on" =
+// "1" turns the master switch on, "0" = later). Answered by chat_app_service
+// itself, not chat_interactive.
+const NotifChoiceFunction = "notif_choice"
+
+// WelcomeCard is the install greeting: the first line as message text, the
+// rest in a card with — while notifications are still off — "Nyalakan
+// notifikasi" / "Nanti saja", then the menu button.
+func WelcomeCard(text string, askNotif bool) (string, []chat_app_dto.CardWithID) {
+	short, rest, _ := strings.Cut(WithoutHelpHint(text), "\n")
+	var widgets []chat_app_dto.Widget
+	if rest = cardBody(rest); rest != "" {
+		widgets = append(widgets, chat_app_dto.Widget{TextParagraph: &chat_app_dto.TextParagraph{Text: ToCardHTML(rest)}})
+	}
+	if askNotif {
+		widgets = append(widgets, chat_app_dto.Widget{ButtonList: &chat_app_dto.ButtonList{Buttons: []chat_app_dto.Button{
+			actionButton("🔔 Nyalakan notifikasi", NotifChoiceFunction, "on", "1"),
+			actionButton("Nanti saja", NotifChoiceFunction, "on", "0"),
+		}}})
+	}
+	widgets = append(widgets, chat_app_dto.Widget{ButtonList: &chat_app_dto.ButtonList{Buttons: []chat_app_dto.Button{MenuButton()}}})
+	card := chat_app_dto.Card{Sections: []chat_app_dto.Section{{Widgets: widgets}}}
+	return short, []chat_app_dto.CardWithID{{CardID: "nudge-welcome", Card: card}}
+}
+
 var (
 	boldPattern   = regexp.MustCompile(`\*([^*\n]+)\*`)
 	italicPattern = regexp.MustCompile(`(^|[\s(])_([^_\n]+)_`)
@@ -166,6 +191,18 @@ func cardBody(body string, drop ...string) string {
 // StripActions returns a copy of card without action buttons (links stay)
 // and with status appended as its last section (AC6.3, AC6.4).
 func StripActions(card chat_app_dto.Card, status string) chat_app_dto.Card {
+	return stripButtons(card, status, func(b chat_app_dto.Button) bool { return b.OnClick.Action == nil })
+}
+
+// AnswerNotifChoice drops the welcome card's notification buttons (the menu
+// button stays) and appends status as its last section.
+func AnswerNotifChoice(card chat_app_dto.Card, status string) chat_app_dto.Card {
+	return stripButtons(card, status, func(b chat_app_dto.Button) bool {
+		return b.OnClick.Action == nil || b.OnClick.Action.Function != NotifChoiceFunction
+	})
+}
+
+func stripButtons(card chat_app_dto.Card, status string, keepButton func(chat_app_dto.Button) bool) chat_app_dto.Card {
 	out := chat_app_dto.Card{Header: card.Header}
 	for _, s := range card.Sections {
 		var ws []chat_app_dto.Widget
@@ -176,7 +213,7 @@ func StripActions(card chat_app_dto.Card, status string) chat_app_dto.Card {
 			}
 			var keep []chat_app_dto.Button
 			for _, b := range w.ButtonList.Buttons {
-				if b.OnClick.Action == nil {
+				if keepButton(b) {
 					keep = append(keep, b)
 				}
 			}
