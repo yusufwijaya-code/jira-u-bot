@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 // TrackingRule says which statuses of a project count toward a ticket's
-// time budget (Tech Spec "CORE: Waktu Code Review Ikut Dihitung").
+// time budget and where its Story Points live (Tech Spec "Aturan Board").
+// Rules come from ms_tracking_rule through SetRules.
 type TrackingRule struct {
+	// ProjectKey: the Jira project ("CORE"); "" for the fallback rule.
+	ProjectKey string
 	// TrackedStatuses: the budget clock runs while the ticket is in any of
 	// these; moving between them never stops it.
 	TrackedStatuses []string
@@ -18,31 +22,81 @@ type TrackingRule struct {
 	DoneStatus string
 	// ReviewStatus (optional): a tracked status that is the code review.
 	ReviewStatus string
+	// StoryPointFields: custom field IDs holding Story Points, in read
+	// priority (the first non-null one wins).
+	StoryPointFields []string
+	// StoryPointWriteField / StoryPointWriteFieldSubtask: where Buat Card
+	// writes Story Points for a normal card / a subtask.
+	StoryPointWriteField        string
+	StoryPointWriteFieldSubtask string
 }
 
-// trackingRules is the single source of truth for every place that needs
-// to know which statuses are tracked: the poller (JQL, exits, session
-// start), the reminder engine, and the dashboard. Status names are matched
-// case-insensitively (CORE writes "CODE REVIEW", OMS "Code Review").
-var trackingRules = map[string]TrackingRule{
-	"OMS": {
-		TrackedStatuses: []string{StatusCodeProcess},
-		DoneStatus:      StatusCodeReview,
-	},
-	"CORE": {
-		TrackedStatuses: []string{StatusCodeProcess, StatusCodeReviewCore},
-		DoneStatus:      StatusCodeCompletedCore,
-		ReviewStatus:    StatusCodeReviewCore,
-	},
+// ruleSet is one immutable snapshot of the active rules: readers load it
+// once (lock-free) and never see a half-swapped registry.
+type ruleSet struct {
+	byKey map[string]TrackingRule
+	keys  []string // sorted
 }
 
-// defaultTrackingRule applies to any project not in trackingRules (the
+var currentRules atomic.Pointer[ruleSet]
+
+func init() { SetRules(BuiltinRules()) }
+
+// BuiltinRules are OMS & CORE exactly as the 0021b seed — the registry's
+// content until tracking_rule loads the table (and in unit tests).
+func BuiltinRules() []TrackingRule {
+	return []TrackingRule{
+		{
+			ProjectKey:                  "CORE",
+			TrackedStatuses:             []string{StatusCodeProcess, StatusCodeReviewCore},
+			DoneStatus:                  StatusCodeCompletedCore,
+			ReviewStatus:                StatusCodeReviewCore,
+			StoryPointFields:            []string{StoryPointFieldIDCoreEstimate, StoryPointFieldIDCore},
+			StoryPointWriteField:        StoryPointFieldIDCoreEstimate,
+			StoryPointWriteFieldSubtask: StoryPointFieldIDCore,
+		},
+		{
+			ProjectKey:                  "OMS",
+			TrackedStatuses:             []string{StatusCodeProcess},
+			DoneStatus:                  StatusCodeReview,
+			StoryPointFields:            []string{StoryPointFieldID},
+			StoryPointWriteField:        StoryPointFieldID,
+			StoryPointWriteFieldSubtask: StoryPointFieldID,
+		},
+	}
+}
+
+// SetRules installs the ACTIVE rules (every rule passed counts as active).
+// Keys are upper-cased; a rule without a project key or tracked status is
+// skipped. An empty list tracks nothing: TrackedIssuesJQL returns "".
+func SetRules(active []TrackingRule) {
+	set := &ruleSet{byKey: make(map[string]TrackingRule, len(active))}
+	for _, r := range active {
+		key := strings.ToUpper(strings.TrimSpace(r.ProjectKey))
+		if key == "" || len(r.TrackedStatuses) == 0 {
+			continue
+		}
+		r.ProjectKey = key
+		r.TrackedStatuses = append([]string(nil), r.TrackedStatuses...)
+		r.StoryPointFields = append([]string(nil), r.StoryPointFields...)
+		if _, dup := set.byKey[key]; !dup {
+			set.keys = append(set.keys, key)
+		}
+		set.byKey[key] = r
+	}
+	sort.Strings(set.keys)
+	currentRules.Store(set)
+}
+
+func snapshot() *ruleSet { return currentRules.Load() }
+
+// defaultTrackingRule applies to a project without an active rule (the
 // legacy behavior: only Code Process counts, Code Review is "done").
-var defaultTrackingRule = trackingRules["OMS"]
+var defaultTrackingRule = TrackingRule{TrackedStatuses: []string{StatusCodeProcess}, DoneStatus: StatusCodeReview}
 
 // RuleFor returns the tracking rule of a project key ("OMS", "CORE").
 func RuleFor(projectKey string) TrackingRule {
-	if rule, ok := trackingRules[strings.ToUpper(projectKey)]; ok {
+	if rule, ok := snapshot().byKey[strings.ToUpper(projectKey)]; ok {
 		return rule
 	}
 	return defaultTrackingRule
@@ -51,6 +105,44 @@ func RuleFor(projectKey string) TrackingRule {
 // RuleForIssue returns the tracking rule of an issue key ("CORE-123").
 func RuleForIssue(issueKey string) TrackingRule {
 	return RuleFor(ProjectKeyOf(issueKey))
+}
+
+// IsTrackedProject reports whether projectKey has an active rule.
+func IsTrackedProject(projectKey string) bool {
+	_, ok := snapshot().byKey[strings.ToUpper(projectKey)]
+	return ok
+}
+
+// ActiveProjectKeys returns the projects with an active rule, sorted.
+func ActiveProjectKeys() []string {
+	return append([]string(nil), snapshot().keys...)
+}
+
+// StoryPointFieldIDs is every active rule's Story Point fields (project
+// order, then priority), without duplicates — the fields= of issue searches.
+func StoryPointFieldIDs() []string {
+	set := snapshot()
+	seen := map[string]bool{}
+	var out []string
+	for _, key := range set.keys {
+		for _, id := range set.byKey[key].StoryPointFields {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
+// ProjectsJQLIn is "project in (CORE, OMS)" over the active projects, or ""
+// when none is active (callers then skip the search).
+func ProjectsJQLIn() string {
+	keys := snapshot().keys
+	if len(keys) == 0 {
+		return ""
+	}
+	return "project in (" + strings.Join(keys, ", ") + ")"
 }
 
 // ProjectKeyOf returns "CORE" for "CORE-123" ("" when there's no dash).
@@ -86,20 +178,16 @@ func (r TrackingRule) TracksReview() bool {
 	return r.ReviewStatus != ""
 }
 
-// TrackedIssuesJQL is the poller's search: every ticket of a known project
-// in one of that project's tracked statuses. Deterministic (sorted) so it
-// is testable and cache-friendly.
+// TrackedIssuesJQL is the poller's search: every ticket of an active project
+// in one of that project's tracked statuses; "" when no rule is active.
+// Deterministic (sorted) so it is testable and cache-friendly.
 func TrackedIssuesJQL() string {
-	keys := make([]string, 0, len(trackingRules))
-	for key := range trackingRules {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	clauses := make([]string, 0, len(keys))
-	for _, key := range keys {
-		quoted := make([]string, len(trackingRules[key].TrackedStatuses))
-		for i, status := range trackingRules[key].TrackedStatuses {
+	set := snapshot()
+	clauses := make([]string, 0, len(set.keys))
+	for _, key := range set.keys {
+		rule := set.byKey[key]
+		quoted := make([]string, len(rule.TrackedStatuses))
+		for i, status := range rule.TrackedStatuses {
 			quoted[i] = fmt.Sprintf("%q", status)
 		}
 		clauses = append(clauses, fmt.Sprintf(`(project = %s AND status in (%s))`, key, strings.Join(quoted, ", ")))
