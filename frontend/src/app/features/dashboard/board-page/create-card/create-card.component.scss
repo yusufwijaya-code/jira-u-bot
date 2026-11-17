@@ -54,8 +54,25 @@ app-single-card-form, app-bulk-subtasks { display: block; animation: fade-up 240
   small { font-size: .76rem; color: var(--text-faint); line-height: 1.35; } }
 @media (max-width: 560px) { .cc-seg-text small { display: none; } .cc-seg-opt { padding: 8px 10px; } }
 
+// Meta loading skeleton (.skeleton shimmer is global); blocks cascade in.
+.cc-sk { display: flex; flex-direction: column; gap: 14px; animation: fade-in 200ms var(--ease); }
+.cc-sk-note { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--text-faint); }
+.cc-sk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary-light); animation: glow-pulse 1.2s var(--ease) infinite; }
+.cc-sk-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 18px 22px; align-items: start; }
+.cc-sk-col, .cc-sk-side { display: flex; flex-direction: column; gap: 14px; }
+.cc-sk-side { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.cc-sk-field, .cc-sk-step { animation: fade-up 260ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
+.cc-sk-field { display: flex; flex-direction: column; gap: 6px; }
+.cc-sk-label { display: block; width: 90px; height: 11px; &.wide { width: 160px; height: 13px; } }
+.cc-sk-input { display: block; height: 40px; &.tall { height: 110px; } }
+.cc-sk-step { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+.cc-sk-num { flex: none; width: 28px; height: 28px; border-radius: 50%; }
+.cc-sk-steptext { display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 960px) { .cc-sk-form { grid-template-columns: 1fr; } }
+
 @media (prefers-reduced-motion: reduce) {
-  :host, app-single-card-form, app-bulk-subtasks, .cc-banner, .cc-seg-ind, .cc-seg-opt, .cc-seg-icon { animation: none; transition: none; }
+  :host, app-single-card-form, app-bulk-subtasks, .cc-banner, .cc-seg-ind, .cc-seg-opt, .cc-seg-icon,
+  .cc-sk, .cc-sk-dot, .cc-sk-field, .cc-sk-step { animation: none; transition: none; }
   :host ::ng-deep {
     .cc-err, .cc-warn, .cc-pop, .cc-reveal > *, .tb-hint { animation: none; }
     .cc-opt, .cc-field input, .cc-field textarea { transition: none; }
