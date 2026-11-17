@@ -25,11 +25,28 @@ func handledFor(rule jira_client_dto.TrackingRule, id string) bool {
 	return false
 }
 
+// storyPointFieldFor is preferred when the type has it, else the first of the
+// rule's read fields the type has; "" when the type has none.
+func storyPointFieldFor(preferred string, readOrder []string, onType map[string]bool) string {
+	if preferred != "" && onType[preferred] {
+		return preferred
+	}
+	for _, id := range readOrder {
+		if onType[id] {
+			return id
+		}
+	}
+	return ""
+}
+
 // mapType turns one createmeta issue type into the form's TypeMeta. rule is
 // the project's tracking rule (Tech Spec "Aturan Board", AC5.3): the SP
 // input writes StoryPointWriteFieldSubtask for a subtask type and
-// StoryPointWriteField otherwise — only when that field is on the type's
-// createmeta; otherwise the SP input is hidden (AC5.3b).
+// StoryPointWriteField otherwise. When that field isn't on the type's
+// createmeta, the next of the rule's Story Point fields that is (in read
+// order) is used — user decision 2026-11-17: CORE cards use "Story Point
+// Estimate" when the type has it, else "Story Points". No SP field at all on
+// the type → the SP input is hidden (AC5.3b).
 func mapType(rule jira_client_dto.TrackingRule, t jira_client_dto.CreateMetaIssueType, fields []jira_client_dto.CreateMetaField) TypeMeta {
 	tm := TypeMeta{ID: t.ID, Name: t.Name, Subtask: t.Subtask, Supported: true, Fields: []Field{}}
 	ids := map[string]bool{}
@@ -40,9 +57,7 @@ func mapType(rule jira_client_dto.TrackingRule, t jira_client_dto.CreateMetaIssu
 	if t.Subtask {
 		write = rule.StoryPointWriteFieldSubtask
 	}
-	if write != "" && ids[write] {
-		tm.StoryPointField = write
-	}
+	tm.StoryPointField = storyPointFieldFor(write, rule.StoryPointFields, ids)
 	tm.ParentAllowed = ids["parent"]
 	for _, f := range fields {
 		if handledFor(rule, f.ID()) || !f.Required {

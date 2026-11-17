@@ -306,8 +306,27 @@ func TestMeta_CoreWritesEstimateOnCardsAndStoryPointsOnSubtasks(t *testing.T) {
 	if sub.StoryPointField != "customfield_11053" {
 		t.Fatalf("subtask = %+v, want SP on customfield_11053 (AC5.3)", sub)
 	}
-	if bug.StoryPointField != "" {
-		t.Fatalf("bug = %+v, want SP hidden: customfield_10125 is not on its createmeta (AC5.3b)", bug)
+	if bug.StoryPointField != "customfield_11053" {
+		t.Fatalf("bug = %+v, want Story Points as the fallback: customfield_10125 is not on its createmeta", bug)
+	}
+}
+
+func TestStoryPointFieldFor_PrefersTheWriteFieldThenReadOrder(t *testing.T) {
+	read := []string{"customfield_10125", "customfield_11053"}
+	cases := []struct {
+		name, preferred string
+		onType          map[string]bool
+		want            string
+	}{
+		{"preferred present", "customfield_10125", map[string]bool{"customfield_10125": true, "customfield_11053": true}, "customfield_10125"},
+		{"fallback to Story Points", "customfield_10125", map[string]bool{"customfield_11053": true}, "customfield_11053"},
+		{"subtask prefers Story Points", "customfield_11053", map[string]bool{"customfield_10125": true, "customfield_11053": true}, "customfield_11053"},
+		{"no SP field on the type", "customfield_10125", map[string]bool{"summary": true}, ""},
+	}
+	for _, c := range cases {
+		if got := storyPointFieldFor(c.preferred, read, c.onType); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 
