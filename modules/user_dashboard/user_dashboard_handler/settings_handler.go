@@ -46,6 +46,19 @@ type SettingsChange struct {
 	Kind    SettingsChangeKind
 	BoardID int64
 	Until   *time.Time
+
+	// Details for the user's own confirmation DM (SelfChangeListener); the
+	// admin listener ignores them. Only filled when a listener is set.
+	//
+	// Before / After: the effective settings around a ChangeNotification
+	// (Before nil when it couldn't be read).
+	Before, After *user_setting_dto.UserSetting
+	// Enabled: the master switch's new value (ChangeNotificationsSwitch).
+	Enabled *bool
+	// NoOp: the write left everything as it was (same switch value, a
+	// board already on default, nothing to unmute / delete, same
+	// notification settings).
+	NoOp bool
 }
 
 // TargetResolver returns the request's target user. When it returns false
@@ -96,6 +109,20 @@ func (h *SettingsHandler) emit(c *gin.Context, target SettingsTarget, change Set
 	if h.onChange != nil {
 		h.onChange(c, target, change)
 	}
+}
+
+// effectiveBefore reads the target's effective settings ahead of a write,
+// for the change listener's NoOp / Before — nil without a listener or when
+// the read fails (the change is then reported as a real one).
+func (h *SettingsHandler) effectiveBefore(c *gin.Context, userID, boardID int64) *user_setting_dto.UserSetting {
+	if h.onChange == nil {
+		return nil
+	}
+	s, err := h.userSettings.GetEffective(c.Request.Context(), userID, boardID)
+	if err != nil {
+		return nil
+	}
+	return &s
 }
 
 // GetSettings returns the target's EFFECTIVE settings for the scope, both
@@ -170,6 +197,7 @@ func (h *SettingsHandler) UpdateNotification(c *gin.Context) {
 		return
 	}
 
+	before := h.effectiveBefore(c, target.UserID, boardID)
 	saved, err := h.userSettings.SaveNotification(c.Request.Context(), target.UserID, boardID, in)
 	if err != nil {
 		var verr *user_setting_dto.ValidationError
@@ -180,7 +208,11 @@ func (h *SettingsHandler) UpdateNotification(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
 		return
 	}
-	h.emit(c, target, SettingsChange{Kind: ChangeNotification, BoardID: boardID})
+	after := saved
+	h.emit(c, target, SettingsChange{
+		Kind: ChangeNotification, BoardID: boardID, Before: before, After: &after,
+		NoOp: before != nil && !(boardID != user_setting_dto.DefaultBoardID && before.UseDefault) && SameNotification(*before, saved),
+	})
 	c.JSON(http.StatusOK, notificationJSON(saved))
 }
 
@@ -205,12 +237,22 @@ func (h *SettingsHandler) UpdateNotificationsSwitch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled wajib diisi (true/false)"})
 		return
 	}
+	var prev *user_setting_dto.NotificationSwitch
+	if h.onChange != nil {
+		if p, err := h.userSettings.NotificationSwitch(c.Request.Context(), target.UserID); err == nil {
+			prev = &p
+		}
+	}
 	sw, err := h.userSettings.SetNotificationsEnabled(c.Request.Context(), target.UserID, *in.Enabled)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal menyimpan pilihan notifikasi"})
 		return
 	}
-	h.emit(c, target, SettingsChange{Kind: ChangeNotificationsSwitch})
+	enabled := *in.Enabled
+	h.emit(c, target, SettingsChange{
+		Kind: ChangeNotificationsSwitch, Enabled: &enabled,
+		NoOp: prev != nil && prev.Chosen && prev.Enabled == enabled,
+	})
 	c.JSON(http.StatusOK, notificationSwitchJSON(sw))
 }
 
@@ -228,11 +270,12 @@ func (h *SettingsHandler) ResetNotification(c *gin.Context) {
 	if !ok {
 		return
 	}
+	before := h.effectiveBefore(c, target.UserID, boardID)
 	if err := h.userSettings.ResetToDefault(c.Request.Context(), target.UserID, boardID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reset settings"})
 		return
 	}
-	h.emit(c, target, SettingsChange{Kind: ChangeReset, BoardID: boardID})
+	h.emit(c, target, SettingsChange{Kind: ChangeReset, BoardID: boardID, NoOp: before != nil && before.UseDefault})
 	setting, err := h.userSettings.GetEffective(c.Request.Context(), target.UserID, boardID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load settings"})
@@ -293,11 +336,20 @@ func (h *SettingsHandler) Unmute(c *gin.Context) {
 	if !ok {
 		return
 	}
+	before := h.effectiveBefore(c, target.UserID, boardID)
 	if err := h.userSettings.Unmute(c.Request.Context(), target.UserID, boardID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to unmute"})
 		return
 	}
-	h.emit(c, target, SettingsChange{Kind: ChangeUnmute, BoardID: boardID})
+	noOp := false
+	if before != nil {
+		muted := before.MutedUntil
+		if boardID != user_setting_dto.DefaultBoardID {
+			muted = before.BoardMutedUntil
+		}
+		noOp = !user_setting_dto.MuteActive(muted, time.Now())
+	}
+	h.emit(c, target, SettingsChange{Kind: ChangeUnmute, BoardID: boardID, NoOp: noOp})
 	c.JSON(http.StatusOK, gin.H{"active": false, "until": nil, "forever": false})
 }
 
@@ -392,10 +444,16 @@ func (h *SettingsHandler) DeleteCredential(c *gin.Context) {
 	if !ok {
 		return
 	}
+	hadCredential := true
+	if h.onChange != nil {
+		if _, found, err := h.jiraCredential.MaskedPreview(c.Request.Context(), target.UserID); err == nil {
+			hadCredential = found
+		}
+	}
 	if err := h.jiraCredential.DeleteCredential(c.Request.Context(), target.UserID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete credential"})
 		return
 	}
-	h.emit(c, target, SettingsChange{Kind: ChangeCredentialDeleted})
+	h.emit(c, target, SettingsChange{Kind: ChangeCredentialDeleted, NoOp: !hadCredential})
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

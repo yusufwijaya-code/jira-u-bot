@@ -11,6 +11,7 @@ import { BoardAvatarComponent } from '../../shared/ui/board-avatar.component';
 import { NotificationConsentComponent } from '../../shared/ui/notification-consent.component';
 import { IconComponent } from '../../shared/ui/icon.component';
 import { TopbarHeightDirective } from '../../shared/ui/topbar-height.directive';
+import { scrollTopOnPageChange } from '../../shared/ui/scroll-top-on-page-change';
 import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { ChatAppBannerComponent } from '../../shared/ui/chat-app-banner.component';
 import { environment } from '../../../environments/environment';
@@ -34,6 +35,8 @@ export class DashboardShellComponent implements OnInit {
   private notifSwitch = inject(NotificationSwitchService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  // Each page opens at the top; ?board= switches keep the scroll.
+  private readonly scrollReset = scrollTopOnPageChange();
 
   @ViewChild('userMenu') private userMenu?: ElementRef<HTMLElement>;
   @ViewChild('boardMenu') private boardMenu?: ElementRef<HTMLElement>;

@@ -41,13 +41,31 @@ func NewUserDashboardHandler(
 	jiraCredential jira_credential_service.JiraCredentialService,
 	userSettings user_setting_service.UserSettingService,
 	avatars AvatarSource,
+	opts ...Option,
 ) UserDashboardHandler {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	return &userDashboardHandlerImpl{
 		dashboardSvc:    dashboardSvc,
 		chatInteractive: chatInteractive,
 		avatars:         avatars,
-		settings:        NewSettingsHandler(dashboardSvc, jiraCredential, userSettings, SessionTarget, nil),
+		settings:        NewSettingsHandler(dashboardSvc, jiraCredential, userSettings, SessionTarget, o.selfChange),
 	}
+}
+
+type options struct {
+	selfChange ChangeListener
+}
+
+// Option configures optional behavior of the user dashboard handler.
+type Option func(*options)
+
+// WithSelfChangeListener is told about every change the session user makes
+// to their own settings (see SelfChangeListener).
+func WithSelfChangeListener(l ChangeListener) Option {
+	return func(o *options) { o.selfChange = l }
 }
 
 func currentUser(c *gin.Context) auth_dto.Session {
