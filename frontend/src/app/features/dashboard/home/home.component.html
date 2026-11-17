@@ -208,15 +208,15 @@
         </div>
         <button
           type="button"
-          class="icon-btn"
+          class="btn btn-sm btn-soft sync-btn"
           data-backfill
-          title="Hitung ulang dari Jira"
-          aria-label="Hitung ulang dari Jira"
-          [class.spinning]="backfilling()"
+          title="Ambil ulang waktu tiket dari riwayat Jira — untuk waktu yang terlewat atau kurang tepat"
+          [class.loading]="backfilling()"
           [disabled]="backfilling() || reportLoading()"
-          (click)="backfillSprint()"
+          (click)="askBackfill()"
         >
-          <app-icon name="refresh" [size]="16" />
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="btn-label"><app-icon name="refresh" [size]="14" /> Sinkron Jira</span>
         </button>
       </header>
 

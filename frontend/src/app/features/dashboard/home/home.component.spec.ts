@@ -484,32 +484,57 @@ describe('HomeComponent', () => {
       expect(sprintCard().querySelector('.achievement-ring:not(.empty)')).toBeNull();
     });
 
-    it('"Hitung ulang dari Jira" backfills, reports how many were added and reloads the summary', () => {
+    const clickSync = async () => {
+      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+
+    it('labels the sync button instead of showing a bare icon', () => {
+      const btn = sprintCard().querySelector('[data-backfill]') as HTMLButtonElement;
+      expect(btn.textContent).toContain('Sinkron Jira');
+      expect(btn.getAttribute('title')).toContain('riwayat Jira');
+    });
+
+    it('explains what the sync does before running it', async () => {
+      confirm.ask.and.resolveTo(false);
+      await clickSync();
+
+      const opts = confirm.ask.calls.mostRecent().args[0];
+      expect(opts.title).toContain('Sinkron');
+      expect(opts.points?.length).toBe(2);
+      expect(opts.points?.join(' ')).toContain('bot sempat mati');
+      expect(opts.points?.join(' ')).toContain('CODE REVIEW');
+      expect(opts.note).toContain('07:00');
+      expect(dashboard.backfillSprint).not.toHaveBeenCalled();
+    });
+
+    it('syncs after confirmation, reports how many were added and reloads the summary', async () => {
+      confirm.ask.and.resolveTo(true);
       dashboard.backfillSprint.and.returnValue(of({ added: 8, updated: 0 }));
       const before = dashboard.getSprintReport.calls.count();
 
-      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
-      fixture.detectChanges();
+      await clickSync();
 
       expect(dashboard.backfillSprint).toHaveBeenCalled();
       expect(toast.success).toHaveBeenCalledWith('Data sprint diperbarui', '8 tiket ditambahkan dari riwayat Jira.');
       expect(dashboard.getSprintReport.calls.count()).toBe(before + 1);
     });
 
-    it('"Hitung ulang dari Jira" reports recalculated tickets too', () => {
+    it('reports recalculated tickets too', async () => {
+      confirm.ask.and.resolveTo(true);
       dashboard.backfillSprint.and.returnValue(of({ added: 1, updated: 7 }));
-      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
-      fixture.detectChanges();
+      await clickSync();
       expect(toast.success).toHaveBeenCalledWith(
         'Data sprint diperbarui',
         '1 tiket ditambahkan, 7 tiket dihitung ulang dari riwayat Jira.',
       );
     });
 
-    it('tells the user when the backfill fails', () => {
+    it('tells the user when the sync fails', async () => {
+      confirm.ask.and.resolveTo(true);
       dashboard.backfillSprint.and.returnValue(throwError(() => ({ status: 500 })));
-      (sprintCard().querySelector('[data-backfill]') as HTMLButtonElement).click();
-      fixture.detectChanges();
+      await clickSync();
       expect(toast.error).toHaveBeenCalled();
     });
   });

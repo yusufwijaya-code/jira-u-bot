@@ -46,6 +46,16 @@ const TOAST_ICONS = { success: 'check-circle', error: 'alert-circle', info: 'inf
           </div>
           <h3 id="confirm-title">{{ dialog.title }}</h3>
           <p>{{ dialog.message }}</p>
+          @if (dialog.points.length) {
+            <ul class="modal-points">
+              @for (point of dialog.points; track point) {
+                <li><app-icon name="check-circle" [size]="15" /><span>{{ point }}</span></li>
+              }
+            </ul>
+          }
+          @if (dialog.note) {
+            <p class="modal-note"><app-icon name="clock" [size]="13" /> {{ dialog.note }}</p>
+          }
           <div class="modal-actions">
             <button type="button" class="btn btn-ghost" (click)="confirmService.close(false)">{{ dialog.cancelText }}</button>
             <button

@@ -8,6 +8,10 @@ export interface ConfirmOptions {
   /** `danger` styles the confirm button red, for destructive actions. */
   tone?: 'danger' | 'primary';
   icon?: string;
+  /** Optional bullet list under the message, e.g. what an action will do. */
+  points?: string[];
+  /** Optional small print under the points. */
+  note?: string;
 }
 
 export interface ConfirmRequest extends Required<ConfirmOptions> {
@@ -33,6 +37,8 @@ export class ConfirmService {
         tone: 'primary',
         icon: options.tone === 'danger' ? 'trash' : 'info',
         ...options,
+        points: options.points ?? [],
+        note: options.note ?? '',
         resolve,
       });
     });
