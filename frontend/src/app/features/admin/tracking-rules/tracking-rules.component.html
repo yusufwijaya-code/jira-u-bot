@@ -55,7 +55,11 @@
           [style.animation-delay.ms]="i * 60"
         >
           <header class="tr-card-head">
-            <span class="tr-key-badge" aria-hidden="true">{{ rule.projectKey.slice(0, 4) }}</span>
+            @if (rule.boardId) {
+              <app-board-avatar class="tr-avatar" [boardId]="rule.boardId" [projectKey]="rule.projectKey" [size]="52" data-avatar />
+            } @else {
+              <span class="tr-key-badge" aria-hidden="true">{{ rule.projectKey.slice(0, 4) }}</span>
+            }
             <div class="tr-title">
               <h3>{{ rule.projectKey }}</h3>
               <span class="tr-name">{{ rule.projectName || '—' }}</span>
@@ -100,15 +104,22 @@
                   </div>
                   <div class="tr-tags">
                     @if (f.id === rule.storyPointWriteField) {
-                      <span class="tr-tag card">Tulis card</span>
+                      <span class="tr-tag card" data-tag="card">Tulis card</span>
+                    } @else {
+                      <span class="tr-tag card backup" data-tag="card-backup" title="Dipakai untuk card biasa kalau field utamanya tidak ada di tipe card itu">Cadangan card</span>
                     }
                     @if (f.id === rule.storyPointWriteFieldSubtask) {
-                      <span class="tr-tag subtask">Tulis subtask</span>
+                      <span class="tr-tag subtask" data-tag="subtask">Tulis subtask</span>
+                    } @else {
+                      <span class="tr-tag subtask backup" data-tag="subtask-backup" title="Dipakai untuk subtask kalau field utamanya tidak ada di tipe subtask itu">Cadangan subtask</span>
                     }
                   </div>
                 </li>
               }
             </ol>
+            @if (rule.storyPointFields.length > 1) {
+              <p class="tr-sp-note">Kalau field "Tulis" tidak ada di tipe card Jira-nya, Buat Card memakai field cadangan.</p>
+            }
           </div>
 
           <footer class="tr-card-foot">

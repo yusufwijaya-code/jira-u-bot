@@ -1,5 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { of, throwError } from 'rxjs';
 import { TrackingRulesComponent } from './tracking-rules.component';
 import { TrackingRule, TrackingRuleService } from '../../../core/services/tracking-rule.service';
@@ -34,6 +36,8 @@ describe('TrackingRulesComponent', () => {
       imports: [TrackingRulesComponent],
       providers: [
         provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: TrackingRuleService, useValue: api },
         { provide: ConfirmService, useValue: confirm },
         { provide: ToastService, useValue: toast },
@@ -53,6 +57,24 @@ describe('TrackingRulesComponent', () => {
     const order = Array.from(core.querySelectorAll('[data-sp]')).map((li) => li.getAttribute('data-sp'));
     expect(order).toEqual(['customfield_10125', 'customfield_11053']);
     expect(el().querySelector('[data-add-rule]')?.getAttribute('href')).toBe('/admin/tracking-rules/new');
+  });
+
+  it('labels the write field and the fallback per card type', () => {
+    const core = el().querySelector('[data-rule="CORE"]')!;
+    const tags = (id: string) => Array.from(core.querySelectorAll(`[data-sp="${id}"] [data-tag]`)).map((t) => t.getAttribute('data-tag'));
+    expect(tags('customfield_10125')).toEqual(['card', 'subtask-backup']);
+    expect(tags('customfield_11053')).toEqual(['card-backup', 'subtask']);
+    const oms = el().querySelector('[data-rule="OMS"]')!;
+    expect(Array.from(oms.querySelectorAll('[data-tag]')).map((t) => t.getAttribute('data-tag'))).toEqual(['card', 'subtask']);
+  });
+
+  it('shows the Jira project picture when a board avatar is known, else the key badge', () => {
+    api.list.and.returnValue(of({ rules: [{ ...CORE, boardId: 26 }, OMS] }));
+    component().load();
+    fixture.detectChanges();
+    const img = el().querySelector('[data-rule="CORE"] [data-avatar] img') as HTMLImageElement;
+    expect(img?.getAttribute('src')).toContain('/boards/26/avatar');
+    expect(el().querySelector('[data-rule="OMS"] .tr-key-badge')?.textContent).toContain('OMS');
   });
 
   it('dims an inactive rule and offers Aktifkan (AC2.4)', () => {

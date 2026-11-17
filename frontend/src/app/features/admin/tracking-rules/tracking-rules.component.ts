@@ -5,6 +5,7 @@ import { TrackingRule, TrackingRuleError, TrackingRuleService } from '../../../c
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { BoardAvatarComponent } from '../../../shared/ui/board-avatar.component';
 import { recalculateAction } from './recalculate-action';
 
 /**
@@ -15,7 +16,7 @@ import { recalculateAction } from './recalculate-action';
 @Component({
   selector: 'app-tracking-rules',
   standalone: true,
-  imports: [RouterLink, IconComponent],
+  imports: [RouterLink, IconComponent, BoardAvatarComponent],
   templateUrl: './tracking-rules.component.html',
   styleUrl: './tracking-rules.component.scss',
 })

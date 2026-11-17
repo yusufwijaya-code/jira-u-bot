@@ -29,6 +29,9 @@
   color: #fff; font-weight: 800; font-size: .82rem; letter-spacing: .04em; box-shadow: var(--shadow-primary);
   .inactive & { background: var(--border-strong); box-shadow: none; }
 }
+.tr-avatar { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-xs); animation: pop-in 260ms var(--ease) backwards;
+  :host ::ng-deep & img, :host ::ng-deep & .board-avatar-fallback { border-radius: 14px; }
+  .inactive & { filter: grayscale(1); } }
 .tr-title { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px;
   h3 { margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--ink); letter-spacing: .01em; }
   .tr-name { font-size: .9rem; color: var(--text-muted); } }
@@ -65,7 +68,10 @@
 .tr-tags { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .tr-tag { padding: 4px 10px; border-radius: 8px; font-size: .76rem; font-weight: 700; white-space: nowrap;
   &.card { background: var(--primary-soft); color: var(--primary-strong); }
-  &.subtask { background: var(--info-soft, var(--surface-2)); color: var(--info, var(--text-muted)); } }
+  &.subtask { background: var(--info-soft, var(--surface-2)); color: var(--info, var(--text-muted)); }
+  // Fallback: same colour family, outlined instead of filled.
+  &.backup { background: transparent; border: 1px dashed currentColor; font-weight: 600; opacity: .85; } }
+.tr-sp-note { margin: 0; font-size: .82rem; color: var(--text-muted); }
 
 .tr-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding-top: 14px; margin-top: auto; border-top: 1px dashed var(--border); }
@@ -86,7 +92,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :host, .tr-card, .tr-chip, .tr-state.active .pulse { animation: none; }
+  :host, .tr-card, .tr-chip, .tr-state.active .pulse, .tr-avatar { animation: none; }
   .tr-card, .tr-add, .tr-actions .btn, .tr-fields li { transition: none; }
   .tr-card:hover { transform: none; }
 }

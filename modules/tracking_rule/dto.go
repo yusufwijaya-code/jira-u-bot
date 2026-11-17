@@ -23,6 +23,8 @@ type Rule struct {
 	IsActive                    bool
 	EditedBy                    string
 	EditedDate                  time.Time
+	// AvatarBoardID: a board of this project with a cached avatar (0 = none).
+	AvatarBoardID int64
 }
 
 // Tracking is the rule as the registry holds it.
@@ -57,6 +59,8 @@ type RuleView struct {
 	IsActive                    bool       `json:"isActive"`
 	EditedBy                    string     `json:"editedBy"`
 	EditedDate                  time.Time  `json:"editedDate"`
+	// BoardID: serve the project picture via GET /api/dashboard/boards/:boardId/avatar (null = no picture).
+	BoardID *int64 `json:"boardId"`
 }
 
 // RuleInput is the POST/PUT body (projectKey is ignored on PUT).
