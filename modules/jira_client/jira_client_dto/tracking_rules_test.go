@@ -1,6 +1,7 @@
 package jira_client_dto
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -78,5 +79,64 @@ func TestTrackedSeconds_SumsEveryRunAndSkipsTheOpenOne(t *testing.T) {
 	}
 	if _, found := TrackedSeconds(nil, RuleFor("OMS"), wall); found {
 		t.Error("empty changelog must report found=false")
+	}
+}
+
+// withRules swaps the registry for one test and restores the builtin rules.
+func withRules(t *testing.T, rules ...TrackingRule) {
+	t.Helper()
+	SetRules(rules)
+	t.Cleanup(func() { SetRules(BuiltinRules()) })
+}
+
+func TestBuiltinRules_MatchTheSeed(t *testing.T) {
+	core, oms := RuleFor("CORE"), RuleFor("OMS")
+	if !reflect.DeepEqual(core.StoryPointFields, []string{"customfield_10125", "customfield_11053"}) ||
+		core.StoryPointWriteField != "customfield_10125" || core.StoryPointWriteFieldSubtask != "customfield_11053" {
+		t.Errorf("CORE = %+v", core)
+	}
+	if !reflect.DeepEqual(oms.StoryPointFields, []string{"customfield_10016"}) ||
+		oms.StoryPointWriteField != "customfield_10016" || oms.StoryPointWriteFieldSubtask != "customfield_10016" {
+		t.Errorf("OMS = %+v", oms)
+	}
+	if got := ProjectsJQLIn(); got != "project in (CORE, OMS)" {
+		t.Errorf("ProjectsJQLIn() = %q", got)
+	}
+	if got := StoryPointFieldIDs(); !reflect.DeepEqual(got, []string{"customfield_10125", "customfield_11053", "customfield_10016"}) {
+		t.Errorf("StoryPointFieldIDs() = %v", got)
+	}
+}
+
+func TestSetRules_DrivesJQLKeysAndFields(t *testing.T) {
+	withRules(t,
+		TrackingRule{ProjectKey: "pos", TrackedStatuses: []string{"In Progress"}, DoneStatus: "Done", StoryPointFields: []string{"customfield_1", "customfield_2"}},
+		TrackingRule{ProjectKey: "OMS", TrackedStatuses: []string{"Code Process"}, DoneStatus: "Code Review", StoryPointFields: []string{"customfield_10016", "customfield_1"}},
+		TrackingRule{ProjectKey: "EMPTY", DoneStatus: "Done"}, // no tracked status: ignored
+	)
+	if got := ActiveProjectKeys(); !reflect.DeepEqual(got, []string{"OMS", "POS"}) {
+		t.Errorf("ActiveProjectKeys() = %v", got)
+	}
+	if got := ProjectsJQLIn(); got != "project in (OMS, POS)" {
+		t.Errorf("ProjectsJQLIn() = %q", got)
+	}
+	want := `(project = OMS AND status in ("Code Process")) OR (project = POS AND status in ("In Progress"))`
+	if got := TrackedIssuesJQL(); got != want {
+		t.Errorf("JQL = %s\nwant  %s", got, want)
+	}
+	if got := StoryPointFieldIDs(); !reflect.DeepEqual(got, []string{"customfield_10016", "customfield_1", "customfield_2"}) {
+		t.Errorf("StoryPointFieldIDs() = %v", got)
+	}
+	if !IsTrackedProjectKey("POS-1") || IsTrackedProjectKey("CORE-1") || !IsTrackedProject("pos") {
+		t.Error("tracked projects must follow the registry")
+	}
+	if RuleFor("CORE").IsTracked("CODE REVIEW") {
+		t.Error("a project without an active rule falls back to the legacy rule (only Code Process)")
+	}
+}
+
+func TestSetRules_EmptyTracksNothing(t *testing.T) {
+	withRules(t)
+	if TrackedIssuesJQL() != "" || ProjectsJQLIn() != "" || len(ActiveProjectKeys()) != 0 || len(StoryPointFieldIDs()) != 0 || IsTrackedProjectKey("OMS-1") {
+		t.Error("no active rule must track nothing (AC1.4)")
 	}
 }

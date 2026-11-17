@@ -6,28 +6,61 @@ import (
 	"nudge/modules/jira_client/jira_client_dto"
 )
 
-// Fields the form handles itself — never rendered as dynamic fields.
-var handled = map[string]bool{
+// baseHandled: fields the form handles itself — never rendered as dynamic
+// fields. Every Story Point field of the project's rule is handled too.
+var baseHandled = map[string]bool{
 	"project": true, "issuetype": true, "summary": true, "description": true, "reporter": true,
 	"assignee": true, "parent": true, jira_client_dto.SprintFieldID: true,
-	jira_client_dto.StoryPointFieldID: true, jira_client_dto.StoryPointFieldIDCore: true,
 }
 
-func mapType(t jira_client_dto.CreateMetaIssueType, fields []jira_client_dto.CreateMetaField) TypeMeta {
+func handledFor(rule jira_client_dto.TrackingRule, id string) bool {
+	if baseHandled[id] || id == rule.StoryPointWriteField || id == rule.StoryPointWriteFieldSubtask {
+		return true
+	}
+	for _, sp := range rule.StoryPointFields {
+		if sp == id {
+			return true
+		}
+	}
+	return false
+}
+
+// storyPointFieldFor is preferred when the type has it, else the first of the
+// rule's read fields the type has; "" when the type has none.
+func storyPointFieldFor(preferred string, readOrder []string, onType map[string]bool) string {
+	if preferred != "" && onType[preferred] {
+		return preferred
+	}
+	for _, id := range readOrder {
+		if onType[id] {
+			return id
+		}
+	}
+	return ""
+}
+
+// mapType turns one createmeta issue type into the form's TypeMeta. rule is
+// the project's tracking rule (Tech Spec "Aturan Board", AC5.3): the SP
+// input writes StoryPointWriteFieldSubtask for a subtask type and
+// StoryPointWriteField otherwise. When that field isn't on the type's
+// createmeta, the next of the rule's Story Point fields that is (in read
+// order) is used — user decision 2026-11-17: CORE cards use "Story Point
+// Estimate" when the type has it, else "Story Points". No SP field at all on
+// the type → the SP input is hidden (AC5.3b).
+func mapType(rule jira_client_dto.TrackingRule, t jira_client_dto.CreateMetaIssueType, fields []jira_client_dto.CreateMetaField) TypeMeta {
 	tm := TypeMeta{ID: t.ID, Name: t.Name, Subtask: t.Subtask, Supported: true, Fields: []Field{}}
 	ids := map[string]bool{}
 	for _, f := range fields {
 		ids[f.ID()] = true
 	}
-	switch {
-	case ids[jira_client_dto.StoryPointFieldIDCore]:
-		tm.StoryPointField = jira_client_dto.StoryPointFieldIDCore
-	case ids[jira_client_dto.StoryPointFieldID]:
-		tm.StoryPointField = jira_client_dto.StoryPointFieldID
+	write := rule.StoryPointWriteField
+	if t.Subtask {
+		write = rule.StoryPointWriteFieldSubtask
 	}
+	tm.StoryPointField = storyPointFieldFor(write, rule.StoryPointFields, ids)
 	tm.ParentAllowed = ids["parent"]
 	for _, f := range fields {
-		if handled[f.ID()] || !f.Required {
+		if handledFor(rule, f.ID()) || !f.Required {
 			continue
 		}
 		kind, multi := kindOf(f.Schema)

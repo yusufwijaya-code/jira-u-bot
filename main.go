@@ -62,6 +62,7 @@ import (
 	"nudge/modules/sprint_report/sprint_report_service"
 	"nudge/modules/status_watch/status_watch_repository"
 	"nudge/modules/status_watch/status_watch_service"
+	"nudge/modules/tracking_rule"
 	"nudge/modules/user_avatar/user_avatar_handler"
 	"nudge/modules/user_avatar/user_avatar_repository"
 	"nudge/modules/user_avatar/user_avatar_service"
@@ -275,7 +276,21 @@ func main() {
 		log.Printf("main: leave recalculation of %s rewrote %d session(s)", email, n)
 	}
 
+	// Tech Spec "Aturan Board (Admin CRUD)": tracking rules come from
+	// ms_tracking_rule — loaded before the poller and the backfill start,
+	// refreshed on every admin save and every 5 minutes.
 	shutdownMgr := shutdown.NewManager()
+	trackingRuleSvc := tracking_rule.NewService(tracking_rule.Deps{
+		Store:    tracking_rule.NewRepository(db),
+		Jira:     jira_client_service.NewProjectMetaClient(&cfg),
+		Boards:   boardSvc,
+		Recalc:   sprintBackfillSvc,
+		Lifetime: shutdownMgr.Context(),
+	})
+	if err := trackingRuleSvc.Reload(context.Background()); err != nil {
+		log.Fatalf("failed to load tracking rules: %v", err)
+	}
+
 	shutdownMgr.AddWorker()
 	go func() {
 		defer shutdownMgr.WorkerDone()
@@ -286,6 +301,12 @@ func main() {
 	go func() {
 		defer shutdownMgr.WorkerDone()
 		sprintBackfillSvc.RunDaily(shutdownMgr.Context())
+	}()
+
+	shutdownMgr.AddWorker()
+	go func() {
+		defer shutdownMgr.WorkerDone()
+		trackingRuleSvc.RunRefresh(shutdownMgr.Context())
 	}()
 
 	// Tech Spec "Notifikasi Perubahan Status Tiket": DM on every status
@@ -407,6 +428,7 @@ func main() {
 	MountBoardScope(router, &cfg, authSvc, board_scope.NewHandler(boardScopeRepo))
 	MountIssueCreate(router, &cfg, authSvc, issue_create_handler.New(issueCreateSvc, cfg.JiraBaseURL))
 	MountChatLog(router, &cfg, authSvc, chat_log_handler.New(chatLogRepo, deliveryRouter, registrationRepo))
+	MountTrackingRules(router, &cfg, authSvc, tracking_rule.NewHandler(trackingRuleSvc))
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

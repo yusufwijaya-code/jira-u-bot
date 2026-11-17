@@ -24,7 +24,7 @@ func sp(v float64) *float64 { return &v }
 func ticket(key, status, sprint string, points *float64, assignee string) jira_client_dto.Issue {
 	return jira_client_dto.Issue{Key: key, Fields: jira_client_dto.IssueFields{
 		Summary: key + " summary", Status: jira_client_dto.Status{Name: status},
-		SprintRaw: json.RawMessage(sprint), StoryPointsCoreEstimate: points,
+		SprintRaw: json.RawMessage(sprint), Numbers: map[string]*float64{"customfield_10125": points},
 		Assignee: &jira_client_dto.Assignee{AccountID: assignee},
 	}}
 }

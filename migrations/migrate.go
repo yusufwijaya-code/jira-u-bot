@@ -88,6 +88,12 @@ var boardScopeSQL string
 //go:embed 0020_chat_group.sql
 var chatGroupSQL string
 
+//go:embed 0021_tracking_rule.sql
+var trackingRuleSQL string
+
+//go:embed 0021b_tracking_rule_seed.sql
+var trackingRuleSeedSQL string
+
 // mysqlDeadlockErrNo / mysqlLockWaitTimeoutErrNo are retried: go test runs
 // every package in parallel and each one calls Apply against the same
 // schema, so concurrent DDL/backfill can collide. Every step is
@@ -191,6 +197,14 @@ func apply(db *sql.DB) error {
 	}
 	// Auto Join Google Group — one ALTER, so a duplicate-column error means it already ran.
 	if err := addColumnIfNotExists(db, chatGroupSQL); err != nil {
+		return err
+	}
+	// Aturan Board — CREATE TABLE IF NOT EXISTS + INSERT IGNORE seed of OMS
+	// & CORE (identical to the old hardcoded rules); both idempotent.
+	if _, err := db.Exec(trackingRuleSQL); err != nil {
+		return err
+	}
+	if _, err := db.Exec(trackingRuleSeedSQL); err != nil {
 		return err
 	}
 	// The new toggle starts ON when either old toggle was ON — exactly once

@@ -18,6 +18,7 @@ import (
 	"nudge/modules/chat_log/chat_log_handler"
 	"nudge/modules/sprint_report"
 	"nudge/modules/sprint_report/sprint_report_handler"
+	"nudge/modules/tracking_rule"
 	"nudge/modules/user_avatar/user_avatar_handler"
 	"nudge/modules/user_dashboard"
 	"nudge/modules/user_dashboard/user_dashboard_handler"
@@ -158,4 +159,17 @@ func MountIssueCreate(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service
 	api := r.Group(cfg.BasePath + "/api/dashboard")
 	api.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
 	issue_create_handler.Routes(api, h)
+}
+
+// MountTrackingRules mounts Admin › Aturan Board (admin only) and the board
+// workflow statuses Pengaturan offers (any logged-in user) — Tech Spec
+// "Aturan Board (Admin CRUD)".
+func MountTrackingRules(r *gin.Engine, cfg *config.AppConfig, authSvc auth_service.AuthService, h *tracking_rule.Handler) {
+	user := r.Group(cfg.BasePath + "/api/dashboard")
+	user.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg))
+	tracking_rule.UserRoutes(user, h)
+
+	admin := r.Group(cfg.BasePath + "/api/dashboard/admin")
+	admin.Use(auth_middleware.AuthMiddlewareAPI(authSvc, cfg), auth_middleware.AdminMiddleware(cfg))
+	tracking_rule.AdminRoutes(admin, h)
 }

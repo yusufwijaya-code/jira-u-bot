@@ -73,7 +73,7 @@ func NewPollerService(
 // returned for session tracking/DM routing — never the issue's own
 // (often blank) emailAddress field.
 func (p *pollerServiceImpl) resolveEligibility(ctx context.Context, issue jira_client_dto.Issue) (assigneeEmail string, eligible bool) {
-	sp := issue.Fields.EffectiveStoryPoints()
+	sp := issue.StoryPoints()
 	if sp == nil || *sp <= 0 {
 		return "", false
 	}
@@ -150,6 +150,11 @@ func (p *pollerServiceImpl) Run(ctx context.Context) {
 }
 
 func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
+	// No active tracking rule (only possible via a manual DB change): search
+	// nothing and leave every session as it is (AC1.4).
+	if jira_client_dto.TrackedIssuesJQL() == "" {
+		return nil
+	}
 	issues, err := p.jiraClient.SearchCodeProcessIssues(ctx)
 	if err != nil {
 		return fmt.Errorf("poller: SearchCodeProcessIssues failed: %w", err)
@@ -184,6 +189,17 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 		if staleKeys[key] {
 			if err := p.issueSession.CloseSession(ctx, key, 0); err != nil {
 				return fmt.Errorf("poller: CloseSession(%s) (not in an active sprint) failed: %w", key, err)
+			}
+			continue
+		}
+		// The project's rule was deactivated (Tech Spec "Aturan Board",
+		// AC4.5): stop like a ticket leaving the active sprint — no time
+		// added, no notice (status_watch no longer searches that project).
+		// Checked after the search, so a rule switched off mid-cycle closes
+		// the session on the next cycle instead of adding time now.
+		if !jira_client_dto.IsTrackedProjectKey(key) {
+			if err := p.issueSession.CloseSession(ctx, key, 0); err != nil {
+				return fmt.Errorf("poller: CloseSession(%s) (project no longer tracked) failed: %w", key, err)
 			}
 			continue
 		}
@@ -257,6 +273,11 @@ func (p *pollerServiceImpl) pollOnce(ctx context.Context) error {
 // changelog transition time, not at process-start time — otherwise a ticket
 // that has been in Code Process for days would appear to have just started.
 func (p *pollerServiceImpl) backfillActiveSessions(ctx context.Context) error {
+	// No active tracking rule (only possible via a manual DB change): search
+	// nothing and leave every session as it is (AC1.4).
+	if jira_client_dto.TrackedIssuesJQL() == "" {
+		return nil
+	}
 	issues, err := p.jiraClient.SearchCodeProcessIssues(ctx)
 	if err != nil {
 		return fmt.Errorf("poller: backfill SearchCodeProcessIssues failed: %w", err)
@@ -350,7 +371,7 @@ func (p *pollerServiceImpl) sessionStartTime(ctx context.Context, issueKey strin
 }
 
 func storyPointsOf(issue jira_client_dto.Issue) float64 {
-	sp := issue.Fields.EffectiveStoryPoints()
+	sp := issue.StoryPoints()
 	if sp == nil {
 		return 0
 	}

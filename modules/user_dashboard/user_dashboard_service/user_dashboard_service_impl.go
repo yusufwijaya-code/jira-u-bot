@@ -312,7 +312,7 @@ func (s *userDashboardServiceImpl) buildCard(ctx context.Context, issue jira_cli
 		Status:   issue.Fields.Status.Name,
 		IssueURL: s.issueURL(issue.Key),
 	}
-	if sp := issue.Fields.EffectiveStoryPoints(); sp != nil {
+	if sp := issue.StoryPoints(); sp != nil {
 		card.StoryPoints = *sp
 	}
 

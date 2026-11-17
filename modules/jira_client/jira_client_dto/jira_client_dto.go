@@ -3,6 +3,7 @@ package jira_client_dto
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 )
 
 type Issue struct {
@@ -11,27 +12,15 @@ type Issue struct {
 }
 
 type IssueFields struct {
-	Summary     string    `json:"summary"`
-	Status      Status    `json:"status"`
-	Assignee    *Assignee `json:"assignee"`
-	IssueType   IssueType `json:"issuetype"`
-	StoryPoints *float64  `json:"customfield_10016"`
+	Summary   string    `json:"summary"`
+	Status    Status    `json:"status"`
+	Assignee  *Assignee `json:"assignee"`
+	IssueType IssueType `json:"issuetype"`
 	// Parent, Subtasks and IssueLinks are only requested by the dashboard's
 	// active-sprint search (Tech Spec "Subtask & Linked Item Branches").
 	Parent     *IssueRef   `json:"parent,omitempty"`
 	Subtasks   []IssueRef  `json:"subtasks,omitempty"`
 	IssueLinks []IssueLink `json:"issuelinks,omitempty"`
-	// StoryPointsCoreEstimate is CORE's "Story Point Estimate" field
-	// (customfield_10125) — see StoryPointFieldIDCoreEstimate. Takes
-	// priority over StoryPointsCore when both happen to be set. Use
-	// EffectiveStoryPoints() instead of reading any of these three fields
-	// directly.
-	StoryPointsCoreEstimate *float64 `json:"customfield_10125"`
-	// StoryPointsCore is CORE's older "Story Points" field
-	// (customfield_11053) — see StoryPointFieldIDCore. Kept as a fallback:
-	// some CORE tickets only have this one filled in, not Story Point
-	// Estimate.
-	StoryPointsCore *float64 `json:"customfield_11053"`
 	// SprintRaw is the Sprint field (customfield_10020) — confirmed live
 	// 2026-11-01 identical for OMS and CORE: an array of objects
 	// {id, name, state, boardId, goal, startDate, endDate}, state values
@@ -40,6 +29,51 @@ type IssueFields struct {
 	// greenhopper string format that was never actually observed live but
 	// costs nothing to handle defensively.
 	SprintRaw json.RawMessage `json:"customfield_10020"`
+	// Numbers holds every numeric custom field of the response by ID
+	// (null ones are left out). Story Points live here — which field
+	// depends on the project's tracking rule (Tech Spec "Aturan Board");
+	// read them through Issue.StoryPoints().
+	Numbers map[string]*float64 `json:"-"`
+}
+
+// UnmarshalJSON decodes the regular fields, then keeps every numeric
+// customfield_* in Numbers — the Story Point fields are configured per
+// project at runtime, so they can't be struct tags.
+func (f *IssueFields) UnmarshalJSON(data []byte) error {
+	type plain IssueFields
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for id, value := range raw {
+		if !strings.HasPrefix(id, "customfield_") || strings.TrimSpace(string(value)) == "null" {
+			continue
+		}
+		var n float64
+		if json.Unmarshal(value, &n) != nil {
+			continue
+		}
+		if p.Numbers == nil {
+			p.Numbers = map[string]*float64{}
+		}
+		p.Numbers[id] = &n
+	}
+	*f = IssueFields(p)
+	return nil
+}
+
+// FirstNumber returns the first non-null numeric custom field among ids.
+func (f IssueFields) FirstNumber(ids ...string) *float64 {
+	for _, id := range ids {
+		if v := f.Numbers[id]; v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 type sprintObject struct {
@@ -133,18 +167,15 @@ func (f IssueFields) ActiveSprintName() (string, bool) {
 	return "", false
 }
 
-// EffectiveStoryPoints returns this issue's Story Points regardless of
-// which Jira project's custom field it lives on: StoryPoints for OMS: for
-// CORE, StoryPointsCoreEstimate ("Story Point Estimate") takes priority,
-// falling back to StoryPointsCore ("Story Points") when Estimate is empty.
-func (f IssueFields) EffectiveStoryPoints() *float64 {
-	if f.StoryPoints != nil {
-		return f.StoryPoints
+// StoryPoints returns the issue's Story Points: the first non-null of its
+// project's StoryPointFields (priority order). A project without an active
+// rule reads every active rule's fields, like the old global coalesce.
+func (i Issue) StoryPoints() *float64 {
+	fields := RuleForIssue(i.Key).StoryPointFields
+	if len(fields) == 0 {
+		fields = StoryPointFieldIDs()
 	}
-	if f.StoryPointsCoreEstimate != nil {
-		return f.StoryPointsCoreEstimate
-	}
-	return f.StoryPointsCore
+	return i.Fields.FirstNumber(fields...)
 }
 
 type Status struct {

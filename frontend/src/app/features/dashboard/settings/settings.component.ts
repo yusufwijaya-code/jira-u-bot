@@ -1,4 +1,5 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -15,6 +16,7 @@ import { NotificationSwitchService } from '../../../core/services/notification-s
 import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
+import { TrackingRuleService } from '../../../core/services/tracking-rule.service';
 import { BoardAvatarComponent } from '../../../shared/ui/board-avatar.component';
 import { SelectComponent } from '../../../shared/ui/select.component';
 import { TimePickerComponent } from '../../../shared/ui/time-picker.component';
@@ -171,7 +173,13 @@ export class SettingsComponent {
     return board.reviewTracked ? 'core' : 'other';
   });
   /** Destination statuses offered for the status-change filter, from the scope's project workflow. */
-  protected statusOptions = computed(() => statusOptionsFor(this.statusRule()));
+  private trackingRules = inject(TrackingRuleService);
+  /** The scope board's workflow statuses from Jira; null = default scope, loading or Jira failed. */
+  protected jiraStatuses = signal<string[] | null>(null);
+  private statusesSub?: Subscription;
+  private destroyRef = inject(DestroyRef);
+  /** Destination statuses for the status-change filter: the board's Jira workflow, else the static lists. */
+  protected statusOptions = computed(() => this.jiraStatuses() ?? statusOptionsFor(this.statusRule()));
 
   protected trackedLabel = computed(() => {
     switch (this.statusRule()) {
@@ -213,6 +221,21 @@ export class SettingsComponent {
     effect(() => {
       const boardId = this.boardContext.selectedId();
       untracked(() => this.loadSettings(boardId));
+    });
+    // Pengaturan › Notif perubahan status: the board's real workflow (AC5.5).
+    effect(() => {
+      const boardId = this.scopeBoardId();
+      untracked(() => this.loadBoardStatuses(boardId));
+    });
+  }
+
+  private loadBoardStatuses(boardId: number | null): void {
+    this.statusesSub?.unsubscribe();
+    this.jiraStatuses.set(null);
+    if (boardId === null) return;
+    this.statusesSub = this.trackingRules.boardStatuses(boardId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (res) => this.jiraStatuses.set(res.statuses?.length ? res.statuses : null),
+      error: () => this.jiraStatuses.set(null),
     });
   }
 
@@ -428,7 +451,7 @@ function pick(source: NotificationSettings, fields: (keyof NotificationSettings)
   return out;
 }
 
-/** Statuses of the CORE and OMS workflows (Jira); matching is case-insensitive. */
+/** Fallback when Jira can't answer: statuses of the CORE and OMS workflows; matching is case-insensitive. */
 const CORE_STATUSES = ['To Do', 'Code Process', 'CODE REVIEW', 'Code Completed', 'Feedback', 'SIT', 'TEST RUN', 'TEST COMPLETE', 'UAT', 'Release Candidate', 'Done'];
 const OMS_STATUSES = ['To Do', 'Code Process', 'Code Review', 'Code Complete', 'Feedback', 'Testing & Review', 'Test Complete', 'UAT', 'Release Candidate', 'Done'];
 

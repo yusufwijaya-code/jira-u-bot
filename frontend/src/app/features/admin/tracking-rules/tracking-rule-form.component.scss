@@ -1,0 +1,65 @@
+// Keyframes fade-up / pop-in / fade-in are global (styles.scss).
+:host { display: block; animation: fade-up 260ms var(--ease) backwards; }
+.trf-card { animation: fade-up 280ms var(--ease) backwards;
+  @for $i from 2 through 4 { &:nth-child(#{$i}) { animation-delay: #{($i - 1) * 50}ms; } } }
+.trf-key { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+  input { text-transform: uppercase; letter-spacing: .04em; } }
+.trf-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; font-size: .82rem; color: var(--text-muted);
+  input { font: inherit; font-size: .92rem; color: var(--text); height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+    transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease), background-color var(--fast) var(--ease);
+    &:hover:not([readonly]) { border-color: var(--border-strong); }
+    &:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
+    &[readonly] { background: var(--surface-2); color: var(--text-muted); cursor: not-allowed; } }
+  app-select { color: var(--text); } }
+.trf-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+.trf-label { display: block; margin-bottom: 8px; font-size: .82rem; font-weight: 600; color: var(--text);
+  em { font-style: normal; font-weight: 400; color: var(--text-faint); margin-left: 6px; } }
+.trf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.trf-chip { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  font: inherit; font-size: .8rem; color: var(--text-muted); cursor: pointer; animation: pop-in 220ms var(--ease) backwards;
+  transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease),
+    transform var(--fast) var(--ease-spring), box-shadow var(--fast) var(--ease);
+  &:hover { border-color: var(--primary-light); color: var(--text); transform: translateY(-1px); }
+  &:active { transform: scale(.96); }
+  &:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--primary-ring); }
+  &.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
+  &.add small { color: var(--text-faint); font-size: .7rem; }
+  &.add.sp { border-style: dashed; border-color: var(--primary-light); }
+  &.stale { cursor: default; border-color: #f5c08a; background: var(--accent-soft); color: #b4630a; &:hover { transform: none; } } }
+.trf-x { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer;
+  transition: background-color var(--fast) var(--ease);
+  &:hover { background: rgba(0, 0, 0, .08); } }
+.trf-stale { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.trf-fields { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.trf-field-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+  animation: fade-up 220ms var(--ease) backwards; transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+  &:hover { border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
+  &.stale { border-color: #f5c08a; background: var(--accent-soft); }
+  em { font-style: normal; color: #b4630a; font-size: .74rem; margin-left: 6px; } }
+.trf-rank { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-strong); font-size: .72rem; font-weight: 700; }
+.trf-field-name { flex: 1; font-size: .84rem; color: var(--text); }
+.trf-flip { display: inline-flex; transform: rotate(180deg); }
+.trf-empty { padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--text-faint); font-size: .82rem; }
+.trf-add { display: flex; flex-direction: column; gap: 10px; }
+.trf-project { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 12px; border-radius: var(--radius-sm); background: var(--surface-2);
+  img, .trf-avatar { width: 40px; height: 40px; border-radius: 10px; }
+  .trf-avatar { display: grid; place-items: center; background: var(--gradient); color: #fff; font-weight: 800; }
+  div { display: flex; flex-direction: column; }
+  small { color: var(--text-faint); font-size: .76rem; } }
+.trf-pop { animation: pop-in 240ms var(--ease) backwards; }
+.trf-err { margin: 6px 0 0; color: var(--error); font-size: .78rem; animation: fade-in 200ms var(--ease); }
+.trf-sentence { margin: 0; padding: 14px 16px; border-left: 3px solid var(--primary); border-radius: var(--radius-sm); background: var(--primary-soft);
+  color: var(--ink); line-height: 1.6; font-size: .9rem; }
+.trf-placeholder { display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: .86rem; }
+// Shown while "Cek di Jira" runs.
+.trf-loading { display: flex; flex-direction: column; gap: 14px; animation: fade-in 200ms var(--ease) backwards; }
+.trf-sk-title { width: 180px; height: 18px; }
+.trf-sk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.trf-sk-chip { height: 30px; border-radius: 999px; }
+.trf-sk-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.trf-sk-input { flex: 1; min-width: 220px; height: 40px; border-radius: var(--radius-sm); }
+
+@media (prefers-reduced-motion: reduce) {
+  :host, .trf-card, .trf-chip, .trf-field-row, .trf-pop, .trf-err, .trf-loading, .skeleton { animation: none; }
+  .trf-chip, .trf-field-row, .trf-field input, .trf-x { transition: none; }
+}

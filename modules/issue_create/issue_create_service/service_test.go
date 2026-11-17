@@ -133,6 +133,36 @@ func TestMeta_MapsDynamicFieldsAndCaches(t *testing.T) {
 	}
 }
 
+func TestMeta_CacheInvalidatedWhenTrackingRuleChanges(t *testing.T) {
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+	j := coreJira()
+	s := newSvc(j, &fakeAI{})
+	if _, err := s.Meta(context.Background(), "dev@esb.co.id", 26); err != nil {
+		t.Fatal(err)
+	}
+	rules := jira_client_dto.BuiltinRules()
+	for i := range rules {
+		if rules[i].ProjectKey == "CORE" {
+			rules[i].StoryPointWriteField = "customfield_11053"
+		}
+	}
+	jira_client_dto.SetRules(rules)
+	m, err := s.Meta(context.Background(), "dev@esb.co.id", 26)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.metaHits != 2 {
+		t.Fatalf("createmeta fetched %d times, want 2 (rule change invalidates the cache)", j.metaHits)
+	}
+	if m.Types[0].StoryPointField != "customfield_11053" {
+		t.Fatalf("story SP field = %q, want the new write field", m.Types[0].StoryPointField)
+	}
+	s.Meta(context.Background(), "dev@esb.co.id", 26)
+	if j.metaHits != 2 {
+		t.Fatalf("createmeta fetched %d times, want 2 (unchanged rule stays cached)", j.metaHits)
+	}
+}
+
 func TestMeta_RejectsUnregisteredBoardAndMissingToken(t *testing.T) {
 	s := newSvc(omsJira(), &fakeAI{})
 	if _, err := s.Meta(context.Background(), "dev@esb.co.id", 99); !errors.Is(err, ErrBoardNotAllowed) {
@@ -272,5 +302,74 @@ func TestNormalize_DoesNotCacheEmptyResult(t *testing.T) {
 	again, _ := s.Normalize(context.Background(), "dev@esb.co.id", 26, "x")
 	if again.Cached || ai.calls != 2 {
 		t.Fatalf("cached=%v calls=%d, want uncached and 2 calls", again.Cached, ai.calls)
+	}
+}
+
+func coreJira() *fakeJira {
+	number := jira_client_dto.FieldSchema{Type: "number"}
+	return &fakeJira{
+		types: []jira_client_dto.CreateMetaIssueType{{ID: "10001", Name: "Story"}, {ID: "10003", Name: "Subtask", Subtask: true}, {ID: "10004", Name: "Bug"}},
+		fields: map[string][]jira_client_dto.CreateMetaField{
+			"10001": {
+				{FieldID: "customfield_10125", Name: "Story Point Estimate", Required: true, Schema: number},
+				{FieldID: "customfield_11053", Name: "Story Points", Schema: number},
+			},
+			"10003": {
+				{FieldID: "parent", Name: "Parent", Required: true, Schema: jira_client_dto.FieldSchema{Type: "issuelink"}},
+				{FieldID: "customfield_10125", Name: "Story Point Estimate", Schema: number},
+				{FieldID: "customfield_11053", Name: "Story Points", Schema: number},
+			},
+			"10004": {{FieldID: "customfield_11053", Name: "Story Points", Schema: number}},
+		},
+	}
+}
+
+func TestMeta_CoreWritesEstimateOnCardsAndStoryPointsOnSubtasks(t *testing.T) {
+	m, err := newSvc(coreJira(), &fakeAI{}).Meta(context.Background(), "dev@esb.co.id", 26)
+	if err != nil {
+		t.Fatal(err)
+	}
+	story, sub, bug := m.Types[0], m.Types[1], m.Types[2]
+	if story.StoryPointField != "customfield_10125" || len(story.Fields) != 0 {
+		t.Fatalf("story = %+v, want SP on customfield_10125 and no dynamic field (SP fields are handled)", story)
+	}
+	if sub.StoryPointField != "customfield_11053" {
+		t.Fatalf("subtask = %+v, want SP on customfield_11053 (AC5.3)", sub)
+	}
+	if bug.StoryPointField != "customfield_11053" {
+		t.Fatalf("bug = %+v, want Story Points as the fallback: customfield_10125 is not on its createmeta", bug)
+	}
+}
+
+func TestStoryPointFieldFor_PrefersTheWriteFieldThenReadOrder(t *testing.T) {
+	read := []string{"customfield_10125", "customfield_11053"}
+	cases := []struct {
+		name, preferred string
+		onType          map[string]bool
+		want            string
+	}{
+		{"preferred present", "customfield_10125", map[string]bool{"customfield_10125": true, "customfield_11053": true}, "customfield_10125"},
+		{"fallback to Story Points", "customfield_10125", map[string]bool{"customfield_11053": true}, "customfield_11053"},
+		{"subtask prefers Story Points", "customfield_11053", map[string]bool{"customfield_10125": true, "customfield_11053": true}, "customfield_11053"},
+		{"no SP field on the type", "customfield_10125", map[string]bool{"summary": true}, ""},
+	}
+	for _, c := range cases {
+		if got := storyPointFieldFor(c.preferred, read, c.onType); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestCreateSubtasks_CoreWritesTheSubtaskField(t *testing.T) {
+	j := coreJira()
+	j.brief.Key = "CORE-5"
+	j.brief.Fields.Project.Key = "CORE"
+	pts := 2.0
+	res, err := newSvc(j, &fakeAI{}).CreateSubtasks(context.Background(), "dev@esb.co.id", 26, "CORE-5", []BulkRow{{ClientID: "1", Title: "A", StoryPoints: &pts}})
+	if err != nil || res[0].Key == "" {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if j.created[0]["customfield_11053"] != 2.0 || j.created[0]["customfield_10125"] != nil {
+		t.Fatalf("subtask fields = %v, want SP on customfield_11053 only", j.created[0])
 	}
 }

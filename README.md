@@ -35,7 +35,7 @@
   - **Pengaturan** — setting notifikasi per user (tabel `ms_user_setting`; tanpa baris = default yang sama dengan perilaku lama):
     - **Reminder sebelum budget habis** — pilih tier preset atau tambah tier custom (1 menit–8 jam, maks. 10)
     - **Reminder setelah lewat budget** — tier `T+` (mis. +15 menit, +1 jam), lalu ulang tiap 5/10/15/30/60 menit atau berhenti
-    - **Perubahan status tiket** — on/off notif perubahan status (`ms_user_setting.notifyStatusChange`) + pilihan status tujuan yang dikirim (`statusChangeStatuses`, kosong = semua status); daftar status mengikuti workflow project board terpilih. Juga tersedia di Admin › Detail User
+    - **Perubahan status tiket** — on/off notif perubahan status (`ms_user_setting.notifyStatusChange`) + pilihan status tujuan yang dikirim (`statusChangeStatuses`, kosong = semua status); daftar status mengikuti workflow Jira project board terpilih (`GET /api/dashboard/boards/:boardId/statuses`, cache 1 jam; fallback daftar statis bila Jira gagal). Juga tersedia di Admin › Detail User
     - **Saklar notifikasi** — saklar utama semua notif otomatis (`ms_user.notificationsEnabled`). User baru mulai **OFF**; user lama tetap ON. Selama belum pernah memilih (`notificationChoiceDate` NULL), pop up muncul setelah login dengan toggle awal OFF dan hanya bisa ditutup lewat Simpan (`PUT /api/dashboard/settings/notifications`). OFF diperlakukan seperti mute oleh reminder engine; broadcast admin & balasan command tetap jalan
     - **Mute & jam tenang** — mute 1 jam / 2 jam / sampai besok 08:30, dan jam tenang harian (WIB); reminder yang jatuh tempo saat itu dilewati (`tr_reminderlog.deliveryStatus = skipped`), notif lewat budget langsung lanjut setelahnya. Badge 🔕 muncul di topbar saat mute aktif
     - Kalau beberapa tier terlewati sekaligus, hanya tier paling relevan yang dikirim
@@ -46,6 +46,7 @@
     - **User** — cari user, aktifkan/nonaktifkan, edit Jira account ID, reset credential pribadi, hapus user; klik baris → **detail user**: semua pengaturan dinamis milik user itu (notifikasi default & per board, mute global & per board, isi/ganti/hapus Jira credential) memakai komponen Pengaturan yang sama. Endpoint: `/api/dashboard/admin/users/:userID/{settings,settings/notification,settings/mute,credential,boards,avatar}`, bentuk request/respons identik dengan endpoint user (`SettingsHandler` bersama)
     - Setiap perubahan admin pada pengaturan/credential user lain dikirim ke user tsb lewat **DM Google Chat** (best-effort; tidak dikirim bila admin mengubah akunnya sendiri)
     - **Broadcast Message** — pengumuman lewat DM ke semua user aktif
+    - **Aturan Board** (`/admin/tracking-rules`) — per project Jira: status yang dihitung budget, status selesai, status review (opsional), field Story Point yang dibaca (urut prioritas) dan field SP yang ditulis Buat Card untuk card biasa / subtask. Status & field dipilih dari data Jira (**Cek di Jira**, cache 10 menit); preview kalimat realtime; nilai tersimpan yang sudah tidak ada di Jira ditandai ⚠ dan wajib dibuang. Hapus = **nonaktifkan** (tiket project itu berhenti dipantau, sesi berjalan ditutup tanpa menambah waktu & tanpa notifikasi); minimal satu board aktif. Disimpan di `ms_tracking_rule` (seed OMS & CORE identik aturan lama, `INSERT IGNORE`), dimuat ke registry in-memory saat start, setiap simpan, dan tiap 5 menit. Toast simpan punya tombol **Hitung ulang semua user** (backfill changelog semua user di background). Endpoint: `/api/dashboard/admin/tracking-rules{,/jira/:projectKey,/:projectKey,/:projectKey/active,/recalculate}`
   - Data dashboard & pengaturan user **hanya milik user yang login** (di-scope di server lewat email sesi); hanya endpoint `/api/dashboard/admin/**` (di balik `AdminMiddleware`) yang bisa menyentuh user lain
 
 ### Brand & UI
@@ -121,5 +122,6 @@ File server di repo: `deploy/nudge.service` (`/etc/systemd/system/`), `deploy/ng
 - `modules/auth` — Google Sign-In, session, auto-registrasi, middleware auth/admin
 - `modules/user_dashboard` — board, overdue, team, preference & credential setup
 - `modules/admin_dashboard` — manajemen user untuk admin, termasuk pengaturan user lain (`AdminTarget`) dan DM pemberitahuan perubahan
+- `modules/tracking_rule` — Aturan Board: CRUD `ms_tracking_rule` tervalidasi ke data Jira, registry aturan (`jira_client_dto.SetRules`) yang dibaca poller/reminder/status watch/backfill/dashboard/Buat Card, refresh tiap 5 menit
 - `modules/user_avatar` — foto profil Google user: disimpan saat login, di-proxy (hanya `https://*.googleusercontent.com`, tanpa kredensial)
 - `modules/sprint_report` — generate report Estimated vs Actual Time per sprint

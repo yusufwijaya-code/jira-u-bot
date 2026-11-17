@@ -22,17 +22,19 @@ import (
 // & Active Sprint Dashboard"). Kept separate from JiraClientService so the
 // existing interface — and its many test fakes — stay unchanged.
 type JiraAgileClient interface {
-	// SearchActiveSprintIssuesByAssignee returns every CORE/OMS ticket
+	// SearchActiveSprintIssuesByAssignee returns every ticket of every
+	// project with an active tracking rule
 	// assigned to accountID that is in an open sprint, including the Sprint
 	// field (for the board mapping) and budget fields.
 	SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error)
 	// SearchIssuesByKeysForAssignee returns those of keys that are assigned
 	// to accountID, in any status — the subtasks/linked items shown as
-	// dashboard branches. Keys that are malformed or outside CORE/OMS are
+	// dashboard branches. Keys that are malformed or outside every project
+	// with an active tracking rule are
 	// dropped; at most MaxRelatedKeys are queried.
 	SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error)
-	// SearchSprintIssuesUpdatedWithin returns the active-sprint CORE/OMS
-	// tickets of any of accountIDs (bot credential); within > 0 keeps only
+	// SearchSprintIssuesUpdatedWithin returns the active-sprint tickets of
+	// every project with an active tracking rule of any of accountIDs (bot credential); within > 0 keeps only
 	// those updated in that last stretch (relative JQL, so the bot
 	// profile's timezone doesn't matter) — the status watcher's query (Tech
 	// Spec "Notifikasi Perubahan Status Tiket"). POST, every page read.
@@ -59,10 +61,14 @@ func NewJiraAgileClient(cfg *config.AppConfig) JiraAgileClient {
 const maxAvatarBytes = 512 * 1024
 
 func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
-	jql := fmt.Sprintf(`project in (CORE, OMS) AND assignee = "%s" AND sprint in openSprints() ORDER BY updated DESC`, accountID)
+	projects := jira_client_dto.ProjectsJQLIn()
+	if projects == "" {
+		return nil, nil
+	}
+	jql := fmt.Sprintf(`%s AND assignee = "%s" AND sprint in openSprints() ORDER BY updated DESC`, projects, accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", dashboardIssueFields+",parent,subtasks,issuelinks")
+	params.Set("fields", issueFieldsParam(true)+",parent,subtasks,issuelinks")
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
@@ -78,8 +84,16 @@ func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.C
 // MaxRelatedKeys caps the key list of one SearchIssuesByKeysForAssignee call.
 const MaxRelatedKeys = 100
 
-var dashboardIssueFields = "summary,status,assignee,issuetype," + jira_client_dto.StoryPointFieldID + "," +
-	jira_client_dto.StoryPointFieldIDCore + "," + jira_client_dto.StoryPointFieldIDCoreEstimate + "," + jira_client_dto.SprintFieldID
+// issueFieldsParam is the fields= of every issue search: the basics, the
+// Story Point fields of every active tracking rule and, withSprint, the
+// Sprint field.
+func issueFieldsParam(withSprint bool) string {
+	fields := append([]string{"summary", "status", "assignee", "issuetype"}, jira_client_dto.StoryPointFieldIDs()...)
+	if withSprint {
+		fields = append(fields, jira_client_dto.SprintFieldID)
+	}
+	return strings.Join(fields, ",")
+}
 
 func (s *jiraClientServiceImpl) SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error) {
 	valid := make([]string, 0, len(keys))
@@ -95,7 +109,7 @@ func (s *jiraClientServiceImpl) SearchIssuesByKeysForAssignee(ctx context.Contex
 	jql := fmt.Sprintf(`key in (%s) AND assignee = "%s" ORDER BY updated DESC`, strings.Join(valid, ", "), accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", dashboardIssueFields)
+	params.Set("fields", issueFieldsParam(true))
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
@@ -196,7 +210,11 @@ func (s *jiraClientServiceImpl) SearchSprintIssuesUpdatedWithin(ctx context.Cont
 	for i, id := range accountIDs {
 		quoted[i] = strconv.Quote(id)
 	}
-	jql := fmt.Sprintf(`project in (CORE, OMS) AND sprint in openSprints() AND assignee in (%s)`, strings.Join(quoted, ","))
+	projects := jira_client_dto.ProjectsJQLIn()
+	if projects == "" {
+		return nil, nil
+	}
+	jql := fmt.Sprintf(`%s AND sprint in openSprints() AND assignee in (%s)`, projects, strings.Join(quoted, ","))
 	if within > 0 {
 		minutes := int(math.Ceil(within.Minutes()))
 		jql += fmt.Sprintf(` AND updated >= "-%dm"`, minutes)

@@ -37,13 +37,9 @@ type Relation struct {
 var issueKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*-[0-9]+$`)
 
 // IsTrackedProjectKey reports whether issueKey is a well-formed key of a
-// project Nudge tracks (CORE/OMS) — anything else never reaches a JQL.
+// project with an active tracking rule — anything else never reaches a JQL.
 func IsTrackedProjectKey(issueKey string) bool {
-	if !issueKeyPattern.MatchString(issueKey) {
-		return false
-	}
-	_, ok := trackingRules[ProjectKeyOf(issueKey)]
-	return ok
+	return issueKeyPattern.MatchString(issueKey) && IsTrackedProject(ProjectKeyOf(issueKey))
 }
 
 // Relations lists the issue's subtasks then its linked issues (both
