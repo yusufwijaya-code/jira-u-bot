@@ -88,6 +88,18 @@ export const routes: Routes = [
         title: 'Aturan Board · Admin · Nudge',
         data: { heading: 'Aturan Board', subheading: 'Status & field Story Point yang dipantau per project Jira', crumbs: ['Admin', 'Aturan Board'] },
       },
+      {
+        path: 'tracking-rules/new',
+        loadComponent: () => import('./features/admin/tracking-rules/tracking-rule-form.component').then((m) => m.TrackingRuleFormComponent),
+        title: 'Tambah Aturan · Admin · Nudge',
+        data: { heading: 'Tambah Aturan Board', subheading: 'Pilih status dan field Story Point dari data Jira', crumbs: ['Admin', 'Aturan Board', 'Tambah'] },
+      },
+      {
+        path: 'tracking-rules/:key',
+        loadComponent: () => import('./features/admin/tracking-rules/tracking-rule-form.component').then((m) => m.TrackingRuleFormComponent),
+        title: 'Edit Aturan · Admin · Nudge',
+        data: { heading: 'Edit Aturan Board', subheading: 'Status dan field dimuat ulang dari Jira', crumbs: ['Admin', 'Aturan Board', 'Edit'] },
+      },
     ],
   },
   { path: '**', redirectTo: '' },

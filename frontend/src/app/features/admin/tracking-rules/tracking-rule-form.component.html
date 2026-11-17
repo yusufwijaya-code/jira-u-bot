@@ -1,0 +1,237 @@
+<div class="page-stack trf">
+  @if (loadError()) {
+    <section class="card">
+      <div class="empty-state">
+        <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
+        <p class="msg error">{{ loadError() }}</p>
+        <a class="btn btn-ghost btn-sm" routerLink="/admin/tracking-rules">Kembali ke daftar</a>
+      </div>
+    </section>
+  } @else {
+    <section class="card trf-card" data-section="project">
+      <header class="card-header">
+        <span class="card-icon"><app-icon name="layers" [size]="20" /></span>
+        <div>
+          <h2>Project Jira</h2>
+          <p>
+            {{ isEdit ? 'Project key tidak bisa diubah. Data Jira dimuat ulang supaya pilihan selalu terbaru.' : 'Ketik project key lalu cek di Jira untuk memuat status & field angkanya.' }}
+          </p>
+        </div>
+      </header>
+      <div class="trf-key">
+        <div class="trf-field">
+          <span>Project key</span>
+          <input
+            type="text"
+            data-key-input
+            [ngModel]="keyInput()"
+            (ngModelChange)="onKeyInput($event)"
+            (keydown.enter)="runLookup()"
+            [readonly]="isEdit"
+            placeholder="mis. POS"
+            maxlength="20"
+            autocomplete="off"
+            aria-label="Project key"
+          />
+        </div>
+        <button type="button" class="btn btn-primary" data-lookup [class.loading]="lookingUp()" [disabled]="!keyValid() || lookingUp()" (click)="runLookup()">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="btn-label"><app-icon name="search" [size]="16" /> {{ isEdit ? 'Muat ulang dari Jira' : 'Cek di Jira' }}</span>
+        </button>
+      </div>
+      @if (fieldErrors().projectKey) {
+        <p class="trf-err">{{ fieldErrors().projectKey }}</p>
+      }
+      @if (lookupError()) {
+        <p class="msg error trf-pop" data-lookup-error><app-icon name="alert-circle" [size]="16" /> {{ lookupError() }}</p>
+      }
+      @if (existingKey()) {
+        <p class="msg error trf-pop" data-exists>
+          <app-icon name="info" [size]="16" /> Project {{ existingKey() }} sudah punya aturan.
+          <a [routerLink]="['/admin/tracking-rules', existingKey()]">Ubah lewat Edit</a>
+        </p>
+      }
+      @if (lookup(); as l) {
+        <div class="trf-project trf-pop" data-project>
+          @if (l.avatarUrl && !avatarFailed()) {
+            <img [src]="l.avatarUrl" alt="" width="40" height="40" (error)="avatarFailed.set(true)" />
+          } @else {
+            <span class="trf-avatar">{{ l.projectKey.slice(0, 2) }}</span>
+          }
+          <div>
+            <strong>{{ l.projectName }}</strong>
+            <small>{{ l.projectKey }} · {{ l.statuses.length }} status · {{ l.numberFields.length }} field angka</small>
+          </div>
+        </div>
+      }
+    </section>
+
+    @if (lookup(); as l) {
+      <section class="card trf-card" data-section="statuses">
+        <header class="card-header">
+          <span class="card-icon"><app-icon name="clock" [size]="20" /></span>
+          <div>
+            <h2>Status</h2>
+            <p>Budget berjalan selama tiket di status yang dihitung; pindah ke status selesai = selesai lebih cepat.</p>
+          </div>
+        </header>
+        <span class="trf-label">Status dihitung <em>klik untuk memilih, bisa lebih dari satu</em></span>
+        <div class="trf-chips" role="group" aria-label="Status dihitung">
+          @for (s of statuses(); track s; let i = $index) {
+            <button
+              type="button"
+              class="trf-chip"
+              [class.on]="isTracked(s)"
+              [attr.aria-pressed]="isTracked(s)"
+              [attr.data-status]="s"
+              [style.animation-delay.ms]="i * 25"
+              (click)="toggleTracked(s)"
+            >
+              @if (isTracked(s)) {
+                <app-icon name="check" [size]="12" />
+              }
+              {{ s }}
+            </button>
+          }
+        </div>
+        @if (fieldErrors().trackedStatuses) {
+          <p class="trf-err">{{ fieldErrors().trackedStatuses }}</p>
+        }
+        @if (staleStatuses().length) {
+          <div class="trf-stale trf-pop" data-stale-statuses>
+            @for (s of staleStatuses(); track s) {
+              <span class="trf-chip stale">
+                ⚠ {{ s }} — tidak ada lagi di Jira
+                <button type="button" class="trf-x" [attr.aria-label]="'Buang ' + s" (click)="dropStaleStatus(s)"><app-icon name="x" [size]="12" /></button>
+              </span>
+            }
+          </div>
+        }
+        <div class="trf-row">
+          <div class="trf-field">
+            <span>Status selesai</span>
+            <app-select data-done [options]="doneOptions()" [ngModel]="done()" (ngModelChange)="setDone($event)" ariaLabel="Status selesai" />
+            @if (fieldErrors().doneStatus) {
+              <p class="trf-err">{{ fieldErrors().doneStatus }}</p>
+            }
+          </div>
+          <div class="trf-field">
+            <span>Status review (opsional)</span>
+            <app-select data-review [options]="reviewOptions()" [ngModel]="review()" (ngModelChange)="setReview($event)" ariaLabel="Status review" />
+            @if (fieldErrors().reviewStatus) {
+              <p class="trf-err">{{ fieldErrors().reviewStatus }}</p>
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="card trf-card" data-section="fields">
+        <header class="card-header">
+          <span class="card-icon"><app-icon name="target" [size]="20" /></span>
+          <div>
+            <h2>Field Story Point</h2>
+            <p>Dibaca berurutan: field pertama yang terisi di tiket yang dipakai sebagai budget.</p>
+          </div>
+        </header>
+        <ol class="trf-fields">
+          @for (id of spFields(); track id; let i = $index; let first = $first; let last = $last) {
+            <li class="trf-field-row" [class.stale]="staleFields().includes(id)" [attr.data-sp-field]="id">
+              <span class="trf-rank">{{ i + 1 }}</span>
+              <span class="trf-field-name">
+                {{ fieldLabel(id) }}
+                @if (staleFields().includes(id)) {
+                  <em>⚠ tidak ada lagi di Jira</em>
+                }
+              </span>
+              <button type="button" class="icon-btn" aria-label="Naikkan prioritas" [disabled]="first" (click)="moveField(i, -1)">
+                <app-icon class="trf-flip" name="chevron-down" [size]="14" />
+              </button>
+              <button type="button" class="icon-btn" aria-label="Turunkan prioritas" [disabled]="last" (click)="moveField(i, 1)">
+                <app-icon name="chevron-down" [size]="14" />
+              </button>
+              <button type="button" class="icon-btn" [attr.aria-label]="'Hapus ' + id" (click)="removeField(id)">
+                <app-icon name="x" [size]="14" />
+              </button>
+            </li>
+          } @empty {
+            <li class="trf-empty">Belum ada field. Tambahkan dari daftar di bawah.</li>
+          }
+        </ol>
+        @if (fieldErrors().storyPointFields) {
+          <p class="trf-err">{{ fieldErrors().storyPointFields }}</p>
+        }
+        <div class="trf-add">
+          <label class="search-input">
+            <app-icon name="search" [size]="16" />
+            <input type="search" placeholder="Cari field angka…" [ngModel]="fieldQuery()" (ngModelChange)="fieldQuery.set($event)" aria-label="Cari field angka" />
+          </label>
+          <div class="trf-chips">
+            @for (f of suggestions(); track f.id) {
+              <button type="button" class="trf-chip add" [class.sp]="f.storyPointLike" [attr.data-add-field]="f.id" (click)="addField(f.id)">
+                <app-icon name="plus" [size]="12" /> {{ f.name }} <small>{{ f.id }}</small>
+              </button>
+            } @empty {
+              <span class="muted">Tidak ada field angka yang cocok.</span>
+            }
+          </div>
+        </div>
+        <div class="trf-row">
+          <div class="trf-field">
+            <span>Field SP tulis (card biasa)</span>
+            <app-select data-write [options]="writeOptions()" [ngModel]="writeField()" (ngModelChange)="setWrite('card', $event)" ariaLabel="Field SP tulis card biasa" />
+            @if (fieldErrors().storyPointWriteField) {
+              <p class="trf-err">{{ fieldErrors().storyPointWriteField }}</p>
+            }
+          </div>
+          <div class="trf-field">
+            <span>Field SP tulis (subtask)</span>
+            <app-select data-write-subtask [options]="writeOptions()" [ngModel]="writeFieldSubtask()" (ngModelChange)="setWrite('subtask', $event)" ariaLabel="Field SP tulis subtask" />
+            @if (fieldErrors().storyPointWriteFieldSubtask) {
+              <p class="trf-err">{{ fieldErrors().storyPointWriteFieldSubtask }}</p>
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="card trf-card" data-section="preview">
+        <header class="card-header">
+          <span class="card-icon accent"><app-icon name="zap" [size]="20" /></span>
+          <div>
+            <h2>Preview</h2>
+            <p>Begini Nudge memantau tiket {{ l.projectKey }}.</p>
+          </div>
+        </header>
+        <p class="trf-sentence" data-preview aria-live="polite">{{ preview() }}</p>
+        <div class="card-footer">
+          @if (staleStatuses().length || staleFields().length) {
+            <p class="msg error"><app-icon name="alert-circle" [size]="16" /> Buang nilai bertanda ⚠ dulu sebelum menyimpan.</p>
+          }
+          <span class="spacer"></span>
+          <a class="btn btn-ghost" routerLink="/admin/tracking-rules">Batal</a>
+          <button type="button" class="btn btn-primary" data-save [class.loading]="saving()" [disabled]="!canSave()" (click)="save()">
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="btn-label"><app-icon name="check" [size]="16" /> Simpan</span>
+          </button>
+        </div>
+      </section>
+    } @else if (lookingUp()) {
+      <section class="card trf-card trf-loading" data-lookup-loading aria-busy="true" aria-label="Memuat data Jira">
+        <div class="skeleton trf-sk-title"></div>
+        <div class="trf-sk-chips">
+          @for (w of [88, 112, 72, 130, 96, 80]; track $index) {
+            <div class="skeleton trf-sk-chip" [style.width.px]="w"></div>
+          }
+        </div>
+        <div class="trf-sk-row">
+          <div class="skeleton trf-sk-input"></div>
+          <div class="skeleton trf-sk-input"></div>
+        </div>
+      </section>
+    } @else if (!lookupError()) {
+      <section class="card trf-card trf-placeholder">
+        <app-icon name="info" [size]="18" />
+        <span>{{ isEdit ? 'Memuat aturan…' : 'Cek project di Jira dulu untuk memilih status dan field Story Point.' }}</span>
+      </section>
+    }
+  }
+</div>
