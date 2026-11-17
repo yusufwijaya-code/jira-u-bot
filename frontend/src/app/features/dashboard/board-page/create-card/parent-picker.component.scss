@@ -6,12 +6,13 @@
   background: var(--surface); color: var(--text-muted); cursor: text;
   transition: border-color var(--fast) var(--ease), box-shadow var(--normal) var(--ease);
   &:hover { border-color: #b9bcd0; }
-  &:focus-within { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-ring); }
+  // Calm focus: a slightly darker border only, no glow ring.
+  &:focus-within { border-color: var(--primary-light); box-shadow: none; }
   &.busy { background: var(--surface-2); }
   input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: .9rem; color: var(--text);
     &::placeholder { color: var(--text-faint); }
     // The wrapper draws the focus ring; beat global/.cc-field input:focus styles so it isn't doubled.
-    &:focus, &:hover { border: 0 !important; box-shadow: none !important; outline: 0; } } }
+    &, &:focus, &:focus-visible, &:hover { border: 0 !important; box-shadow: none !important; outline: none !important; } } }
 .pp-lead { display: inline-grid; place-items: center; width: 16px; }
 .pp-chevron { color: var(--text-muted); transition: transform var(--normal) var(--ease); }
 :host(.open) .pp-chevron { transform: rotate(180deg); }
