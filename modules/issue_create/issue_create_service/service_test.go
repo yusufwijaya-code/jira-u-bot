@@ -133,6 +133,36 @@ func TestMeta_MapsDynamicFieldsAndCaches(t *testing.T) {
 	}
 }
 
+func TestMeta_CacheInvalidatedWhenTrackingRuleChanges(t *testing.T) {
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+	j := coreJira()
+	s := newSvc(j, &fakeAI{})
+	if _, err := s.Meta(context.Background(), "dev@esb.co.id", 26); err != nil {
+		t.Fatal(err)
+	}
+	rules := jira_client_dto.BuiltinRules()
+	for i := range rules {
+		if rules[i].ProjectKey == "CORE" {
+			rules[i].StoryPointWriteField = "customfield_11053"
+		}
+	}
+	jira_client_dto.SetRules(rules)
+	m, err := s.Meta(context.Background(), "dev@esb.co.id", 26)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.metaHits != 2 {
+		t.Fatalf("createmeta fetched %d times, want 2 (rule change invalidates the cache)", j.metaHits)
+	}
+	if m.Types[0].StoryPointField != "customfield_11053" {
+		t.Fatalf("story SP field = %q, want the new write field", m.Types[0].StoryPointField)
+	}
+	s.Meta(context.Background(), "dev@esb.co.id", 26)
+	if j.metaHits != 2 {
+		t.Fatalf("createmeta fetched %d times, want 2 (unchanged rule stays cached)", j.metaHits)
+	}
+}
+
 func TestMeta_RejectsUnregisteredBoardAndMissingToken(t *testing.T) {
 	s := newSvc(omsJira(), &fakeAI{})
 	if _, err := s.Meta(context.Background(), "dev@esb.co.id", 99); !errors.Is(err, ErrBoardNotAllowed) {

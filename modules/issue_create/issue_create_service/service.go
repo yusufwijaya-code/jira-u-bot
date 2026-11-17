@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -149,6 +150,9 @@ type Service struct {
 type cachedMeta struct {
 	meta Meta
 	at   time.Time
+	// rule is the project's tracking rule the meta was mapped with; a rule
+	// change (Aturan Board) makes the entry stale.
+	rule jira_client_dto.TrackingRule
 }
 
 func New(d Deps) *Service {
@@ -203,10 +207,11 @@ func (s *Service) Meta(ctx context.Context, email string, boardID int64) (Meta, 
 }
 
 func (s *Service) metaFor(ctx context.Context, cred *jira_client_dto.Credential, project string) (Meta, error) {
+	rule := jira_client_dto.RuleFor(project)
 	s.mu.Lock()
 	c, ok := s.meta[project]
 	s.mu.Unlock()
-	if ok && s.d.Now().Sub(c.at) < time.Hour {
+	if ok && s.d.Now().Sub(c.at) < time.Hour && reflect.DeepEqual(c.rule, rule) {
 		return c.meta, nil
 	}
 	types, err := s.d.Jira.IssueTypesAs(ctx, cred, project)
@@ -219,14 +224,14 @@ func (s *Service) metaFor(ctx context.Context, cred *jira_client_dto.Credential,
 		if err != nil {
 			return Meta{}, err
 		}
-		tm := mapType(jira_client_dto.RuleFor(project), t, fields)
+		tm := mapType(rule, t, fields)
 		m.Types = append(m.Types, tm)
 		if t.Subtask && m.SubtaskTypeID == "" {
 			m.SubtaskTypeID = t.ID
 		}
 	}
 	s.mu.Lock()
-	s.meta[project] = cachedMeta{meta: m, at: s.d.Now()}
+	s.meta[project] = cachedMeta{meta: m, at: s.d.Now(), rule: rule}
 	s.mu.Unlock()
 	return m, nil
 }
