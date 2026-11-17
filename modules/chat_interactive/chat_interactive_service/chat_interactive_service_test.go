@@ -492,6 +492,28 @@ func TestGeser_ReminderButtonsUseTheWorkflowCaseInsensitively(t *testing.T) {
 	}
 }
 
+func TestGeser_CodeCompletedFollowsEachProjectsDoneStatus(t *testing.T) {
+	f := newFixture()
+	f.dash.transitions["CORE-1"] = user_dashboard_dto.TicketTransitions{IssueKey: "CORE-1", CurrentStatus: "CODE REVIEW", Transitions: []user_dashboard_dto.TransitionOption{
+		{ID: "11", ToStatus: "To Do"},
+		{ID: "41", ToStatus: "Code Completed"},
+	}}
+	res := f.svc.Geser(context.Background(), dev, "CORE-1", "code-completed")
+	if !res.OK || res.StatusName != "Code Completed" || f.dash.moved[0] != "CORE-1>41" {
+		t.Errorf("CORE: res=%+v moved=%v", res, f.dash.moved)
+	}
+
+	// OMS names the same step "Done".
+	f.dash.transitions["CORE-1"] = user_dashboard_dto.TicketTransitions{IssueKey: "CORE-1", CurrentStatus: "Code Review", Transitions: []user_dashboard_dto.TransitionOption{
+		{ID: "11", ToStatus: "To Do"},
+		{ID: "51", ToStatus: "Done"},
+	}}
+	res = f.svc.Geser(context.Background(), dev, "CORE-1", "code-completed")
+	if !res.OK || res.StatusName != "Done" || f.dash.moved[1] != "CORE-1>51" {
+		t.Errorf("OMS-style: res=%+v moved=%v", res, f.dash.moved)
+	}
+}
+
 func TestCuti_ListShowsUpcomingWithRemoveButtonsAndAForm(t *testing.T) {
 	f := newFixture()
 	f.leaves.leaves = []user_leave_dto.Leave{{Date: "2026-11-20", Note: "Liburan"}, {Date: "2026-11-02"}}

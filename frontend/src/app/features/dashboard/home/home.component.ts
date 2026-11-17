@@ -402,7 +402,8 @@ export class HomeComponent {
   }
 
   protected async move(ticket: TicketCard, target: TransitionTarget): Promise<void> {
-    const label = target === 'code-review' ? 'Code Review' : 'To Do';
+    const labels: Record<TransitionTarget, string> = { 'code-review': 'Code Review', 'code-completed': 'Code Completed', todo: 'To Do' };
+    const label = labels[target];
     const confirmed = await this.confirm.ask({
       title: `Geser ke ${label}?`,
       message: `${ticket.issueKey} — ${ticket.summary} akan dipindah ke ${label} di Jira.`,
