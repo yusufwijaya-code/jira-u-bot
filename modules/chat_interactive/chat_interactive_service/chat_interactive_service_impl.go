@@ -25,7 +25,7 @@ const (
 	actMove        = "move"         // params key, tid, to: move a ticket
 	actLeaveAdd    = "leave.add"    // form from, to, note
 	actLeaveRemove = "leave.remove" // param date
-	actMute        = "mute"         // param for: minutes | tomorrow | forever
+	actMute        = "mute"         // param for: minutes | tomorrow (an old card's "selamanya" is refused)
 	actUnmute      = "unmute"
 	actScope       = "scope" // params board (0 = all), then: switch board, show then again
 )
@@ -736,6 +736,9 @@ func (s *service) muteCommand(ctx context.Context, u *registration_dto.User, arg
 	case "nyalakan", "on", "stop", "batal":
 		return s.unmute(ctx, u, "")
 	}
+	if isForeverMute(args) {
+		return s.muteView(ctx, u, noForeverMute)
+	}
 	choice, ok := parseMute(args, s.d.Now())
 	if !ok {
 		return s.muteView(ctx, u, "⚠️ Durasinya nggak kebaca. Contoh: */n-mute 30m*, */n-mute 2 jam*, */n-mute besok*")
@@ -743,7 +746,14 @@ func (s *service) muteCommand(ctx context.Context, u *registration_dto.User, arg
 	return s.applyMute(ctx, u, choice)
 }
 
+// noForeverMute answers the removed "mute forever" (typed or an old card's button).
+const noForeverMute = "⚠️ Mute selamanya sudah tidak tersedia. Pilih durasi (maks. sampai besok pagi), " +
+	"atau matikan semua notifikasi lewat *Pengaturan* di web."
+
 func (s *service) mute(ctx context.Context, u *registration_dto.User, param string) view {
+	if isForeverMute(param) {
+		return s.muteView(ctx, u, noForeverMute)
+	}
 	choice, ok := parseMute(param, s.d.Now())
 	if !ok {
 		return s.muteView(ctx, u, "⚠️ Pilihan durasinya nggak dikenal.")
@@ -753,9 +763,6 @@ func (s *service) mute(ctx context.Context, u *registration_dto.User, param stri
 
 func (s *service) applyMute(ctx context.Context, u *registration_dto.User, c muteChoice) view {
 	until := c.until
-	if c.forever {
-		until = user_setting_dto.MuteForeverUntil
-	}
 	boardID, name := s.muteBoard(ctx, u.Email)
 	if err := s.d.Settings.MuteUntil(ctx, u.UserID, boardID, until); err != nil {
 		log.Printf("chat_interactive: MuteUntil(%d, %d) failed: %v", u.UserID, boardID, err)
@@ -845,11 +852,10 @@ func (s *service) muteView(ctx context.Context, u *registration_dto.User, msg st
 		action("2 jam", actMute, "for", "2j"),
 		action("4 jam", actMute, "for", "4j"),
 		action("Sampai besok pagi", actMute, "for", "besok"),
-		action("Matikan", actMute, "for", "selamanya"),
 	)}})
 	sections = append(sections, section{items: []item{buttons(link("Pengaturan notifikasi", s.d.WebURL+"/dashboard/settings"))}})
 	return view{
 		id: "nudge-mute", title: "🔕 Mute notifikasi", sections: sections,
-		tip: "Ketik */n-mute 30m*, */n-mute 2 jam*, */n-mute besok*, */n-mute selamanya* atau */n-unmute*",
+		tip: "Ketik */n-mute 30m*, */n-mute 2 jam*, */n-mute besok* atau */n-unmute*",
 	}
 }

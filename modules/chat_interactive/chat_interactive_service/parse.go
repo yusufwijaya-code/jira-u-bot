@@ -233,22 +233,30 @@ func parseLeaveArgs(args string, now time.Time) (from, to time.Time, note string
 
 // --- mute durations ----------------------------------------------------------
 
-// muteChoice is a mute target; until is zero for "until switched back on".
+// muteChoice is a mute target (always time-limited: the forever mute was
+// removed on 2026-11-17, web and chat alike).
 type muteChoice struct {
-	until   time.Time
-	forever bool
+	until time.Time
 }
 
 var durationPattern = regexp.MustCompile(`^(\d{1,4})\s*(m|mnt|menit|min|minute|minutes|j|jam|h|hr|hour|hours)?$`)
 
-// parseMute reads "30m", "1 jam", "90", "besok", "selamanya".
+// isForeverMute: the words the removed "mute forever" option used to accept
+// (typed, or sent by the "Matikan" button of cards still in chats).
+func isForeverMute(arg string) bool {
+	switch strings.ToLower(strings.TrimSpace(arg)) {
+	case "selamanya", "forever", "off", "mati", "matikan":
+		return true
+	}
+	return false
+}
+
+// parseMute reads "30m", "1 jam", "90", "besok".
 func parseMute(arg string, now time.Time) (muteChoice, bool) {
 	a := strings.ToLower(strings.TrimSpace(arg))
 	switch a {
 	case "besok", "tomorrow", "sampai besok", "besok pagi":
 		return muteChoice{until: user_setting_dto.TomorrowMorning(now)}, true
-	case "selamanya", "forever", "off", "mati", "matikan":
-		return muteChoice{forever: true}, true
 	}
 	m := durationPattern.FindStringSubmatch(a)
 	if m == nil {

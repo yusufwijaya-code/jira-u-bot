@@ -603,7 +603,6 @@ func TestMute_TypedDurations(t *testing.T) {
 		"/n-mute 2 jam":     now.Add(2 * time.Hour),
 		"/n-mute 90":        now.Add(90 * time.Minute),
 		"/n-mute besok":     user_setting_dto.TomorrowMorning(now),
-		"/n-mute selamanya": user_setting_dto.MuteForeverUntil,
 	}
 	for in, want := range cases {
 		f := newFixture()
@@ -613,6 +612,13 @@ func TestMute_TypedDurations(t *testing.T) {
 		}
 		if !strings.Contains(r.Text, "🔕 Oke, notifikasi") {
 			t.Errorf("%q reply = %q", in, r.Text)
+		}
+	}
+	// The forever mute was removed: typed or via an old card's "Matikan" button.
+	for _, in := range []string{"/n-mute selamanya", "/n-mute matikan"} {
+		f := newFixture()
+		if r := f.svc.Command(context.Background(), dev, in); f.settings.mutedUntil != nil || !strings.Contains(r.Text, "Mute selamanya sudah tidak tersedia") {
+			t.Errorf("%q: muted=%v reply=%q, want a refusal", in, f.settings.mutedUntil, r.Text)
 		}
 	}
 	f := newFixture()
