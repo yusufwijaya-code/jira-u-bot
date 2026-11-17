@@ -280,28 +280,63 @@ func TestReload_NoActiveRuleAppliesAnEmptySet(t *testing.T) {
 
 func TestLookup_NormalizesCachesAndMapsJiraErrors(t *testing.T) {
 	h := newHarness()
-	l, err := h.svc.Lookup(ctx, " pos ")
+	l, err := h.svc.Lookup(ctx, " pos ", false)
 	if err != nil || l.ProjectKey != "POS" || l.ProjectName != "ESB POS" || len(l.Statuses) != 4 || len(l.NumberFields) != 4 {
 		t.Fatalf("lookup = %+v, %v", l, err)
 	}
-	h.svc.Lookup(ctx, "POS")
+	h.svc.Lookup(ctx, "POS", false)
 	if h.jira.calls != 1 {
 		t.Errorf("jira calls = %d, want 1 (cached 10 minutes)", h.jira.calls)
 	}
 	h.now = h.now.Add(11 * time.Minute)
-	h.svc.Lookup(ctx, "POS")
+	h.svc.Lookup(ctx, "POS", false)
 	if h.jira.calls != 2 {
 		t.Errorf("jira calls = %d, want 2 after the cache expired", h.jira.calls)
 	}
-	if _, err := h.svc.Lookup(ctx, "1POS"); !errors.Is(err, ErrInvalidProjectKey) {
+	if _, err := h.svc.Lookup(ctx, "1POS", false); !errors.Is(err, ErrInvalidProjectKey) {
 		t.Errorf("bad key err = %v", err)
 	}
-	if _, err := h.svc.Lookup(ctx, "NOPE"); !errors.Is(err, ErrProjectNotFound) {
+	if _, err := h.svc.Lookup(ctx, "NOPE", false); !errors.Is(err, ErrProjectNotFound) {
 		t.Errorf("unknown project err = %v", err)
 	}
 	h.jira.err = errors.New("timeout")
-	if _, err := h.svc.Lookup(ctx, "HR"); !errors.Is(err, ErrJiraUnavailable) {
+	if _, err := h.svc.Lookup(ctx, "HR", false); !errors.Is(err, ErrJiraUnavailable) {
 		t.Errorf("jira down err = %v", err)
+	}
+}
+
+func TestLookup_FreshBypassesTheCache(t *testing.T) {
+	h := newHarness()
+	h.svc.Lookup(ctx, "POS", false)
+	h.jira.statuses["POS"] = append(h.jira.statuses["POS"], "Testing")
+	l, err := h.svc.Lookup(ctx, "POS", true)
+	if err != nil || h.jira.calls != 2 || len(l.Statuses) != 5 {
+		t.Fatalf("fresh lookup = %v, %v (calls %d), want Jira re-read with the new status", l.Statuses, err, h.jira.calls)
+	}
+	if again, _ := h.svc.Lookup(ctx, "POS", false); len(again.Statuses) != 5 || h.jira.calls != 2 {
+		t.Errorf("the fresh result must refresh the cache: %v (calls %d)", again.Statuses, h.jira.calls)
+	}
+}
+
+func TestCreate_RechecksJiraOnceWhenTheCacheLacksAStatus(t *testing.T) {
+	h := newHarness(seedRules()...)
+	h.svc.Lookup(ctx, "POS", false) // cached without "Testing"
+	h.jira.statuses["POS"] = append(h.jira.statuses["POS"], "Testing")
+	in := validPOS()
+	in.TrackedStatuses = append(in.TrackedStatuses, "Testing")
+	if _, err := h.svc.Create(ctx, in, "admin@esb.co.id"); err != nil {
+		t.Fatalf("err = %v, want the freshly added Jira status accepted", err)
+	}
+	if h.jira.calls != 2 {
+		t.Errorf("jira calls = %d, want 2 (cache + one fresh re-check)", h.jira.calls)
+	}
+	in.TrackedStatuses = append(in.TrackedStatuses, "Nope")
+	var v *ValidationError
+	if _, err := h.svc.Update(ctx, "POS", in, "admin@esb.co.id"); !errors.As(err, &v) {
+		t.Fatalf("err = %v, want a validation error", err)
+	}
+	if h.jira.calls != 3 {
+		t.Errorf("jira calls = %d, want 3 (one re-check, then reject)", h.jira.calls)
 	}
 }
 

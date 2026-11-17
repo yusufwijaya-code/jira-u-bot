@@ -56,7 +56,7 @@ describe('TrackingRuleFormComponent', () => {
     fixture.detectChanges();
     button().click();
     fixture.detectChanges();
-    expect(api.lookup).toHaveBeenCalledWith('POS');
+    expect(api.lookup).toHaveBeenCalledWith('POS', false);
     expect(el.querySelector('[data-project]')?.textContent).toContain('ESB POS');
     expect(el.querySelectorAll('[data-status]').length).toBe(4);
   });
@@ -185,7 +185,7 @@ describe('TrackingRuleFormComponent', () => {
     const { fixture, el, c } = create();
 
     expect((el.querySelector('[data-key-input]') as HTMLInputElement).readOnly).toBeTrue();
-    expect(api.lookup).toHaveBeenCalledWith('CORE');
+    expect(api.lookup).toHaveBeenCalledWith('CORE', true);
     expect(el.querySelector('[data-status="Code Process"]')?.classList).toContain('on');
     expect(el.querySelector('[data-stale-statuses]')?.textContent).toContain('Code Completed');
     expect((el.querySelector('[data-save]') as HTMLButtonElement).disabled).toBeTrue();
@@ -196,5 +196,10 @@ describe('TrackingRuleFormComponent', () => {
     expect(el.querySelector('[data-stale-statuses]')).toBeNull();
     (el.querySelector('[data-save]') as HTMLButtonElement).click();
     expect(api.update).toHaveBeenCalledWith('CORE', jasmine.objectContaining({ doneStatus: 'Done', reviewStatus: 'CODE REVIEW' }));
+
+    // "Muat ulang dari Jira" bypasses the server's lookup cache too.
+    (el.querySelector('[data-lookup]') as HTMLButtonElement).click();
+    expect(api.lookup.calls.count()).toBe(2);
+    expect(api.lookup.calls.mostRecent().args).toEqual(['CORE', true]);
   });
 });

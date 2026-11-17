@@ -196,7 +196,8 @@ export class TrackingRuleFormComponent {
     this.lookupError.set(null);
     this.existingKey.set(null);
     this.avatarFailed.set(false);
-    this.api.lookup(key).subscribe({
+    // Edit (load + "Muat ulang dari Jira") reads Jira fresh, past the server cache.
+    this.api.lookup(key, this.isEdit).subscribe({
       next: (l) => {
         this.lookingUp.set(false);
         this.lookup.set(l);

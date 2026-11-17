@@ -135,11 +135,11 @@ func jiraErr(err error) error {
 	return ErrJiraUnavailable
 }
 
-func (s *Service) numberFields(ctx context.Context) ([]jira_client_dto.NumberField, error) {
+func (s *Service) numberFields(ctx context.Context, fresh bool) ([]jira_client_dto.NumberField, error) {
 	s.mu.Lock()
 	cached := s.fields
 	s.mu.Unlock()
-	if cached != nil && s.d.Now().Sub(cached.at) < lookupTTL {
+	if !fresh && cached != nil && s.d.Now().Sub(cached.at) < lookupTTL {
 		return cached.list, nil
 	}
 	list, err := s.d.Jira.GetNumberFields(ctx)
@@ -152,42 +152,70 @@ func (s *Service) numberFields(ctx context.Context) ([]jira_client_dto.NumberFie
 	return list, nil
 }
 
-// Lookup is the project's Jira data for the form (AC3.1), cached 10 minutes.
-func (s *Service) Lookup(ctx context.Context, projectKey string) (Lookup, error) {
+// Lookup is the project's Jira data for the form (AC3.1), cached 10 minutes;
+// fresh bypasses the cache ("Muat ulang dari Jira").
+func (s *Service) Lookup(ctx context.Context, projectKey string, fresh bool) (Lookup, error) {
+	l, _, err := s.lookup(ctx, projectKey, fresh)
+	return l, err
+}
+
+// lookup also reports whether the result came from the cache.
+func (s *Service) lookup(ctx context.Context, projectKey string, fresh bool) (Lookup, bool, error) {
 	key, ok := NormalizeProjectKey(projectKey)
 	if !ok {
-		return Lookup{}, ErrInvalidProjectKey
+		return Lookup{}, false, ErrInvalidProjectKey
 	}
 	s.mu.Lock()
 	cached, hit := s.lookups[key]
 	s.mu.Unlock()
-	if hit && s.d.Now().Sub(cached.at) < lookupTTL {
-		return cached.lookup, nil
+	if !fresh && hit && s.d.Now().Sub(cached.at) < lookupTTL {
+		return cached.lookup, true, nil
 	}
 	project, err := s.d.Jira.GetProject(ctx, key)
 	if err != nil {
-		return Lookup{}, jiraErr(err)
+		return Lookup{}, false, jiraErr(err)
 	}
 	statuses, err := s.d.Jira.GetProjectStatuses(ctx, key)
 	if err != nil {
-		return Lookup{}, jiraErr(err)
+		return Lookup{}, false, jiraErr(err)
 	}
-	fields, err := s.numberFields(ctx)
+	fields, err := s.numberFields(ctx, fresh)
 	if err != nil {
-		return Lookup{}, jiraErr(err)
+		return Lookup{}, false, jiraErr(err)
 	}
 	l := Lookup{ProjectKey: key, ProjectName: project.Name, AvatarURL: project.AvatarURL(), Statuses: statuses, NumberFields: fields}
 	s.mu.Lock()
 	s.lookups[key] = cachedLookup{lookup: l, at: s.d.Now()}
 	s.mu.Unlock()
-	return l, nil
+	return l, false, nil
+}
+
+// validated builds the rule from the input; when the input names a status or
+// field the cached lookup lacks (added in Jira since), it re-checks once
+// against fresh Jira data before rejecting.
+func (s *Service) validated(ctx context.Context, key string, in RuleInput) (Rule, Lookup, error) {
+	l, cached, err := s.lookup(ctx, key, false)
+	if err != nil {
+		return Rule{}, Lookup{}, err
+	}
+	rule, errs := buildRule(in, l)
+	if len(errs) > 0 && cached {
+		if fresh, _, ferr := s.lookup(ctx, key, true); ferr == nil {
+			l = fresh
+			rule, errs = buildRule(in, l)
+		}
+	}
+	if len(errs) > 0 {
+		return Rule{}, Lookup{}, &ValidationError{Fields: errs}
+	}
+	return rule, l, nil
 }
 
 // fieldNames maps field ID → Jira name; empty when Jira is down (views then
 // show the ID as the name).
 func (s *Service) fieldNames(ctx context.Context) map[string]string {
 	names := map[string]string{}
-	fields, err := s.numberFields(ctx)
+	fields, err := s.numberFields(ctx, false)
 	if err != nil {
 		log.Printf("tracking_rule: field names unavailable: %v", err)
 		return names
@@ -241,13 +269,9 @@ func (s *Service) Create(ctx context.Context, in RuleInput, editor string) (Rule
 	} else if found {
 		return RuleView{}, ErrRuleExists
 	}
-	l, err := s.Lookup(ctx, key)
+	rule, l, err := s.validated(ctx, key, in)
 	if err != nil {
 		return RuleView{}, err
-	}
-	rule, errs := buildRule(in, l)
-	if len(errs) > 0 {
-		return RuleView{}, &ValidationError{Fields: errs}
 	}
 	rule.ProjectKey, rule.ProjectName, rule.IsActive, rule.EditedBy = key, l.ProjectName, true, editor
 	if err := s.d.Store.Insert(ctx, rule); err != nil {
@@ -268,13 +292,9 @@ func (s *Service) Update(ctx context.Context, projectKey string, in RuleInput, e
 	if !found {
 		return RuleView{}, ErrRuleNotFound
 	}
-	l, err := s.Lookup(ctx, key)
+	rule, l, err := s.validated(ctx, key, in)
 	if err != nil {
 		return RuleView{}, err
-	}
-	rule, errs := buildRule(in, l)
-	if len(errs) > 0 {
-		return RuleView{}, &ValidationError{Fields: errs}
 	}
 	rule.ProjectKey, rule.ProjectName, rule.IsActive, rule.EditedBy = key, l.ProjectName, existing.IsActive, editor
 	if rule.ProjectName == "" {

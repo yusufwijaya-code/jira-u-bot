@@ -17,7 +17,7 @@ import (
 // API is what the handler needs from Service.
 type API interface {
 	List(ctx context.Context) ([]RuleView, error)
-	Lookup(ctx context.Context, projectKey string) (Lookup, error)
+	Lookup(ctx context.Context, projectKey string, fresh bool) (Lookup, error)
 	Create(ctx context.Context, in RuleInput, editor string) (RuleView, error)
 	Update(ctx context.Context, projectKey string, in RuleInput, editor string) (RuleView, error)
 	SetActive(ctx context.Context, projectKey string, active bool, editor string) (RuleView, error)
@@ -105,7 +105,8 @@ func (h *Handler) list(c *gin.Context) {
 
 func (h *Handler) lookup(c *gin.Context) {
 	key := c.Param("projectKey")
-	l, err := h.api.Lookup(c.Request.Context(), key)
+	// ?fresh=1 bypasses the 10-minute cache ("Muat ulang dari Jira").
+	l, err := h.api.Lookup(c.Request.Context(), key, c.Query("fresh") == "1")
 	if err != nil {
 		fail(c, err, displayKey(key))
 		return

@@ -82,8 +82,10 @@ export class TrackingRuleService {
     return this.http.get<{ rules: TrackingRule[] }>(this.base);
   }
 
-  lookup(projectKey: string): Observable<JiraProjectLookup> {
-    return this.http.get<JiraProjectLookup>(`${this.base}/jira/${encodeURIComponent(projectKey)}`);
+  /** fresh bypasses the server's 10-minute Jira cache ("Muat ulang dari Jira"). */
+  lookup(projectKey: string, fresh = false): Observable<JiraProjectLookup> {
+    const url = `${this.base}/jira/${encodeURIComponent(projectKey)}`;
+    return this.http.get<JiraProjectLookup>(fresh ? `${url}?fresh=1` : url);
   }
 
   create(input: TrackingRuleInput): Observable<TrackingRule> {

@@ -17,6 +17,8 @@ describe('TrackingRuleService', () => {
     http.expectOne((r) => r.method === 'GET' && r.url.endsWith('/api/dashboard/admin/tracking-rules')).flush({ rules: [] });
     svc.lookup('POS').subscribe();
     http.expectOne((r) => r.method === 'GET' && r.url.endsWith('/api/dashboard/admin/tracking-rules/jira/POS')).flush({});
+    svc.lookup('POS', true).subscribe();
+    http.expectOne((r) => r.method === 'GET' && r.url.endsWith('/api/dashboard/admin/tracking-rules/jira/POS?fresh=1')).flush({});
     svc.create({ ...input, projectKey: 'POS' }).subscribe();
     const created = http.expectOne((r) => r.method === 'POST' && r.url.endsWith('/api/dashboard/admin/tracking-rules'));
     expect(created.request.body.projectKey).toBe('POS');

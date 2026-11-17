@@ -19,13 +19,14 @@ type fakeAPI struct {
 	gotEditor string
 	gotActive *bool
 	gotInput  RuleInput
+	gotFresh  bool
 }
 
 func (f *fakeAPI) List(context.Context) ([]RuleView, error) {
 	return []RuleView{{ProjectKey: "CORE"}}, f.err
 }
-func (f *fakeAPI) Lookup(_ context.Context, key string) (Lookup, error) {
-	f.gotKey = key
+func (f *fakeAPI) Lookup(_ context.Context, key string, fresh bool) (Lookup, error) {
+	f.gotKey, f.gotFresh = key, fresh
 	return Lookup{ProjectKey: "POS"}, f.err
 }
 func (f *fakeAPI) Create(_ context.Context, in RuleInput, editor string) (RuleView, error) {
@@ -86,6 +87,14 @@ func TestRoutes_HappyPaths(t *testing.T) {
 	serve(api, http.MethodPost, "/api/dashboard/admin/tracking-rules", `{"projectKey":"POS","trackedStatuses":["In Progress"]}`)
 	if api.gotEditor != "admin@esb.co.id" || api.gotInput.ProjectKey != "POS" || len(api.gotInput.TrackedStatuses) != 1 {
 		t.Errorf("create got editor=%q input=%+v", api.gotEditor, api.gotInput)
+	}
+	serve(api, http.MethodGet, "/api/dashboard/admin/tracking-rules/jira/pos", "")
+	if api.gotFresh {
+		t.Error("lookup without ?fresh=1 must use the cache")
+	}
+	serve(api, http.MethodGet, "/api/dashboard/admin/tracking-rules/jira/pos?fresh=1", "")
+	if !api.gotFresh || api.gotKey != "pos" {
+		t.Errorf("lookup ?fresh=1 got fresh=%v key=%q", api.gotFresh, api.gotKey)
 	}
 	serve(api, http.MethodPut, "/api/dashboard/admin/tracking-rules/OMS/active", `{"active":false}`)
 	if api.gotKey != "OMS" || api.gotActive == nil || *api.gotActive {
