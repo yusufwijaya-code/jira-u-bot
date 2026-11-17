@@ -65,12 +65,30 @@ func TestUnregistered_InstallOrMessageIsToldToRegisterOnTheWeb(t *testing.T) {
 	}
 }
 
-func TestAdded_RegisteredUserWithNotificationsOffIsOfferedTheSwitch(t *testing.T) {
-	res := notifSvc(fakeUsers{dev: {Email: dev, FlagActive: true}}, &fakeStates{states: map[string]chat_app_dto.State{}}, &fakeSwitch{}, &fakeCommands{}).
+func TestAdded_InstallingTheAppTurnsNotificationsOn(t *testing.T) {
+	sw := &fakeSwitch{}
+	res := notifSvc(fakeUsers{dev: {UserID: 7, Email: dev, FlagActive: true}}, &fakeStates{states: map[string]chat_app_dto.State{}}, sw, &fakeCommands{}).
 		Handle(context.Background(), dmEvent("ADDED_TO_SPACE", dev, nil))
+	if strings.Join(sw.set, ",") != "on" {
+		t.Errorf("switch = %v, want on", sw.set)
+	}
 	if !strings.HasPrefix(res.Text, "✅ App Nudge aktif") {
 		t.Errorf("preview = %q", res.Text)
 	}
+	if got := strings.Join(buttonFunctions(res), ","); got != "nudge.cmd:" {
+		t.Errorf("buttons = %s, want only the menu (notifications are already on)", got)
+	}
+}
+
+type failingSwitch struct{}
+
+func (failingSwitch) SetNotificationsEnabled(context.Context, int64, bool) (user_setting_dto.NotificationSwitch, error) {
+	return user_setting_dto.NotificationSwitch{}, context.DeadlineExceeded
+}
+
+func TestAdded_SwitchFailureStillOffersTheButtons(t *testing.T) {
+	res := New(Deps{Users: fakeUsers{dev: {UserID: 7, Email: dev, FlagActive: true}}, States: &fakeStates{states: map[string]chat_app_dto.State{}}, Commands: &fakeCommands{}, Notifications: failingSwitch{}}).
+		Handle(context.Background(), dmEvent("ADDED_TO_SPACE", dev, nil))
 	if got := strings.Join(buttonFunctions(res), ","); got != "notif_choice:1,notif_choice:0,nudge.cmd:" {
 		t.Errorf("buttons = %s, want on / later / menu", got)
 	}
