@@ -64,7 +64,8 @@ describe('SettingsComponent', () => {
   let confirm: jasmine.SpyObj<ConfirmService>;
   let context: FakeBoardContext;
   const el = () => fixture.nativeElement as HTMLElement;
-  const card = (name: string) => el().querySelector(`[data-card="${name}"]`) as HTMLElement;
+  // Opened panels stay mounted (hidden): look only inside the visible one.
+  const card = (name: string) => el().querySelector(`.settings-panel:not([hidden]) [data-card="${name}"]`) as HTMLElement;
   const component = () => fixture.componentInstance as any;
 
   beforeEach(async () => {
@@ -101,19 +102,43 @@ describe('SettingsComponent', () => {
     (el().querySelector(`[data-tab="${name}"]`) as HTMLButtonElement).click();
     fixture.detectChanges();
   }
-  const cardNames = () => Array.from(el().querySelectorAll('section.card[data-card]')).map((s) => s.getAttribute('data-card'));
+  const cardNames = () =>
+    Array.from(el().querySelectorAll('.settings-panel:not([hidden]) section.card[data-card]')).map((s) => s.getAttribute('data-card'));
+  const visible = (selector: string) => el().querySelector(`.settings-panel:not([hidden]) ${selector}`);
 
   it('splits Umum (every board) from Per board (notification cards)', () => {
     openTab('umum');
     expect(cardNames()).toEqual(['credential']);
-    expect(el().querySelector('app-chat-sender-card')).not.toBeNull();
-    expect(el().querySelector('.scope-bar')).toBeNull();
+    expect(visible('app-chat-sender-card')).not.toBeNull();
+    expect(visible('.scope-bar')).toBeNull();
 
     openTab('board');
     expect(cardNames()).toEqual(['reminder', 'overage', 'events', 'quiet']);
-    expect(el().querySelector('app-chat-sender-card')).toBeNull();
+    expect(visible('app-chat-sender-card')).toBeNull();
     expect(el().querySelector('.scope-bar')?.getAttribute('data-scope')).toBe('default');
     expect(el().querySelector('.scope-bar')?.textContent).toContain('Pengaturan default semua board');
+  });
+
+  it('switches tabs without reloading, showing skeletons or destroying the other panel', () => {
+    openTab('umum');
+    const credential = card('credential');
+    openTab('board');
+    const reminder = card('reminder');
+    boardService.getSettings.calls.reset();
+    component().patch({ reminderTiers: ['1h'] }); // an unsaved draft survives the switch
+
+    openTab('umum');
+    expect(card('credential')).toBe(credential);
+    openTab('board');
+    expect(card('reminder')).toBe(reminder);
+
+    expect(boardService.getSettings).not.toHaveBeenCalled();
+    expect(el().querySelector('.skeleton-card')).toBeNull();
+    expect(el().querySelector('.settings-stack')!.classList).not.toContain('switching');
+    expect(component().draft().reminderTiers).toEqual(['1h']);
+    const panels = Array.from(el().querySelectorAll('.settings-panel')) as HTMLElement[];
+    expect(panels.map((p) => [p.dataset['panel'], p.hidden])).toEqual([['umum', true], ['board', false]]);
+    expect(el().querySelector('[data-tab="board"]')!.getAttribute('aria-selected')).toBe('true');
   });
 
   it('opens on Umum, or on Per board when a board is already picked', () => {

@@ -3494,12 +3494,20 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   &:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 }
 
-/* Tab content eases in when switching. */
-.settings-tabs ~ section,
-.settings-tabs ~ .settings-boards,
-.settings-tabs ~ app-chat-sender-card {
+/* Tab panels (Umum / Per board): both stay mounted once opened and only
+   toggle [hidden], so switching keeps their state. The incoming panel
+   cross-fades as one block (overriding the staggered .page-stack entrance),
+   and a panel is at least a viewport tall under the sticky tab bar so a
+   shorter panel can't clamp the scroll and drag the tab bar down. */
+.settings-stack > .settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: calc(100vh - var(--topbar-actual, var(--topbar-h)) - 120px);
+  min-height: calc(100dvh - var(--topbar-actual, var(--topbar-h)) - 120px);
   animation: settings-in 0.22s var(--ease);
 }
+.settings-stack > .settings-panel[hidden] { display: none; }
 @keyframes settings-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
@@ -3541,10 +3549,12 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 }
 /* Switching board: the previous board's content stays (dimmed) until the new
    settings land, then fades back in, so nothing unmounts or jumps. */
-.settings-stack > :not(.settings-tabs):not(.settings-boards) {
+.settings-stack > :not(.settings-tabs):not(.settings-panel),
+.settings-panel > :not(.settings-boards) {
   transition: opacity var(--normal) var(--ease), filter var(--normal) var(--ease);
 }
-.settings-stack.switching > :not(.settings-tabs):not(.settings-boards) {
+.settings-stack.switching > :not(.settings-tabs):not(.settings-panel),
+.settings-stack.switching > .settings-panel > :not(.settings-boards) {
   opacity: 0.45;
   filter: saturate(0.6);
   pointer-events: none;
@@ -3578,7 +3588,7 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .settings-stack > *, .settings-tabs ~ section, .settings-tabs ~ .settings-boards, .settings-tabs ~ app-chat-sender-card { transition: none; animation: none; }
+  .settings-stack > *, .settings-panel > * { transition: none; animation: none; }
   .settings-board-spinner { animation-duration: 1.6s; }
 }
 

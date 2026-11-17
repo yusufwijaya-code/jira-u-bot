@@ -1,11 +1,11 @@
 <div class="page-stack settings-stack" [class.switching]="switching()" [attr.aria-busy]="switching() || null" [style.min-height.px]="holdHeight()">
   <!-- Umum = applies to every board; Per board = notification settings of one board / the default -->
-  <nav class="settings-tabs" role="tablist" aria-label="Bagian pengaturan">
-    <button type="button" role="tab" class="settings-tab" data-tab="umum" [class.active]="tab() === 'umum'" [attr.aria-selected]="tab() === 'umum'" (click)="tab.set('umum')">
+  <nav class="settings-tabs" role="tablist" aria-label="Bagian pengaturan" #tabBar>
+    <button type="button" role="tab" id="settings-tab-umum" aria-controls="settings-panel-umum" class="settings-tab" data-tab="umum" [class.active]="tab() === 'umum'" [attr.aria-selected]="tab() === 'umum'" (click)="selectTab('umum')">
       <app-icon name="settings" [size]="16" />
       <span><strong>Umum</strong><small>Berlaku untuk semua board</small></span>
     </button>
-    <button type="button" role="tab" class="settings-tab" data-tab="board" [class.active]="tab() === 'board'" [attr.aria-selected]="tab() === 'board'" (click)="tab.set('board')">
+    <button type="button" role="tab" class="settings-tab" data-tab="board" id="settings-tab-board" aria-controls="settings-panel-board" [class.active]="tab() === 'board'" [attr.aria-selected]="tab() === 'board'" (click)="selectTab('board')">
       <app-icon name="layers" [size]="16" />
       <span><strong>Per board</strong><small>Reminder, status &amp; mute tiap board</small></span>
     </button>
@@ -36,7 +36,10 @@
   }
 
   @if (!loading && !error && draft(); as d) {
-    @if (tab() === 'umum') {
+    <!-- Both panels stay mounted once opened (hidden, not destroyed): switching
+         tabs keeps their state and never refetches or replays the skeleton. -->
+    @if (visited().umum) {
+    <div class="settings-panel" role="tabpanel" id="settings-panel-umum" aria-labelledby="settings-tab-umum" data-panel="umum" [hidden]="tab() !== 'umum'">
     <!-- Master on/off switch (Tech Spec "Notification On-Off Consent") -->
     @if (!isAdminMode && notifSwitch.state(); as ns) {
       <section class="card" data-card="master-switch">
@@ -108,7 +111,11 @@
         (credentialChanged)="onCredentialChanged()"
       ></app-jira-credential>
     </section>
-    } @else {
+    </div>
+    }
+
+    @if (visited().board) {
+    <div class="settings-panel" role="tabpanel" id="settings-panel-board" aria-labelledby="settings-tab-board" data-panel="board" [hidden]="tab() !== 'board'">
 
     <!-- Which board this tab configures (shares the navbar choice) -->
     <div class="settings-boards" role="tablist" aria-label="Pilih board">
@@ -385,6 +392,7 @@
       </div>
       <ng-container *ngTemplateOutlet="footer; context: { card: 'quiet' }" />
     </section>
+    </div>
     }
   }
 </div>

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, ElementRef, Injector, afterNextRender, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
@@ -109,7 +109,11 @@ export class SettingsComponent {
    * Per board = notification settings of the default / one board. Opens on
    * "Per board" when a board is already picked in the navbar.
    */
-  protected tab = signal<'umum' | 'board'>(inject(SettingsScope).selectedId() === null ? 'umum' : 'board');
+  protected tab = signal<SettingsTab>(inject(SettingsScope).selectedId() === null ? 'umum' : 'board');
+  /** Panels opened so far: each is mounted on first visit and then only hidden, never destroyed. */
+  protected visited = signal<Record<SettingsTab, boolean>>({ umum: this.tab() === 'umum', board: this.tab() === 'board' });
+  private tabBar = viewChild<ElementRef<HTMLElement>>('tabBar');
+  private injector = inject(Injector);
   protected useDefault = signal(false);
   /** "Atur khusus board ini" was clicked: editable until saved / cancelled. */
   protected editingCustom = signal(false);
@@ -249,6 +253,45 @@ export class SettingsComponent {
       next: (res) => this.jiraStatuses.set(res.statuses?.length ? res.statuses : null),
       error: () => this.jiraStatuses.set(null),
     });
+  }
+
+  /**
+   * Switches Umum ↔ Per board without a jump: the panels only toggle
+   * visibility (state and data kept), the incoming one cross-fades (CSS), and
+   * the scroll is kept sensible — a tab bar stuck under the topbar stays where
+   * it is with the new panel starting right below it; a tab bar out of view
+   * is brought just under the topbar.
+   */
+  protected selectTab(next: SettingsTab): void {
+    if (this.tab() === next) return;
+    const bar = this.tabBar()?.nativeElement;
+    const stack = this.host.nativeElement.firstElementChild as HTMLElement | null;
+    const barTop = bar?.getBoundingClientRect().top ?? 0;
+    // The bar is stuck when the page is scrolled past its natural spot (the top of the stack).
+    const stuck = !!bar && !!stack && stack.getBoundingClientRect().top < barTop - 1;
+    const inView = !!bar && barTop >= 0 && barTop < window.innerHeight;
+
+    this.visited.update((v) => ({ ...v, [next]: true }));
+    this.tab.set(next);
+    if (!bar || !stack) return;
+
+    afterNextRender(
+      () => {
+        const behavior: ScrollBehavior = prefersReducedMotion() ? 'auto' : 'smooth';
+        if (stuck) {
+          // Start the new panel right under the (unmoved) sticky bar.
+          const delta = stack.getBoundingClientRect().top - barTop;
+          if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior });
+        } else if (inView) {
+          // Not stuck: the bar sits in the flow; keep it at the same viewport position.
+          const delta = bar.getBoundingClientRect().top - barTop;
+          if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'auto' });
+        } else {
+          bar.scrollIntoView({ block: 'start', behavior });
+        }
+      },
+      { injector: this.injector },
+    );
   }
 
   /** The board chip whose settings are loading (gets the inline spinner). */
@@ -474,6 +517,12 @@ export class SettingsComponent {
     if (!until) return null;
     return board.muted.forever ? 'Notifikasi dimatikan' : `Dimute sampai ${formatWib(until)} WIB`;
   }
+}
+
+export type SettingsTab = 'umum' | 'board';
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function pick(source: NotificationSettings, fields: (keyof NotificationSettings)[]): Partial<NotificationSettings> {
