@@ -343,7 +343,7 @@ func TestParents_FiltersEpicsAndSubtasks(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0].Key != "OMS-1" || got[0].SubtaskCount != 2 || got[1].Key != "OMS-4" {
 		t.Fatalf("got = %+v, err = %v", got, err)
 	}
-	if !strings.Contains(j.lastJQL, `project = "OMS" AND sprint in openSprints() AND issuetype not in subTaskIssueTypes()`) || !strings.HasSuffix(j.lastJQL, "ORDER BY updated DESC") {
+	if !strings.Contains(j.lastJQL, `project = "OMS" AND sprint in openSprints() AND assignee = currentUser() AND issuetype not in subTaskIssueTypes()`) || !strings.HasSuffix(j.lastJQL, "ORDER BY updated DESC") {
 		t.Fatalf("jql = %s", j.lastJQL)
 	}
 }
