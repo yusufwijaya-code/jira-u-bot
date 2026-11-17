@@ -50,7 +50,7 @@
         <label class="toggle-row">
           <span class="toggle-text">
             <strong>{{ ns.enabled ? 'Notifikasi aktif' : 'Notifikasi mati' }}</strong>
-            <small>{{ ns.enabled ? 'Pengaturan di bawah menentukan notif mana yang dikirim.' : 'Tidak ada notif otomatis yang dikirim, apa pun pengaturan di bawah.' }}</small>
+            <small>{{ ns.enabled ? 'Reminder budget dan notif perubahan status dikirim sesuai pengaturan di tab Umum dan Per board.' : 'Semua notif otomatis berhenti, apa pun pengaturan Umum dan Per board. Broadcast admin dan balasan command tetap masuk.' }}</small>
           </span>
           <input
             type="checkbox"
@@ -86,7 +86,7 @@
             <strong>{{ ts.enabled ? 'Notifikasi aktif' : 'Notifikasi mati' }}</strong>
             <small>
               {{ ts.chosen ? 'Dipilih sendiri oleh user.' : 'User belum memilih lewat pop up persetujuan.' }}
-              {{ ts.enabled ? '' : 'Tidak ada notif otomatis yang dikirim, apa pun pengaturan di bawah.' }}
+              {{ ts.enabled ? '' : 'Semua notif otomatis berhenti, apa pun pengaturan Umum dan Per board.' }}
             </small>
           </span>
         </div>
