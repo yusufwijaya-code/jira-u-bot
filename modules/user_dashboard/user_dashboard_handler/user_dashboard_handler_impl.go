@@ -13,7 +13,9 @@ import (
 	"nudge/modules/auth/auth_middleware"
 	"nudge/modules/board/board_service"
 	"nudge/modules/chat_interactive/chat_interactive_service"
+	"nudge/modules/jira_client/jira_fields"
 	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/move_fields"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 	"nudge/modules/user_dashboard/user_dashboard_service"
 	"nudge/modules/user_setting/user_setting_dto"
@@ -237,6 +239,9 @@ func (h *userDashboardHandlerImpl) GetOverdue(c *gin.Context) {
 type transitionRequest struct {
 	Target       string `json:"target"`
 	TransitionID string `json:"transitionId"`
+	// Fields (optional): values for the fields the move requires, keyed by
+	// field id in Buat Card's form shape; they are saved before moving.
+	Fields map[string]any `json:"fields"`
 }
 
 // transitionError maps a transition failure to its status and message.
@@ -246,8 +251,41 @@ func transitionError(err error) (int, string) {
 		return http.StatusForbidden, "Tiket ini bukan tiket kamu di sprint aktif."
 	case errors.Is(err, user_dashboard_service.ErrTransitionUnavailable):
 		return http.StatusUnprocessableEntity, "Transisi tidak tersedia untuk status sekarang."
+	case errors.Is(err, user_dashboard_service.ErrMoveFieldsUnavailable):
+		return http.StatusServiceUnavailable, "Fitur isi field saat pindah belum aktif."
 	default:
 		return http.StatusBadGateway, "Jira sedang tidak bisa dihubungi, coba lagi."
+	}
+}
+
+// fieldsRequiredJSON is the 422 answer of a move that needs fields first.
+func fieldsRequiredJSON(r move_fields.Required) gin.H {
+	return gin.H{
+		"error": "fields_required", "message": r.Message, "transition": r.Transition,
+		"fields": nonNilFields(r.Fields), "issueKey": r.IssueKey, "issueUrl": r.IssueURL,
+	}
+}
+
+func nonNilFields(f []jira_fields.Field) []jira_fields.Field {
+	if f == nil {
+		return []jira_fields.Field{}
+	}
+	return f
+}
+
+// writeMoveError answers a failed move: fields_required / invalid_fields
+// (both 422) or the plain transition errors.
+func writeMoveError(c *gin.Context, err error) {
+	var fr *move_fields.FieldsRequiredError
+	var ve *move_fields.ValidationError
+	switch {
+	case errors.As(err, &fr):
+		c.JSON(http.StatusUnprocessableEntity, fieldsRequiredJSON(fr.Required))
+	case errors.As(err, &ve):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "invalid_fields", "message": "Ada isian yang belum valid.", "fields": ve.Fields})
+	default:
+		code, msg := transitionError(err)
+		c.JSON(code, gin.H{"error": msg})
 	}
 }
 
@@ -261,6 +299,22 @@ func (h *userDashboardHandlerImpl) GetTransitions(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
+// GetMoveRequirements: the still-empty fields ?transitionId= requires
+// (fields [] when the move can go ahead) — used by the chat deep link.
+func (h *userDashboardHandlerImpl) GetMoveRequirements(c *gin.Context) {
+	tid := c.Query("transitionId")
+	if tid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transitionId wajib diisi"})
+		return
+	}
+	req, err := h.dashboardSvc.MoveRequirements(c.Request.Context(), currentUser(c).Email, c.Param("issueKey"), tid)
+	if err != nil {
+		writeMoveError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, fieldsRequiredJSON(req))
+}
+
 func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
 	issueKey := c.Param("issueKey")
 	var req transitionRequest
@@ -271,10 +325,16 @@ func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
 
 	// Papan Tiket: any move the ticket's Jira workflow offers.
 	if req.TransitionID != "" {
-		status, err := h.dashboardSvc.Transition(c.Request.Context(), currentUser(c).Email, issueKey, req.TransitionID)
+		ctx, email := c.Request.Context(), currentUser(c).Email
+		var status string
+		var err error
+		if req.Fields != nil {
+			status, err = h.dashboardSvc.TransitionWithFields(ctx, email, issueKey, req.TransitionID, req.Fields)
+		} else {
+			status, err = h.dashboardSvc.Transition(ctx, email, issueKey, req.TransitionID)
+		}
 		if err != nil {
-			code, msg := transitionError(err)
-			c.JSON(code, gin.H{"error": msg})
+			writeMoveError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": issueKey + " dipindah ke " + status + ".", "status": status})
@@ -284,5 +344,9 @@ func (h *userDashboardHandlerImpl) TransitionTicket(c *gin.Context) {
 	// Same path as the reminder card's buttons, including the "own tickets
 	// only" check.
 	res := h.chatInteractive.Geser(c.Request.Context(), currentUser(c).Email, issueKey, req.Target)
+	if res.FieldsRequired != nil {
+		c.JSON(http.StatusUnprocessableEntity, fieldsRequiredJSON(*res.FieldsRequired))
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": res.Message})
 }

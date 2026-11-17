@@ -20,10 +20,7 @@
           <textarea rows="9" placeholder="Konteks, acceptance criteria, link tech spec…" [value]="description()" (input)="description.set($any($event.target).value)"></textarea>
         </label>
         @for (f of mainFields(); track f.id) {
-          <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-            <textarea class="scf-extra" rows="4" [attr.data-field]="f.id" [value]="text(f.id)" (input)="setValue(f.id, $any($event.target).value)"></textarea>
-            @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-          </label>
+          <app-jira-field-input [field]="f" [value]="values()[f.id]" [error]="errors()[f.id]" (valueChange)="setValue(f.id, $event)" />
         }
       </div>
       }
@@ -56,65 +53,7 @@
           </label>
         }
         @for (f of sideFields(); track f.id) {
-          @switch (f.kind) {
-            @case ('select') {
-              <div class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}
-                @if (f.multi && selectedCount(f.id)) { <small class="scf-count">{{ selectedCount(f.id) }} dipilih</small> }</span>
-                @if (f.multi) {
-                  @if ((f.options ?? []).length > longList) {
-                    <input class="scf-filter" type="search" placeholder="Cari {{ f.name }}…" [attr.data-filter]="f.id" [value]="multiFilter()[f.id] ?? ''" (input)="setFilter(f.id, $any($event.target).value)" />
-                  }
-                  <div class="cc-multi" [class.scf-scroll]="(f.options ?? []).length > longList" role="group" [attr.aria-label]="f.name" [attr.data-field]="f.id">
-                    @for (o of visibleOptions(f); track o.id) {
-                      <button type="button" class="cc-opt" [class.on]="isSelected(f.id, o.id)" [attr.aria-pressed]="isSelected(f.id, o.id)" [attr.data-option]="o.id" (click)="toggleMulti(f.id, o.id)">{{ o.label }}</button>
-                    } @empty { <small class="scf-none">Tidak ada yang cocok</small> }
-                  </div>
-                } @else {
-                  <app-select [attr.data-field]="f.id" [options]="fieldOptions(f)" [ngModel]="values()[f.id] ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setValue(f.id, $event)" [ariaLabel]="f.name" />
-                }
-                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-              </div>
-            }
-            @case ('cascade') {
-              <div class="cc-field" [attr.data-field]="f.id"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-                <app-select data-cascade-parent [options]="fieldOptions(f)" [ngModel]="cascade(f.id)?.id ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setCascadeParent(f, $event)" [ariaLabel]="f.name" />
-                @if (childOptions(f).length) {
-                  <app-select class="scf-child cc-pop" data-cascade-child [options]="childOptions(f)" [ngModel]="cascade(f.id)?.child ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setCascadeChild(f, $event)" [ariaLabel]="f.name + ' (detail)'" />
-                }
-                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-              </div>
-            }
-            @case ('date') {
-              <div class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-                <app-date-range-picker [attr.data-field]="f.id" [single]="true" [from]="text(f.id)" placeholder="Pilih tanggal" [ariaLabel]="f.name" (rangeChange)="setValue(f.id, $event.from || null)" />
-                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-              </div>
-            }
-            @case ('labels') {
-              <div class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-                <div class="scf-labels" [attr.data-field]="f.id">
-                  @for (l of labels(f.id); track l) {
-                    <span class="cc-opt on scf-label">{{ l }}<button type="button" [attr.aria-label]="'Hapus label ' + l" (click)="removeLabel(f.id, l)"><app-icon name="x" [size]="12" /></button></span>
-                  }
-                  <input data-label-input placeholder="Ketik lalu Enter" [attr.aria-label]="f.name" [value]="labelDraft()[f.id] ?? ''"
-                    (input)="setLabelDraft(f.id, $any($event.target))" (keydown.enter)="commitLabel(f.id, $event)" (blur)="commitLabel(f.id)" />
-                </div>
-                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-              </div>
-            }
-            @case ('number') {
-              <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-                <input type="number" [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value === '' ? null : +$any($event.target).value)" />
-                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-              </label>
-            }
-            @default {
-              <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-                <input [attr.data-field]="f.id" [value]="text(f.id)" (input)="setValue(f.id, $any($event.target).value)" />
-                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-              </label>
-            }
-          }
+          <app-jira-field-input [field]="f" [value]="values()[f.id]" [error]="errors()[f.id]" (valueChange)="setValue(f.id, $event)" />
         }
       </div>
       }

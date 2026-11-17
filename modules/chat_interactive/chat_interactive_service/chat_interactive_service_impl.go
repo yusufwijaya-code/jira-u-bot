@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"nudge/modules/move_fields"
 	"nudge/modules/registration/registration_dto"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 	"nudge/modules/user_dashboard/user_dashboard_service"
@@ -509,7 +511,10 @@ func (s *service) move(ctx context.Context, email, key, transitionID, toStatus s
 		return note("Papan Tiket", errorBody)
 	}
 	status, err := s.d.Dashboard.Transition(ctx, email, key, transitionID)
+	var fr *move_fields.FieldsRequiredError
 	switch {
+	case errors.As(err, &fr):
+		return s.fieldsRequiredView(ctx, email, fr)
 	case errors.Is(err, user_dashboard_service.ErrNotOwnTicket):
 		return notOwnView(key)
 	case errors.Is(err, user_dashboard_service.ErrTransitionUnavailable):
@@ -529,6 +534,47 @@ func (s *service) move(ctx context.Context, email, key, transitionID, toStatus s
 				action("⬅ Tiket Saya", actCommand, "cmd", "/n-mytickets"),
 			)}},
 		},
+	}
+}
+
+// fieldsRequiredText: "⚠️ CORE-123 belum bisa dipindah ke *Code Review*: isi dulu *Merge Request*."
+func fieldsRequiredText(fr *move_fields.FieldsRequiredError) string {
+	r := fr.Required
+	if names := fr.FieldNames(); names != "" {
+		return fmt.Sprintf("⚠️ %s belum bisa dipindah ke *%s*: isi dulu *%s*.", r.IssueKey, r.Transition.To, names)
+	}
+	return fmt.Sprintf("⚠️ %s belum bisa dipindah ke *%s*: %s", r.IssueKey, r.Transition.To, r.Message)
+}
+
+// moveLink opens Papan Tiket on the ticket's board with the move dialog.
+func (s *service) moveLink(ctx context.Context, email string, r move_fields.Required) string {
+	q := url.Values{}
+	if board, err := s.d.Dashboard.GetMyBoard(ctx, email, 0); err == nil {
+		if c, found := findCard(board, r.IssueKey); found && c.BoardID > 0 {
+			q.Set("board", strconv.FormatInt(c.BoardID, 10))
+		}
+	}
+	q.Set("move", r.IssueKey)
+	q.Set("to", r.Transition.ID)
+	return s.d.WebURL + "/dashboard/board?" + q.Encode()
+}
+
+// fieldsRequiredView answers a move that needs fields filled first: what to
+// fill, a link to the web dialog and one to Jira. No dialog in Chat.
+func (s *service) fieldsRequiredView(ctx context.Context, email string, fr *move_fields.FieldsRequiredError) view {
+	r := fr.Required
+	body := fieldsRequiredText(fr)
+	if fr.FieldNames() != "" && r.Message != "" && !strings.HasPrefix(r.Message, "Isi dulu field") {
+		body += "\n_" + r.Message + "_"
+	}
+	bs := []button{link("Isi & pindahkan di web", s.moveLink(ctx, email, r))}
+	if r.IssueURL != "" {
+		bs = append(bs, link("Buka di Jira", r.IssueURL))
+	}
+	bs = append(bs, action("⬅ Tiket Saya", actCommand, "cmd", "/n-mytickets"))
+	return view{
+		id: "nudge-ticket-" + r.IssueKey, title: "📋 " + r.IssueKey,
+		sections: []section{{items: []item{paragraph(body)}}, {items: []item{buttons(bs...)}}},
 	}
 }
 
@@ -571,6 +617,11 @@ func (s *service) Geser(ctx context.Context, email, issueKey, targetSlug string)
 				continue
 			}
 			status, err := s.d.Dashboard.Transition(ctx, email, key, tr.ID)
+			var fr *move_fields.FieldsRequiredError
+			if errors.As(err, &fr) {
+				req := fr.Required
+				return GeserResult{FieldsRequired: &req, Message: fieldsRequiredText(fr) + "\nIsi & pindahkan di web: " + s.moveLink(ctx, email, fr.Required)}
+			}
 			if err != nil {
 				return GeserResult{Message: fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", key, name)}
 			}

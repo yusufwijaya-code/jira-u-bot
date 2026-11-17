@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"nudge/modules/chat_app/chat_app_dto"
+	"nudge/modules/move_fields"
 )
 
 // ChatInteractiveService answers the Nudge commands. Every command maps to a
@@ -59,4 +60,7 @@ type GeserResult struct {
 	NotOwner   bool
 	StatusName string
 	Message    string
+	// FieldsRequired: the move needs fields filled first (not moved);
+	// Message then says which and links the web dialog.
+	FieldsRequired *move_fields.Required
 }

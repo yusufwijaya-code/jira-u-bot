@@ -11,10 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"nudge/base/helpers/curl_helper"
 	"nudge/modules/business_hours/business_hours_dto"
 	"nudge/modules/business_hours/business_hours_service"
 	"nudge/modules/issue_session/issue_session_dto"
 	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/move_fields"
 	"nudge/modules/registration/registration_dto"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
@@ -32,8 +35,9 @@ type fakeJiraClientForDashboard struct {
 	relatedKeysAsked []string
 	// transitions backs GetTransitionsAs; transitioned records
 	// TransitionIssueAs as "KEY:ID".
-	transitions  []jira_client_dto.Transition
-	transitioned string
+	transitions   []jira_client_dto.Transition
+	transitioned  string
+	transitionErr error
 }
 
 func (f *fakeJiraClientForDashboard) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
@@ -69,7 +73,7 @@ func (f *fakeJiraClientForDashboard) GetTransitionsAs(ctx context.Context, cred 
 }
 func (f *fakeJiraClientForDashboard) TransitionIssueAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey, transitionID string) error {
 	f.transitioned = issueKey + ":" + transitionID
-	return nil
+	return f.transitionErr
 }
 
 type fakeJiraCredentialForDashboard struct {
@@ -808,5 +812,72 @@ func TestTransition_AllowsOwnSubtaskOutsideTheSprint(t *testing.T) {
 	}
 	if _, err := svc.ListTransitions(context.Background(), "dev@esb.co.id", "OMS-77"); !errors.Is(err, ErrNotOwnTicket) {
 		t.Errorf("unrelated ticket: err = %v, want ErrNotOwnTicket", err)
+	}
+}
+
+// --- move-fields ---
+
+type fakeMoveFields struct {
+	checkErr    error
+	rejected    *jira_client_service.RejectedError
+	applied     map[string]any
+	transitions []move_fields.Transition
+}
+
+func (f *fakeMoveFields) Requirements(ctx context.Context, cred *jira_client_dto.Credential, key string, tr move_fields.Transition) (move_fields.Required, error) {
+	return move_fields.Required{IssueKey: key, Transition: tr}, nil
+}
+func (f *fakeMoveFields) Check(ctx context.Context, cred *jira_client_dto.Credential, key string, tr move_fields.Transition) error {
+	f.transitions = append(f.transitions, tr)
+	return f.checkErr
+}
+func (f *fakeMoveFields) FromRejection(ctx context.Context, cred *jira_client_dto.Credential, key string, tr move_fields.Transition, rej *jira_client_service.RejectedError) error {
+	f.rejected = rej
+	return &move_fields.FieldsRequiredError{Required: move_fields.Required{IssueKey: key, Transition: tr, Message: rej.Messages[0]}}
+}
+func (f *fakeMoveFields) Apply(ctx context.Context, cred *jira_client_dto.Credential, key string, tr move_fields.Transition, values map[string]any) error {
+	f.applied = values
+	return nil
+}
+
+func TestTransition_FieldsRequiredStopsTheMove(t *testing.T) {
+	svc, jira := newTransitionFixture()
+	mf := &fakeMoveFields{checkErr: &move_fields.FieldsRequiredError{Required: move_fields.Required{IssueKey: "OMS-1"}}}
+	svc.(*userDashboardServiceImpl).moveFields = mf
+	_, err := svc.Transition(context.Background(), "dev@esb.co.id", "OMS-1", "11")
+	var fr *move_fields.FieldsRequiredError
+	if !errors.As(err, &fr) || jira.transitioned != "" {
+		t.Fatalf("err = %v, transitioned = %q", err, jira.transitioned)
+	}
+	if fr.Required.IssueURL != "https://esb-id.atlassian.net/browse/OMS-1" {
+		t.Errorf("issueUrl = %q", fr.Required.IssueURL)
+	}
+	if mf.transitions[0].To != "Code Process" || mf.transitions[0].ID != "11" {
+		t.Errorf("checked %+v", mf.transitions)
+	}
+}
+
+func TestTransition_Jira400BecomesFieldsRequired(t *testing.T) {
+	svc, jira := newTransitionFixture()
+	jira.transitionErr = fmt.Errorf("wrapped: %w", &curl_helper.HTTPError{StatusCode: 400, Body: `{"errorMessages":["Fill in the Merge Request"],"errors":{}}`})
+	mf := &fakeMoveFields{}
+	svc.(*userDashboardServiceImpl).moveFields = mf
+	_, err := svc.Transition(context.Background(), "dev@esb.co.id", "OMS-1", "11")
+	var fr *move_fields.FieldsRequiredError
+	if !errors.As(err, &fr) || mf.rejected == nil || fr.Required.Message != "Fill in the Merge Request" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTransitionWithFields_AppliesValues(t *testing.T) {
+	svc, _ := newTransitionFixture()
+	mf := &fakeMoveFields{}
+	svc.(*userDashboardServiceImpl).moveFields = mf
+	status, err := svc.TransitionWithFields(context.Background(), "dev@esb.co.id", "OMS-1", "11", map[string]any{"customfield_10095": "MR"})
+	if err != nil || status != "Code Process" || mf.applied["customfield_10095"] != "MR" {
+		t.Fatalf("status=%q err=%v applied=%v", status, err, mf.applied)
+	}
+	if _, err := svc.TransitionWithFields(context.Background(), "dev@esb.co.id", "OMS-999", "11", nil); !errors.Is(err, ErrNotOwnTicket) {
+		t.Errorf("not own: err = %v", err)
 	}
 }

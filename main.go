@@ -50,6 +50,7 @@ import (
 	"nudge/modules/jira_client/jira_client_service"
 	"nudge/modules/jira_credential/jira_credential_repository"
 	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/move_fields"
 	"nudge/modules/poller/poller_service"
 	"nudge/modules/registration/registration_dto"
 	"nudge/modules/registration/registration_repository"
@@ -184,6 +185,9 @@ func main() {
 
 	userDashboardSvc := user_dashboard_service.NewUserDashboardService(
 		jiraClientSvc, jiraCredentialSvc, registrationRepo, issueSessionRepo, businessHoursSvc, userLeaveSvc, cfg.JiraBaseURL, jiraAgileClient, boardSvc,
+		// Moves collect the fields Jira requires first (workflow validators,
+		// transition screens, Jira's 400) — automatic for every board.
+		user_dashboard_service.WithMoveFields(move_fields.New(jira_client_service.NewTransitionFieldsClient(&cfg))),
 	)
 
 	issueCreateSvc := issue_create_service.New(issue_create_service.Deps{

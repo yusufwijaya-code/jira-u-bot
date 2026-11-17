@@ -2,11 +2,15 @@ package chat_interactive_service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"nudge/modules/jira_client/jira_fields"
+	"nudge/modules/move_fields"
 	"nudge/modules/registration/registration_dto"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 	"nudge/modules/user_dashboard/user_dashboard_service"
@@ -757,5 +761,53 @@ func TestReply_EveryCardHasATitleLineAndNoRepeatedHeader(t *testing.T) {
 	}
 	if r := f.svc.Command(context.Background(), dev, "/n-mytickets"); r.Title != "*📋 Tiket Saya* — Semua board · 4 tiket · ⏱ 2 dikerjakan · 🔴 1 lewat budget" {
 		t.Errorf("tiket title line = %q", r.Title)
+	}
+}
+
+// --- move-fields ---
+
+func mergeRequestError() *move_fields.FieldsRequiredError {
+	return &move_fields.FieldsRequiredError{Required: move_fields.Required{
+		Transition: move_fields.Transition{ID: "21", Name: "Merge Request to Snapshot Branch", To: "Code Review"},
+		Message:    "Fill in the Merge Request Fields Before Code Review",
+		Fields:     []jira_fields.Field{{ID: "customfield_10095", Name: "Merge Request", Kind: "textarea", Required: true}},
+		IssueKey:   "CORE-1", IssueURL: "https://jira/browse/CORE-1",
+	}}
+}
+
+func TestAction_MoveNeedingFieldsLinksTheWebDialog(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	f.dash.moveErr = mergeRequestError()
+	a := f.svc.Action(context.Background(), dev, "nudge.move", map[string]string{"key": "CORE-1", "tid": "21", "to": "Code Review"})
+	if !strings.Contains(a.Text, "⚠️ CORE-1 belum bisa dipindah ke *Code Review*: isi dulu *Merge Request*.") {
+		t.Errorf("text = %q", a.Text)
+	}
+	b, _ := json.Marshal(a)
+	var decoded any
+	json.Unmarshal(b, &decoded)
+	raw := fmt.Sprint(decoded)
+	for _, want := range []string{
+		"Isi \u0026 pindahkan di web", "https://nudge.test/dashboard/board?board=1\u0026move=CORE-1\u0026to=21",
+		"Buka di Jira", "https://jira/browse/CORE-1",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("reply lacks %q: %s", want, raw)
+		}
+	}
+}
+
+func TestGeser_FieldsRequiredCarriesTheLink(t *testing.T) {
+	f := newFixture()
+	f.dash.board = sampleBoard()
+	f.dash.transitions["CORE-1"] = coreTransitions()
+	f.dash.moveErr = mergeRequestError()
+	res := f.svc.Geser(context.Background(), dev, "CORE-1", "code-review")
+	if res.OK || res.FieldsRequired == nil || res.FieldsRequired.Transition.ID != "21" {
+		t.Fatalf("res = %+v", res)
+	}
+	if !strings.Contains(res.Message, "isi dulu *Merge Request*") || !strings.Contains(res.Message, "https://nudge.test/dashboard/board?board=1&move=CORE-1&to=21") {
+		t.Errorf("message = %q", res.Message)
 	}
 }

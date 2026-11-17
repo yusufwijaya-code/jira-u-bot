@@ -14,6 +14,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
 import { NotificationSwitchService } from '../../../core/services/notification-switch.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
+import { MoveFieldsService, fieldsRequired } from '../../../core/ui/move-fields.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { IconComponent } from '../../../shared/ui/icon.component';
 import { activeUntil } from '../settings/mute-panel.component';
@@ -179,6 +180,7 @@ export class HomeComponent {
   private dashboard = inject(DashboardService);
   private auth = inject(AuthService);
   private confirm = inject(ConfirmService);
+  private moveFields = inject(MoveFieldsService);
   private toast = inject(ToastService);
   protected muteState = inject(MuteStateService);
   private notifSwitch = inject(NotificationSwitchService);
@@ -471,9 +473,19 @@ export class HomeComponent {
         this.toast.success(`${ticket.issueKey} digeser ke ${label}`, res?.message);
         this.loadBoard();
       },
-      error: (err) => {
+      error: async (err) => {
+        const req = fieldsRequired(err);
+        if (!req) {
+          this.movingKey.set(null);
+          this.toast.error(`Gagal menggeser ${ticket.issueKey}`, err?.error?.error ?? err?.error?.message ?? 'Coba lagi sebentar.');
+          return;
+        }
+        // Jira needs fields first: fill them, then the move runs.
+        const done = await this.moveFields.open({ ...req, issueKey: req.issueKey || ticket.issueKey });
         this.movingKey.set(null);
-        this.toast.error(`Gagal menggeser ${ticket.issueKey}`, err?.error?.error ?? err?.error?.message ?? 'Coba lagi sebentar.');
+        if (!done) return;
+        this.toast.success(`${ticket.issueKey} digeser ke ${done.status || req.transition.to}`, done.message);
+        this.loadBoard();
       },
     });
   }

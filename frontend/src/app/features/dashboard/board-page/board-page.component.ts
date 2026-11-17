@@ -6,6 +6,7 @@ import { DashboardService, TicketCard, TransitionOption } from '../../../core/se
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
+import { MoveFieldsService, MoveRequirement, fieldsRequired } from '../../../core/ui/move-fields.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { BoardColumnsComponent } from './board-columns.component';
 import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
@@ -51,6 +52,7 @@ export class BoardPageComponent {
   protected boardContext = inject(BoardContextService);
   private toast = inject(ToastService);
   private confirm = inject(ConfirmService);
+  private moveFields = inject(MoveFieldsService);
   private createCard = viewChild(CreateCardComponent);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
@@ -94,6 +96,8 @@ export class BoardPageComponent {
   protected branchCount = (key: string): number => (this.branchMap().get(key) ?? []).length;
   /** Moves sent to Jira and not answered yet; the board only reloads once none is left. */
   private pendingMoves = 0;
+  /** The chat deep link (?move=&to=) runs once per visit. */
+  private deepLinkDone = false;
   /** Columns created on screen by applyLocalMove (status not in the last server load). */
   private syntheticStatuses = new Set<string>();
   protected query = signal('');
@@ -230,6 +234,7 @@ export class BoardPageComponent {
         this.syntheticStatuses.clear();
         this.loaded.set(true);
         this.loading.set(false);
+        this.openDeepLinkedMove();
       },
       error: () => {
         this.loading.set(false);
@@ -406,23 +411,87 @@ export class BoardPageComponent {
     this.moving.set(card.issueKey);
     this.pendingMoves++;
     this.dashboard.moveTicket(card.issueKey, option.id).subscribe({
-      next: () => {
-        this.pendingMoves--;
-        this.clearMoving(card.issueKey);
-        this.highlight(card.issueKey);
-        this.toast.show('success', 'Status dipindah', `${card.issueKey} → ${option.toStatus}`, 6000, {
-          label: 'Batalkan',
-          run: () => this.undo(card.issueKey, from),
-        });
-        // A reload now would overwrite other moves still in flight.
-        if (this.pendingMoves === 0) this.load();
-      },
+      next: () => this.moved(card.issueKey, option.toStatus, from),
       error: (err) => {
+        const req = fieldsRequired(err);
+        if (req) {
+          // Jira needs fields first: the card waits at its target while the dialog is open.
+          this.askFields({ ...req, issueKey: req.issueKey || card.issueKey }, card.issueKey, option.toStatus, from);
+          return;
+        }
         this.pendingMoves--;
         this.applyLocalMove(card.issueKey, from);
         this.clearMoving(card.issueKey);
         this.toast.error('Gagal memindah status', err?.error?.error ?? 'Coba lagi beberapa saat.');
       },
+    });
+  }
+
+  /** A move Jira accepted: highlight, toast with undo, reload once nothing else is in flight. */
+  private moved(issueKey: string, toStatus: string, from: string): void {
+    this.pendingMoves--;
+    this.clearMoving(issueKey);
+    this.highlight(issueKey);
+    this.toast.show('success', 'Status dipindah', `${issueKey} → ${toStatus}`, 6000, {
+      label: 'Batalkan',
+      run: () => this.undo(issueKey, from),
+    });
+    // A reload now would overwrite other moves still in flight.
+    if (this.pendingMoves === 0) this.load();
+  }
+
+  /**
+   * Opens "Lengkapi dulu" for a move held by required fields. Saved → a normal
+   * successful move; cancelled → the card goes back to its column.
+   */
+  private async askFields(req: MoveRequirement, issueKey: string, toStatus: string, from: string): Promise<void> {
+    const done = await this.moveFields.open(req);
+    if (done) {
+      this.applyLocalMove(issueKey, done.status || toStatus);
+      this.moved(issueKey, done.status || toStatus, from);
+      return;
+    }
+    this.pendingMoves--;
+    this.applyLocalMove(issueKey, from);
+    this.clearMoving(issueKey);
+  }
+
+  /**
+   * Chat deep link (?move=KEY&to=<transition id or status>): once the board
+   * is on screen, run that move — through the dialog when Jira needs fields.
+   */
+  private openDeepLinkedMove(): void {
+    if (this.deepLinkDone) return;
+    const params = this.router.parseUrl(this.router.url).queryParamMap;
+    const key = params.get('move')?.toUpperCase();
+    const to = params.get('to');
+    if (!key || !to) return;
+    this.deepLinkDone = true;
+    this.router.navigate([], { queryParams: { move: null, to: null }, queryParamsHandling: 'merge', replaceUrl: true });
+    const card = this.findCard(key);
+    this.dashboard.getTransitions(key).subscribe({
+      next: (res) => {
+        const option = (res.transitions ?? []).find((t) => t.id === to) ?? (res.transitions ?? []).find((t) => t.toStatus.toLowerCase() === to.toLowerCase());
+        if (!option) {
+          this.toast.error(`${key} tidak bisa dipindah`, 'Status tiketnya sudah berubah, pilih lagi dari menu status.');
+          return;
+        }
+        this.dashboard.getMoveRequirements(key, option.id).subscribe({
+          next: (req) => {
+            if (!req.fields?.length) {
+              if (card) this.move(card, option);
+              return;
+            }
+            const from = card?.status ?? res.currentStatus;
+            this.moving.set(key);
+            this.pendingMoves++;
+            if (card) this.applyLocalMove(key, option.toStatus);
+            this.askFields({ ...req, issueKey: req.issueKey || key }, key, option.toStatus, from);
+          },
+          error: () => this.toast.error(`Gagal membuka ${key}`, 'Coba lagi beberapa saat.'),
+        });
+      },
+      error: (err) => this.toast.error(`Gagal membuka ${key}`, err?.error?.error ?? 'Coba lagi beberapa saat.'),
     });
   }
 

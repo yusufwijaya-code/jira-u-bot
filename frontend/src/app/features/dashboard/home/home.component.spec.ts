@@ -9,6 +9,8 @@ import { DashboardService, TicketCard } from '../../../core/services/dashboard.s
 import { BoardContextService, BoardSummary } from '../../../core/services/board-context.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
+import { MoveFieldsService } from '../../../core/ui/move-fields.service';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ToastService } from '../../../core/ui/toast.service';
 
 function card(partial: Partial<TicketCard>): TicketCard {
@@ -299,6 +301,23 @@ describe('HomeComponent', () => {
     await fixture.whenStable();
 
     expect(dashboard.transitionTicket).toHaveBeenCalledWith('OMS-11', 'code-review');
+    expect(toast.success).toHaveBeenCalled();
+    expect(dashboard.getBoard).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the fields dialog when the move needs fields, then reloads once saved', async () => {
+    confirm.ask.and.resolveTo(true);
+    const body = { error: 'fields_required', message: 'Isi MR', issueKey: 'OMS-11', transition: { id: '9', name: 'MR', to: 'Code Review' },
+      fields: [{ id: 'customfield_10095', name: 'Merge Request', kind: 'textarea', multi: false, required: true }] };
+    dashboard.transitionTicket.and.returnValue(throwError(() => new HttpErrorResponse({ status: 422, error: body })));
+    const mf = TestBed.inject(MoveFieldsService);
+    spyOn(mf, 'open').and.resolveTo({ message: 'ok', status: 'Code Review' });
+
+    (el().querySelector('[data-card="active"] .ticket-actions .btn-soft') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(mf.open).toHaveBeenCalledWith(jasmine.objectContaining({ issueKey: 'OMS-11', fields: body.fields }));
+    expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalled();
     expect(dashboard.getBoard).toHaveBeenCalledTimes(2);
   });

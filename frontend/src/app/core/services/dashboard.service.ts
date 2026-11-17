@@ -3,6 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { boardParams } from './board.service';
+import { MoveRequirement } from '../ui/move-fields.service';
 
 /** One of the caller's Jira tickets (budget fields only when tracked in Code Process). */
 export interface TicketCard {
@@ -114,12 +115,23 @@ export class DashboardService {
     return this.http.get<TicketTransitions>(`${this.base}/tickets/${encodeURIComponent(issueKey)}/transitions`);
   }
 
-  /** Runs one of getTransitions' moves; returns the new status. */
-  moveTicket(issueKey: string, transitionId: string): Observable<{ message: string; status: string }> {
+  /**
+   * Runs one of getTransitions' moves; returns the new status. A 422
+   * "fields_required" (see fieldsRequired) means Jira needs fields filled
+   * first: send them in `fields` (saved before moving).
+   */
+  moveTicket(issueKey: string, transitionId: string, fields?: Record<string, unknown>): Observable<{ message: string; status: string }> {
     return this.http.post<{ message: string; status: string }>(
       `${this.base}/tickets/${encodeURIComponent(issueKey)}/transition`,
-      { transitionId },
+      fields ? { transitionId, fields } : { transitionId },
     );
+  }
+
+  /** The still-empty fields a move requires (fields [] when it can go ahead). */
+  getMoveRequirements(issueKey: string, transitionId: string): Observable<MoveRequirement> {
+    return this.http.get<MoveRequirement>(`${this.base}/tickets/${encodeURIComponent(issueKey)}/move-requirements`, {
+      params: new HttpParams().set('transitionId', transitionId),
+    });
   }
 
   transitionTicket(issueKey: string, target: TransitionTarget): Observable<{ message: string }> {

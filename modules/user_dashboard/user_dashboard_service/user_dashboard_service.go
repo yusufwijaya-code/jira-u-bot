@@ -3,6 +3,7 @@ package user_dashboard_service
 import (
 	"context"
 
+	"nudge/modules/move_fields"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
 
@@ -38,5 +39,11 @@ type UserDashboardService interface {
 	// Transition executes transitionID on issueKey as email and returns the
 	// new status; ErrTransitionUnavailable when the workflow no longer
 	// offers it, ErrNotOwnTicket as in ListTransitions.
+	// A *move_fields.FieldsRequiredError when the move needs fields filled
+	// first (the ticket is not moved).
 	Transition(ctx context.Context, email, issueKey, transitionID string) (newStatus string, err error)
+	// MoveRequirements: the still-empty fields transitionID requires.
+	MoveRequirements(ctx context.Context, email, issueKey, transitionID string) (move_fields.Required, error)
+	// TransitionWithFields fills values, then moves (see move_fields.Service.Apply).
+	TransitionWithFields(ctx context.Context, email, issueKey, transitionID string, values map[string]any) (newStatus string, err error)
 }

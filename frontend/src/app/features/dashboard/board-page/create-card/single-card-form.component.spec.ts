@@ -290,7 +290,7 @@ describe('SingleCardFormComponent', () => {
       expect(input().value).toBe('');
       setIn(el, '[data-field="labels"] [data-label-input]', 'hotfix');
       input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); f.detectChanges();
-      (el.querySelector('[data-field="labels"] .scf-label button') as HTMLButtonElement).click(); f.detectChanges();
+      (el.querySelector('[data-field="labels"] .jf-label button') as HTMLButtonElement).click(); f.detectChanges();
       setIn(el, '[data-field="labels"] [data-label-input]', 'pending'); f.detectChanges();
       choose(f, '[data-cascade-parent]', 'Other');
       setIn(el, '[data-summary]', 'Bug'); setIn(el, 'textarea[data-field="cf_mr"]', 'mr'); f.detectChanges();
@@ -303,7 +303,7 @@ describe('SingleCardFormComponent', () => {
     it('long multi-select lists get a search box and a scrollable wrap', () => {
       const f = renderKinds();
       const el: HTMLElement = f.nativeElement;
-      expect(el.querySelector('[data-field="versions"]')?.classList).toContain('scf-scroll');
+      expect(el.querySelector('[data-field="versions"]')?.classList).toContain('jf-scroll');
       expect(el.querySelectorAll('[data-field="versions"] .cc-opt').length).toBe(20);
       (el.querySelector('[data-field="versions"] [data-option="v3"]') as HTMLButtonElement).click(); f.detectChanges();
       setIn(el, '[data-filter="versions"]', '2.115'); f.detectChanges();

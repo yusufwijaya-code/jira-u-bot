@@ -19,6 +19,7 @@ import (
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/jira_client/jira_client_service"
 	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/move_fields"
 	"nudge/modules/registration/registration_repository"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
@@ -33,6 +34,24 @@ type userDashboardServiceImpl struct {
 	jiraBaseURL      string
 	agile            activeSprintSearcher
 	boards           boardDirectory
+	// moveFields (optional) checks and fills the fields a move requires.
+	moveFields MoveFields
+}
+
+// MoveFields is the move_fields.Service slice this service uses.
+type MoveFields interface {
+	Requirements(ctx context.Context, cred *jira_client_dto.Credential, issueKey string, tr move_fields.Transition) (move_fields.Required, error)
+	Check(ctx context.Context, cred *jira_client_dto.Credential, issueKey string, tr move_fields.Transition) error
+	FromRejection(ctx context.Context, cred *jira_client_dto.Credential, issueKey string, tr move_fields.Transition, rej *jira_client_service.RejectedError) error
+	Apply(ctx context.Context, cred *jira_client_dto.Credential, issueKey string, tr move_fields.Transition, values map[string]any) error
+}
+
+// Option configures optional collaborators of the service.
+type Option func(*userDashboardServiceImpl)
+
+// WithMoveFields makes moves collect the fields Jira requires first.
+func WithMoveFields(m MoveFields) Option {
+	return func(s *userDashboardServiceImpl) { s.moveFields = m }
 }
 
 // activeSprintSearcher is the one jira_client_service.JiraAgileClient
@@ -58,8 +77,9 @@ func NewUserDashboardService(
 	jiraBaseURL string,
 	agile activeSprintSearcher,
 	boards boardDirectory,
+	opts ...Option,
 ) UserDashboardService {
-	return &userDashboardServiceImpl{
+	s := &userDashboardServiceImpl{
 		jiraClient:       jiraClient,
 		jiraCredential:   jiraCredential,
 		registrationRepo: registrationRepo,
@@ -70,6 +90,10 @@ func NewUserDashboardService(
 		agile:            agile,
 		boards:           boards,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *userDashboardServiceImpl) issueURL(issueKey string) string {
@@ -496,23 +520,82 @@ func (s *userDashboardServiceImpl) ListTransitions(ctx context.Context, email, i
 	return out, nil
 }
 
-func (s *userDashboardServiceImpl) Transition(ctx context.Context, email, issueKey, transitionID string) (string, error) {
+// ownTransition finds transitionID among issueKey's current moves.
+func (s *userDashboardServiceImpl) ownTransition(ctx context.Context, email, issueKey, transitionID string) (jira_client_dto.Issue, *jira_client_dto.Credential, move_fields.Transition, error) {
 	issue, cred, err := s.ownSprintTicket(ctx, email, issueKey)
 	if err != nil {
-		return "", err
+		return issue, nil, move_fields.Transition{}, err
 	}
 	// Re-read the workflow: the ticket may have moved since the menu opened.
 	transitions, err := s.jiraClient.GetTransitionsAs(ctx, cred, issue.Key)
 	if err != nil {
-		return "", err
+		return issue, nil, move_fields.Transition{}, err
 	}
 	for _, tr := range transitions {
 		if tr.ID == transitionID {
-			if err := s.jiraClient.TransitionIssueAs(ctx, cred, issue.Key, tr.ID); err != nil {
-				return "", err
-			}
-			return tr.To.Name, nil
+			return issue, cred, move_fields.Transition{ID: tr.ID, Name: tr.Name, To: tr.To.Name, ToID: tr.To.ID}, nil
 		}
 	}
-	return "", ErrTransitionUnavailable
+	return issue, nil, move_fields.Transition{}, ErrTransitionUnavailable
+}
+
+// withIssueURL adds the Jira link to a fields-required answer.
+func (s *userDashboardServiceImpl) withIssueURL(err error) error {
+	var fr *move_fields.FieldsRequiredError
+	if errors.As(err, &fr) && fr.Required.IssueURL == "" {
+		fr.Required.IssueURL = s.issueURL(fr.Required.IssueKey)
+	}
+	return err
+}
+
+func (s *userDashboardServiceImpl) Transition(ctx context.Context, email, issueKey, transitionID string) (string, error) {
+	issue, cred, tr, err := s.ownTransition(ctx, email, issueKey, transitionID)
+	if err != nil {
+		return "", err
+	}
+	if s.moveFields != nil {
+		if err := s.moveFields.Check(ctx, cred, issue.Key, tr); err != nil {
+			return "", s.withIssueURL(err)
+		}
+	}
+	if err := s.jiraClient.TransitionIssueAs(ctx, cred, issue.Key, tr.ID); err != nil {
+		if rej := jira_client_service.AsRejected(err); rej != nil && s.moveFields != nil {
+			return "", s.withIssueURL(s.moveFields.FromRejection(ctx, cred, issue.Key, tr, rej))
+		}
+		return "", err
+	}
+	return tr.To, nil
+}
+
+// ErrMoveFieldsUnavailable: moving with fields isn't configured.
+var ErrMoveFieldsUnavailable = errors.New("user_dashboard: move with fields not configured")
+
+func (s *userDashboardServiceImpl) MoveRequirements(ctx context.Context, email, issueKey, transitionID string) (move_fields.Required, error) {
+	if s.moveFields == nil {
+		return move_fields.Required{}, ErrMoveFieldsUnavailable
+	}
+	issue, cred, tr, err := s.ownTransition(ctx, email, issueKey, transitionID)
+	if err != nil {
+		return move_fields.Required{}, err
+	}
+	req, err := s.moveFields.Requirements(ctx, cred, issue.Key, tr)
+	if err != nil {
+		return move_fields.Required{}, err
+	}
+	req.IssueURL = s.issueURL(issue.Key)
+	return req, nil
+}
+
+func (s *userDashboardServiceImpl) TransitionWithFields(ctx context.Context, email, issueKey, transitionID string, values map[string]any) (string, error) {
+	if s.moveFields == nil {
+		return "", ErrMoveFieldsUnavailable
+	}
+	issue, cred, tr, err := s.ownTransition(ctx, email, issueKey, transitionID)
+	if err != nil {
+		return "", err
+	}
+	if err := s.moveFields.Apply(ctx, cred, issue.Key, tr, values); err != nil {
+		return "", s.withIssueURL(err)
+	}
+	return tr.To, nil
 }
