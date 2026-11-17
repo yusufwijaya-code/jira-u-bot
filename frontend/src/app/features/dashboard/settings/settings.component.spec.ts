@@ -358,6 +358,17 @@ describe('SettingsComponent', () => {
     fixture.detectChanges();
     expect(component().statusOptions()).toContain('Testing & Review');
   });
+
+  it('cancels a pending board statuses request on destroy', () => {
+    const http = TestBed.inject(HttpTestingController);
+    context.boards.set([OMS]);
+    context.selectedId.set(28);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    const pending = http.expectOne((r) => r.url.endsWith('/api/dashboard/boards/28/statuses'));
+    fixture.destroy();
+    expect(pending.cancelled).toBeTrue();
+  });
 });
 
 describe('SettingsComponent in admin mode (#6)', () => {
