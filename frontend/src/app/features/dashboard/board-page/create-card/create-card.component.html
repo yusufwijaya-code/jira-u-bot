@@ -32,7 +32,31 @@
           <app-bulk-subtasks [boardId]="board()!" [meta]="m" [aiReady]="!!status()?.aiReady" [initialParent]="initialParent()" (created)="created.emit()" />
         }
       } @else if (!metaError()) {
-        <p class="tb-hint"><span class="tb-spin" aria-hidden="true"></span> Memuat tipe card dari Jira…</p>
+        <!-- Layout-shaped skeleton (form for Satu card, step cards for Bulk) so the real form drops in without a jump. -->
+        <div class="cc-sk" data-meta-loading aria-busy="true" aria-live="polite">
+          <span class="cc-sk-note"><span class="cc-sk-dot" aria-hidden="true"></span>Memuat tipe card dari Jira…</span>
+          @if (mode() === 'single') {
+            <div class="cc-sk-form">
+              <div class="cc-sk-col">
+                @for (w of [38, 100, 100]; track $index) {
+                  <div class="cc-sk-field" [style.--i]="$index"><span class="skeleton cc-sk-label"></span><span class="skeleton cc-sk-input" [class.tall]="$index === 2" [style.width.%]="w"></span></div>
+                }
+              </div>
+              <div class="cc-sk-side">
+                @for (n of [0, 1, 2]; track n) {
+                  <div class="cc-sk-field" [style.--i]="n + 3"><span class="skeleton cc-sk-label"></span><span class="skeleton cc-sk-input"></span></div>
+                }
+              </div>
+            </div>
+          } @else {
+            @for (n of [0, 1, 2]; track n) {
+              <div class="cc-sk-step" [style.--i]="n">
+                <span class="skeleton cc-sk-num"></span>
+                <div class="cc-sk-steptext"><span class="skeleton cc-sk-label wide"></span><span class="skeleton cc-sk-label"></span></div>
+              </div>
+            }
+          }
+        </div>
       }
     }
   }
