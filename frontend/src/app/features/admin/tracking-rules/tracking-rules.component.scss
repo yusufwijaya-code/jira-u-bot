@@ -1,0 +1,30 @@
+// Keyframes fade-up / pop-in are global (styles.scss).
+:host { display: block; animation: fade-up 260ms var(--ease) backwards; }
+.tr-add { margin-left: auto; transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+  &:hover { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
+  &:active { transform: scale(.97); } }
+.tr-table tbody tr { animation: fade-up 260ms var(--ease) backwards; transition: opacity var(--normal) var(--ease), background-color var(--fast) var(--ease); }
+.tr-table tbody tr.inactive { opacity: .55; &:hover { opacity: .85; } }
+.tr-board { display: flex; flex-direction: column; gap: 2px; }
+.tr-key { font-weight: 800; color: var(--ink); letter-spacing: .02em; }
+.tr-name { font-size: .78rem; color: var(--text-faint); }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tr-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-strong);
+  font-size: .76rem; font-weight: 600; white-space: nowrap; animation: pop-in 220ms var(--ease) backwards;
+  &.done { background: var(--success-soft); color: var(--success); }
+  &.review { background: var(--accent-soft); color: #b4630a; } }
+.tr-fields { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; counter-reset: sp;
+  li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; counter-increment: sp; font-size: .8rem;
+    &::before { content: counter(sp); display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+      background: var(--surface-2); border: 1px solid var(--border); font-size: .68rem; color: var(--text-muted); }
+    small { color: var(--text-faint); font-size: .72rem; } } }
+.tr-tag { padding: 1px 6px; border-radius: 6px; background: var(--surface-2); border: 1px dashed var(--border-strong); font-size: .66rem; color: var(--text-muted); }
+.tr-edited { display: flex; flex-direction: column; font-size: .78rem; small { color: var(--text-faint); } }
+.tr-actions { display: inline-flex; gap: 6px; justify-content: flex-end;
+  .btn { transition: transform var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease);
+    &:active:not(:disabled) { transform: scale(.96); } } }
+
+@media (prefers-reduced-motion: reduce) {
+  :host, .tr-table tbody tr, .tr-chip { animation: none; }
+  .tr-table tbody tr, .tr-add, .tr-actions .btn { transition: none; }
+}

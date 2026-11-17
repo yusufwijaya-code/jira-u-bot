@@ -21,11 +21,11 @@ describe('AdminShellComponent', () => {
     fixture.detectChanges();
   });
 
-  it('renders the three admin menu items', () => {
+  it('renders the admin menu items', () => {
     const links = Array.from(el().querySelectorAll('.sidebar-nav .nav-item')).map((a) => a.textContent!.trim());
-    expect(links).toEqual(['Dashboard', 'User', 'Broadcast Message', 'Pesan']);
+    expect(links).toEqual(['Dashboard', 'User', 'Broadcast Message', 'Pesan', 'Aturan Board']);
     const hrefs = Array.from(el().querySelectorAll('.sidebar-nav .nav-item')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toEqual(['/admin', '/admin/users', '/admin/broadcast', '/admin/chat-logs']);
+    expect(hrefs).toEqual(['/admin', '/admin/users', '/admin/broadcast', '/admin/chat-logs', '/admin/tracking-rules']);
   });
 
   it('has a Dashboard Utama button to the main dashboard', () => {

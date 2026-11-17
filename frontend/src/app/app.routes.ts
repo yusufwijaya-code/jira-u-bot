@@ -81,6 +81,13 @@ export const routes: Routes = [
         title: 'Pesan · Admin · Nudge',
         data: { heading: 'Pesan', subheading: 'Chat tiap user dengan Nudge di Google Chat', crumbs: ['Admin', 'Pesan'] },
       },
+      // Tech Spec "Aturan Board (Admin CRUD)".
+      {
+        path: 'tracking-rules',
+        loadComponent: () => import('./features/admin/tracking-rules/tracking-rules.component').then((m) => m.TrackingRulesComponent),
+        title: 'Aturan Board · Admin · Nudge',
+        data: { heading: 'Aturan Board', subheading: 'Status & field Story Point yang dipantau per project Jira', crumbs: ['Admin', 'Aturan Board'] },
+      },
     ],
   },
   { path: '**', redirectTo: '' },
