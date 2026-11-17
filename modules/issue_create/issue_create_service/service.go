@@ -35,7 +35,11 @@ type ParentInvalidError struct{ Message string }
 func (e *ParentInvalidError) Error() string        { return "issue_create: parent invalid: " + e.Message }
 func (e *ParentInvalidError) Is(target error) bool { return target == ErrParentInvalid }
 
-type ValidationError struct{ Message string }
+// ValidationError: Field (optional) is the dynamic field id the message is about.
+type ValidationError struct {
+	Message string
+	Field   string
+}
 
 func (e *ValidationError) Error() string { return e.Message }
 
@@ -68,6 +72,8 @@ type Deps struct {
 type Option struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// Children: second-level options of a "cascade" field.
+	Children []Option `json:"children,omitempty"`
 }
 type Field struct {
 	ID       string   `json:"id"`
@@ -436,10 +442,13 @@ func (s *Service) CreateOne(ctx context.Context, email string, req CreateRequest
 		return "", &ValidationError{Message: "Parent wajib diisi untuk subtask"}
 	}
 	for _, f := range t.Fields {
-		v, ok := encodeField(f, req.Fields[f.ID])
+		v, ok, err := encodeField(f, req.Fields[f.ID])
+		if err != nil {
+			return "", &ValidationError{Message: f.Name + ": " + err.Error(), Field: f.ID}
+		}
 		if !ok {
 			if f.Required {
-				return "", &ValidationError{Message: f.Name + " wajib diisi"}
+				return "", &ValidationError{Message: f.Name + " wajib diisi", Field: f.ID}
 			}
 			continue
 		}

@@ -60,6 +60,7 @@ func TestErrorMapping(t *testing.T) {
 		{svc.ErrTokenRequired, http.StatusPreconditionFailed, "jira_token_required"},
 		{svc.ErrBoardNotAllowed, http.StatusBadRequest, "board"},
 		{&svc.ValidationError{Message: "Judul wajib"}, http.StatusBadRequest, "Judul wajib"},
+		{&svc.ValidationError{Message: "Due date: tanggal harus YYYY-MM-DD", Field: "duedate"}, http.StatusBadRequest, `"fields":{"duedate":"Due date: tanggal harus YYYY-MM-DD"}`},
 		{svc.ErrParentNotFound, http.StatusNotFound, "parent"},
 		{svc.ErrParentInvalid, http.StatusUnprocessableEntity, "parent"},
 		{&svc.ParentInvalidError{Message: "Epic tidak bisa punya subtask"}, http.StatusUnprocessableEntity, `"error":"Epic tidak bisa punya subtask"`},
