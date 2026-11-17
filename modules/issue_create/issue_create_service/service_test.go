@@ -20,6 +20,13 @@ type fakeJira struct {
 	failOn   string
 	brief    jira_client_dto.IssueBrief
 	metaHits int
+	search   []jira_client_dto.IssueBrief
+	lastJQL  string
+}
+
+func (f *fakeJira) SearchBriefsAs(_ context.Context, _ *jira_client_dto.Credential, jql string, _ int) ([]jira_client_dto.IssueBrief, error) {
+	f.lastJQL = jql
+	return f.search, nil
 }
 
 func (f *fakeJira) IssueTypesAs(_ context.Context, _ *jira_client_dto.Credential, _ string) ([]jira_client_dto.CreateMetaIssueType, error) {
@@ -278,6 +285,81 @@ func TestParent_RejectsOtherProjectAndSubtasks(t *testing.T) {
 	}
 	if _, err := s.Parent(context.Background(), "dev@esb.co.id", 28, "OMS-404"); !errors.Is(err, ErrParentNotFound) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestParent_RejectsEpicWithTypeName(t *testing.T) {
+	j := omsJira()
+	j.brief.Key = "OMS-9"
+	j.brief.Fields.Project.Key = "OMS"
+	j.brief.Fields.IssueType.Name = "Epic"
+	j.brief.Fields.IssueType.HierarchyLevel = 1
+	_, err := newSvc(j, &fakeAI{}).Parent(context.Background(), "dev@esb.co.id", 28, "oms-9")
+	var pi *ParentInvalidError
+	if !errors.Is(err, ErrParentInvalid) || !errors.As(err, &pi) || pi.Message != "Epic tidak bisa punya subtask" {
+		t.Fatalf("err = %v", err)
+	}
+	j.brief.Fields.Project.Key = "CORE"
+	if _, err := newSvc(j, &fakeAI{}).Parent(context.Background(), "dev@esb.co.id", 28, "OMS-9"); !errors.As(err, &pi) || !strings.Contains(pi.Message, "project lain") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestParent_ReturnsTypeAndStatus(t *testing.T) {
+	j := omsJira()
+	j.brief.Key = "OMS-5"
+	j.brief.Fields.Project.Key = "OMS"
+	j.brief.Fields.IssueType.Name = "Story"
+	j.brief.Fields.IssueType.IconURL = "https://i/s.svg"
+	j.brief.Fields.Status.Name = "To Do"
+	j.brief.Fields.Status.StatusCategory.Key = "new"
+	p, err := newSvc(j, &fakeAI{}).Parent(context.Background(), "dev@esb.co.id", 28, "OMS-5")
+	if err != nil || p.Type != "Story" || p.TypeIconURL == "" || p.Status != "To Do" || p.StatusCategory != "new" {
+		t.Fatalf("p = %+v, err = %v", p, err)
+	}
+}
+
+func brief(key string, level int, subtask bool, subs int) jira_client_dto.IssueBrief {
+	var b jira_client_dto.IssueBrief
+	b.Key = key
+	b.Fields.Summary = key + " summary"
+	b.Fields.IssueType.HierarchyLevel = level
+	b.Fields.IssueType.Subtask = subtask
+	for i := 0; i < subs; i++ {
+		b.Fields.Subtasks = append(b.Fields.Subtasks, struct {
+			Key    string `json:"key"`
+			Fields struct {
+				Summary string `json:"summary"`
+			} `json:"fields"`
+		}{Key: "x"})
+	}
+	return b
+}
+
+func TestParents_FiltersEpicsAndSubtasks(t *testing.T) {
+	j := omsJira()
+	j.search = []jira_client_dto.IssueBrief{brief("OMS-1", 0, false, 2), brief("OMS-2", 1, false, 0), brief("OMS-3", -1, true, 0), brief("OMS-4", 0, false, 0)}
+	got, err := newSvc(j, &fakeAI{}).Parents(context.Background(), "dev@esb.co.id", 28, "")
+	if err != nil || len(got) != 2 || got[0].Key != "OMS-1" || got[0].SubtaskCount != 2 || got[1].Key != "OMS-4" {
+		t.Fatalf("got = %+v, err = %v", got, err)
+	}
+	if !strings.Contains(j.lastJQL, `project = "OMS" AND sprint in openSprints() AND issuetype not in subTaskIssueTypes()`) || !strings.HasSuffix(j.lastJQL, "ORDER BY updated DESC") {
+		t.Fatalf("jql = %s", j.lastJQL)
+	}
+}
+
+func TestParentsJQL_KeyOrSummary(t *testing.T) {
+	if q := parentsJQL("CORE", " core-12 "); !strings.Contains(q, `AND key = "CORE-12"`) || strings.Contains(q, "summary") {
+		t.Fatalf("key jql = %s", q)
+	}
+	if q := parentsJQL("CORE", `say "hi" (now)`); !strings.Contains(q, `AND summary ~ "say hi now*"`) {
+		t.Fatalf("summary jql = %s", q)
+	}
+	if q := parentsJQL("CORE", `***`); strings.Contains(q, "summary") {
+		t.Fatalf("operator-only q must not filter: %s", q)
+	}
+	if got := jqlQuote(`a"b\c`); got != `a\"b\\c` {
+		t.Fatalf("jqlQuote = %s", got)
 	}
 }
 

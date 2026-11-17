@@ -16,11 +16,18 @@ import (
 
 type fakeSvc struct{ err error }
 
-func (f fakeSvc) Status(context.Context, string) (svc.Status, error)               { return svc.Status{TokenReady: true}, f.err }
-func (f fakeSvc) Meta(context.Context, string, int64) (svc.Meta, error)           { return svc.Meta{ProjectKey: "CORE"}, f.err }
+func (f fakeSvc) Status(context.Context, string) (svc.Status, error) {
+	return svc.Status{TokenReady: true}, f.err
+}
+func (f fakeSvc) Meta(context.Context, string, int64) (svc.Meta, error) {
+	return svc.Meta{ProjectKey: "CORE"}, f.err
+}
 func (f fakeSvc) Users(context.Context, string, int64, string) ([]svc.User, error) { return nil, f.err }
 func (f fakeSvc) Parent(context.Context, string, int64, string) (svc.Parent, error) {
 	return svc.Parent{}, f.err
+}
+func (f fakeSvc) Parents(_ context.Context, _ string, _ int64, q string) ([]svc.Candidate, error) {
+	return []svc.Candidate{{Key: "CORE-1", Summary: q, Type: "Story", SubtaskCount: 2}}, f.err
 }
 func (f fakeSvc) CreateOne(context.Context, string, svc.CreateRequest) (string, error) {
 	return "CORE-1", f.err
@@ -55,6 +62,7 @@ func TestErrorMapping(t *testing.T) {
 		{&svc.ValidationError{Message: "Judul wajib"}, http.StatusBadRequest, "Judul wajib"},
 		{svc.ErrParentNotFound, http.StatusNotFound, "parent"},
 		{svc.ErrParentInvalid, http.StatusUnprocessableEntity, "parent"},
+		{&svc.ParentInvalidError{Message: "Epic tidak bisa punya subtask"}, http.StatusUnprocessableEntity, `"error":"Epic tidak bisa punya subtask"`},
 		{&svc.RateLimitError{Scope: "daily", RetryAfterSeconds: 60}, http.StatusTooManyRequests, `"scope":"daily"`},
 		{svc.ErrAIUnavailable, http.StatusServiceUnavailable, "ai"},
 	}
@@ -76,5 +84,15 @@ func TestCreateIssueReturnsURL(t *testing.T) {
 func TestMetaNeedsBoardID(t *testing.T) {
 	if w := serve(fakeSvc{}, http.MethodGet, "/api/dashboard/create/meta", ""); w.Code != http.StatusBadRequest {
 		t.Fatalf("code = %d", w.Code)
+	}
+}
+
+func TestParentsListsCandidates(t *testing.T) {
+	w := serve(fakeSvc{}, http.MethodGet, "/api/dashboard/create/parents?boardId=26&q=login", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"parents":[{"key":"CORE-1","summary":"login"`) || !strings.Contains(w.Body.String(), `"subtaskCount":2`) {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	if w := serve(fakeSvc{}, http.MethodGet, "/api/dashboard/create/parents", ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("missing boardId → %d", w.Code)
 	}
 }

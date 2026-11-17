@@ -102,8 +102,18 @@ type IssueBrief struct {
 			Key string `json:"key"`
 		} `json:"project"`
 		IssueType struct {
-			Subtask bool `json:"subtask"`
+			Name    string `json:"name"`
+			Subtask bool   `json:"subtask"`
+			// HierarchyLevel: -1 subtask, 0 standard (Story/Task/Bug…), 1 Epic.
+			HierarchyLevel int    `json:"hierarchyLevel"`
+			IconURL        string `json:"iconUrl"`
 		} `json:"issuetype"`
+		Status struct {
+			Name           string `json:"name"`
+			StatusCategory struct {
+				Key string `json:"key"`
+			} `json:"statusCategory"`
+		} `json:"status"`
 		Subtasks []struct {
 			Key    string `json:"key"`
 			Fields struct {
@@ -112,6 +122,14 @@ type IssueBrief struct {
 		} `json:"subtasks"`
 	} `json:"fields"`
 }
+
+// IssueBriefPage is a /search/jql answer decoded as briefs.
+type IssueBriefPage struct {
+	Issues []IssueBrief `json:"issues"`
+}
+
+// IssueBriefFields is the fields= of every brief read (single issue or search).
+const IssueBriefFields = "summary,project,issuetype,status,subtasks"
 
 type Myself struct {
 	AccountID string `json:"accountId"`

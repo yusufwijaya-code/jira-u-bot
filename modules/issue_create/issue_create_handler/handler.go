@@ -21,6 +21,7 @@ type Service interface {
 	Meta(ctx context.Context, email string, boardID int64) (svc.Meta, error)
 	Users(ctx context.Context, email string, boardID int64, q string) ([]svc.User, error)
 	Parent(ctx context.Context, email string, boardID int64, key string) (svc.Parent, error)
+	Parents(ctx context.Context, email string, boardID int64, q string) ([]svc.Candidate, error)
 	CreateOne(ctx context.Context, email string, req svc.CreateRequest) (string, error)
 	Normalize(ctx context.Context, email string, boardID int64, text string) (svc.Normalized, error)
 	CreateSubtasks(ctx context.Context, email string, boardID int64, parentKey string, rows []svc.BulkRow) ([]svc.BulkResult, error)
@@ -42,6 +43,7 @@ func Routes(g *gin.RouterGroup, h *Handler) {
 	c.GET("/meta", h.meta)
 	c.GET("/users", h.users)
 	c.GET("/parent/:key", h.parent)
+	c.GET("/parents", h.parents)
 	c.POST("/issue", h.createOne)
 	c.POST("/normalize", h.normalize)
 	c.POST("/subtasks", h.subtasks)
@@ -70,6 +72,7 @@ func (h *Handler) fail(c *gin.Context, err error) {
 	var v *svc.ValidationError
 	var rl *svc.RateLimitError
 	var rej *jira_client_service.RejectedError
+	var pi *svc.ParentInvalidError
 	switch {
 	case errors.Is(err, svc.ErrTokenRequired):
 		c.JSON(http.StatusPreconditionFailed, gin.H{"error": "jira_token_required", "message": "Isi token Jira di Pengaturan dulu"})
@@ -79,6 +82,8 @@ func (h *Handler) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": v.Message})
 	case errors.Is(err, svc.ErrParentNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "parent tidak ditemukan"})
+	case errors.As(err, &pi):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": pi.Message})
 	case errors.Is(err, svc.ErrParentInvalid):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "parent harus tiket non-subtask di project board ini"})
 	case errors.As(err, &rl):
@@ -139,6 +144,19 @@ func (h *Handler) parent(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, p)
+}
+
+func (h *Handler) parents(c *gin.Context) {
+	id, ok := boardID(c)
+	if !ok {
+		return
+	}
+	p, err := h.s.Parents(c.Request.Context(), email(c), id, c.Query("q"))
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"parents": p})
 }
 
 func (h *Handler) createOne(c *gin.Context) {
