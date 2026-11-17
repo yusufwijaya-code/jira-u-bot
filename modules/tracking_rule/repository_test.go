@@ -19,6 +19,49 @@ func setupRepo(t *testing.T) *Repository {
 	return NewRepository(db)
 }
 
+// AC4.3, atomically: concurrent deactivations (locking the active rows) both
+// succeed while other rules stay active and never leave zero active rules.
+// Only ZZTRT rows are touched; the seeded rules keep the set non-empty, so
+// the last-active branch is checked only if they happen to be inactive.
+func TestRepository_ConcurrentDeactivationsKeepOneActive(t *testing.T) {
+	repo := setupRepo(t)
+	ctx := context.Background()
+	for _, key := range []string{"ZZTRT1", "ZZTRT2"} {
+		if err := repo.Insert(ctx, Rule{ProjectKey: key, ProjectName: key, TrackedStatuses: []string{"A"}, DoneStatus: "B",
+			StoryPointFields: []string{"customfield_1"}, StoryPointWriteField: "customfield_1", StoryPointWriteFieldSubtask: "customfield_1",
+			IsActive: true, EditedBy: "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	errs := make(chan error, 2)
+	for _, key := range []string{"ZZTRT1", "ZZTRT2"} {
+		go func(k string) { errs <- repo.SetActive(ctx, k, false, "t") }(key)
+	}
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("SetActive: %v (other active rules exist, both may switch off)", err)
+		}
+	}
+	rules, err := repo.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var active []string
+	for _, r := range rules {
+		if r.IsActive {
+			active = append(active, r.ProjectKey)
+		}
+	}
+	if len(active) == 0 {
+		t.Fatal("zero active rules")
+	}
+	if len(active) == 1 {
+		if err := repo.SetActive(ctx, active[0], false, "t"); !errors.Is(err, ErrLastActiveRule) {
+			t.Fatalf("last active err = %v, want ErrLastActiveRule", err)
+		}
+	}
+}
+
 // AC1.1/AC1.2: the seeded rows are exactly the builtin rules the code used.
 func TestRepository_SeedEqualsTheBuiltinRules(t *testing.T) {
 	rules, err := setupRepo(t).List(context.Background())
@@ -72,6 +115,15 @@ func TestRepository_InsertFindUpdateSetActive(t *testing.T) {
 	got, _, _ = repo.Find(ctx, "ZZTRT")
 	if got.IsActive || got.EditedBy != "x@esb.co.id" {
 		t.Fatalf("after deactivate = %+v", got)
+	}
+	if err := repo.SetActive(ctx, "ZZTRT", false, "y@esb.co.id"); err != nil {
+		t.Fatalf("deactivating an inactive rule: %v", err)
+	}
+	if err := repo.SetActive(ctx, "ZZTRT", true, "x@esb.co.id"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ = repo.Find(ctx, "ZZTRT"); !got.IsActive {
+		t.Fatalf("after reactivate = %+v", got)
 	}
 	if _, found, err := repo.Find(ctx, "ZZTRT_NONE"); found || err != nil {
 		t.Fatalf("unknown key: found=%v err=%v", found, err)

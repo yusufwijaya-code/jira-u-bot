@@ -125,8 +125,40 @@ func (r *Repository) Update(ctx context.Context, rule Rule) error {
 	return err
 }
 
+// SetActive switches a rule on/off. Switching off the last active rule
+// returns ErrLastActiveRule: the active rows are locked (FOR UPDATE) so two
+// concurrent deactivations can't both pass the check (AC4.3).
 func (r *Repository) SetActive(ctx context.Context, projectKey string, active bool, editedBy string) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE ms_tracking_rule SET isActive = ?, editedBy = ?, editedDate = CURRENT_TIMESTAMP WHERE projectKey = ?`,
-		active, editedBy, projectKey)
-	return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if !active {
+		rows, err := tx.QueryContext(ctx, `SELECT projectKey FROM ms_tracking_rule WHERE isActive = 1 FOR UPDATE`)
+		if err != nil {
+			return err
+		}
+		var keys []string
+		for rows.Next() {
+			var key string
+			if err := rows.Scan(&key); err != nil {
+				rows.Close()
+				return err
+			}
+			keys = append(keys, key)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if len(keys) == 1 && keys[0] == projectKey {
+			return ErrLastActiveRule
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE ms_tracking_rule SET isActive = ?, editedBy = ?, editedDate = CURRENT_TIMESTAMP WHERE projectKey = ?`,
+		active, editedBy, projectKey); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

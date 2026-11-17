@@ -27,6 +27,8 @@ type Store interface {
 	Find(ctx context.Context, projectKey string) (Rule, bool, error)
 	Insert(ctx context.Context, rule Rule) error
 	Update(ctx context.Context, rule Rule) error
+	// SetActive returns ErrLastActiveRule, atomically, when it would switch
+	// off the last active rule.
 	SetActive(ctx context.Context, projectKey string, active bool, editedBy string) error
 }
 
@@ -285,31 +287,16 @@ func (s *Service) Update(ctx context.Context, projectKey string, in RuleInput, e
 }
 
 // SetActive switches a rule on/off ("hapus" = nonaktifkan). The last active
-// rule can't be switched off (AC4.3).
+// rule can't be switched off (AC4.3): the store checks it atomically.
 func (s *Service) SetActive(ctx context.Context, projectKey string, active bool, editor string) (RuleView, error) {
 	key, ok := NormalizeProjectKey(projectKey)
 	if !ok {
 		return RuleView{}, ErrRuleNotFound
 	}
-	rules, err := s.d.Store.List(ctx)
-	if err != nil {
+	if _, found, err := s.d.Store.Find(ctx, key); err != nil {
 		return RuleView{}, err
-	}
-	var target *Rule
-	activeCount := 0
-	for i := range rules {
-		if rules[i].IsActive {
-			activeCount++
-		}
-		if rules[i].ProjectKey == key {
-			target = &rules[i]
-		}
-	}
-	if target == nil {
+	} else if !found {
 		return RuleView{}, ErrRuleNotFound
-	}
-	if !active && target.IsActive && activeCount == 1 {
-		return RuleView{}, ErrLastActiveRule
 	}
 	if err := s.d.Store.SetActive(ctx, key, active, editor); err != nil {
 		return RuleView{}, err

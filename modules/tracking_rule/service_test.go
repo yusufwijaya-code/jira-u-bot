@@ -70,6 +70,17 @@ func (s *fakeStore) Update(_ context.Context, r Rule) error {
 }
 
 func (s *fakeStore) SetActive(_ context.Context, key string, active bool, by string) error {
+	if !active {
+		var others int
+		for k, r := range s.rules {
+			if r.IsActive && k != key {
+				others++
+			}
+		}
+		if s.rules[key].IsActive && others == 0 {
+			return ErrLastActiveRule
+		}
+	}
 	r := s.rules[key]
 	r.IsActive, r.EditedBy = active, by
 	s.rules[key] = r
