@@ -17,6 +17,7 @@ const SHORTLIST_SIZE = 5;
   standalone: true,
   imports: [NgTemplateOutlet, RouterLink, IconComponent, UserAvatarComponent],
   templateUrl: './admin-overview.component.html',
+  styleUrl: './admin-overview.component.scss',
 })
 export class AdminOverviewComponent implements OnInit {
   protected readonly avatarUrl = adminUserAvatarUrl;
@@ -29,8 +30,12 @@ export class AdminOverviewComponent implements OnInit {
   protected activeCount = computed(() => this.users().filter((u) => u.flagActive).length);
   protected credentialCount = computed(() => this.users().filter((u) => u.hasCredential).length);
   protected chatAppInactiveCount = computed(() => this.users().filter((u) => u.flagActive && !u.chatAppActivated).length);
-  protected withoutCredential = computed(() => this.users().filter((u) => !u.hasCredential).slice(0, SHORTLIST_SIZE));
-  protected inactive = computed(() => this.users().filter((u) => !u.flagActive).slice(0, SHORTLIST_SIZE));
+  private allWithoutCredential = computed(() => this.users().filter((u) => !u.hasCredential));
+  private allInactive = computed(() => this.users().filter((u) => !u.flagActive));
+  protected withoutCredential = computed(() => this.allWithoutCredential().slice(0, SHORTLIST_SIZE));
+  protected inactive = computed(() => this.allInactive().slice(0, SHORTLIST_SIZE));
+  protected withoutCredentialTotal = computed(() => this.allWithoutCredential().length);
+  protected inactiveTotal = computed(() => this.allInactive().length);
 
   ngOnInit(): void {
     this.adminService.listUsers().subscribe({

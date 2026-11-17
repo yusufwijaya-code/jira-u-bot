@@ -1,0 +1,96 @@
+// Base .stat-card / .shortlist styles are global (styles.scss); this file refines them.
+.ov-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+
+.ov-stat {
+  --tone: var(--primary);
+  --tone-soft: var(--primary-soft);
+  position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 20px 22px; color: inherit; text-decoration: none;
+  background: linear-gradient(160deg, var(--surface) 55%, color-mix(in srgb, var(--tone-soft) 70%, var(--surface)) 100%);
+  animation: fade-up 420ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 70ms);
+  transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease), border-color var(--normal) var(--ease);
+  &::after { content: ''; position: absolute; right: -28px; top: -28px; width: 96px; height: 96px; border-radius: 50%;
+    background: var(--tone-soft); opacity: .7; transition: transform var(--normal) var(--ease); pointer-events: none; }
+  &:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--tone) 30%, var(--border));
+    &::after { transform: scale(1.15); } }
+  &.tone-success { --tone: var(--success); --tone-soft: var(--success-soft); }
+  &.tone-accent { --tone: var(--accent); --tone-soft: var(--accent-soft); }
+
+  .stat-icon { position: relative; z-index: 1; width: 46px; height: 46px; margin-bottom: 10px; border-radius: 13px; }
+  .stat-value { position: relative; z-index: 1; font-size: 2.1rem; animation: pop-in 420ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 70ms + 160ms); }
+  .stat-label { font-size: .92rem; font-weight: 600; color: var(--ink); }
+}
+.ov-caption { display: inline-flex; align-items: center; gap: 2px; font-size: .8rem; color: var(--text-muted); }
+.ov-stat-link {
+  cursor: pointer;
+  .ov-caption { color: var(--primary); font-weight: 600; app-icon { transition: transform var(--fast) var(--ease); } }
+  &:hover .ov-caption app-icon { transform: translateX(3px); }
+  &:active { transform: scale(.98); }
+  &:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--primary-ring); }
+}
+
+.ov-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+.ov-list { display: flex; flex-direction: column; height: 100%; padding: 22px 0 0; animation: fade-up 420ms var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 70ms);
+  .card-header { padding: 0 24px; margin-bottom: 14px; align-items: center; }
+  .card-header h2 { font-size: 1.05rem; }
+  .card-header p { font-size: .86rem; } }
+.ov-count { margin-left: auto; flex: none; font-size: .8rem; }
+
+.shortlist-items { display: flex; flex-direction: column; gap: 2px; padding: 0 12px;
+  li { animation: fade-up 320ms var(--ease) backwards; animation-delay: calc(var(--n, 0) * 45ms + 200ms); }
+  a { gap: 14px; padding: 10px 12px; text-decoration: none;
+    transition: background-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+    &:hover { background: var(--primary-soft); .ov-chevron { color: var(--primary); transform: translateX(3px); } }
+    &:active { transform: scale(.99); }
+    &:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--primary-ring); } } }
+.shortlist-text { flex: 1;
+  strong { font-size: .92rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  small { font-size: .8rem; } }
+.ov-chevron { flex: none; color: var(--text-faint); transition: transform var(--fast) var(--ease), color var(--fast) var(--ease); }
+
+.ov-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px 24px 12px; text-align: center;
+  animation: fade-in 360ms var(--ease) 200ms backwards;
+  p { margin: 0; font-size: .9rem; color: var(--text-muted); } }
+.ov-empty-icon { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%;
+  background: var(--success-soft); color: var(--success); box-shadow: 0 0 0 8px color-mix(in srgb, var(--success-soft) 50%, transparent);
+  animation: pop-in 360ms var(--ease-spring) 240ms backwards; }
+
+.shortlist-more { margin: auto 0 0; padding: 14px 24px; width: 100%; border-top: 1px solid var(--border); text-decoration: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg); transition: background-color var(--fast) var(--ease);
+  app-icon { transition: transform var(--fast) var(--ease); }
+  &:hover { background: var(--surface-2); app-icon { transform: translateX(3px); } } }
+.ov-list .shortlist-items + .shortlist-more, .ov-list .ov-empty + .shortlist-more { margin-top: auto; }
+.ov-list > ul { margin-bottom: 14px; }
+
+// Skeletons share the real layout's boxes, so nothing jumps when data lands.
+.ov-stat-skeleton { display: flex; flex-direction: column; gap: 8px; padding: 20px 22px; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm);
+  animation: fade-in 300ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 70ms);
+  .sk-icon { width: 46px; height: 46px; border-radius: 13px; margin-bottom: 10px; }
+  .sk-value { width: 56px; height: 32px; }
+  .sk-label { width: 60%; height: 14px; }
+  .sk-caption { width: 45%; height: 12px; } }
+.ov-list-skeleton { padding: 22px 24px; gap: 14px; animation-name: fade-in;
+  .sk-head, .sk-row { display: flex; align-items: center; gap: 14px; }
+  .sk-head { margin-bottom: 6px; }
+  .sk-icon { width: 42px; height: 42px; border-radius: 12px; flex: none; }
+  .sk-avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+  .sk-lines { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+  .sk-line { display: block; height: 13px; width: 55%; &.short { width: 35%; height: 11px; } } }
+
+@media (max-width: 1100px) {
+  .ov-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .ov-lists { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .ov-stats { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-stat, .ov-stat .stat-value, .shortlist-items li, .ov-empty, .ov-empty-icon, .ov-list, .ov-stat-skeleton { animation: none; }
+  .ov-stat, .ov-stat::after, .shortlist-items a, .ov-chevron, .shortlist-more, .shortlist-more app-icon, .ov-stat-link .ov-caption app-icon { transition: none; }
+  .ov-stat:hover, .ov-stat:hover::after, .shortlist-items a:hover .ov-chevron, .shortlist-more:hover app-icon { transform: none; }
+}
