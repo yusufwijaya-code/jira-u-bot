@@ -26,11 +26,11 @@
   @if (loading()) {
     <div class="tr-grid" aria-busy="true">
       @for (i of [1, 2, 3]; track i) {
-        <div class="tr-card tr-card-skeleton">
-          <div class="skeleton sk-head"></div>
-          <div class="skeleton sk-line"></div>
-          <div class="skeleton sk-line short"></div>
+        <div class="tr-card tr-card-skeleton" [style.animation-delay.ms]="i * 70">
+          <div class="sk-head"><span class="skeleton sk-avatar"></span><span class="sk-title"><span class="skeleton sk-line"></span><span class="skeleton sk-line short"></span></span></div>
           <div class="skeleton sk-block"></div>
+          <div class="skeleton sk-block tall"></div>
+          <div class="skeleton sk-line foot"></div>
         </div>
       }
     </div>
@@ -69,28 +69,31 @@
             </span>
           </header>
 
-          <div class="tr-flow">
-            <div class="tr-step">
-              <span class="tr-label"><app-icon name="clock" [size]="14" /> Budget berjalan</span>
-              <div class="tr-chips">
+          <dl class="tr-def">
+            <div class="tr-row">
+              <dt class="tr-label"><app-icon name="clock" [size]="14" /> Budget berjalan</dt>
+              <dd class="tr-chips">
                 @for (s of rule.trackedStatuses; track s) {
-                  <span class="tr-chip" [class.review]="s === rule.reviewStatus">{{ s }}</span>
+                  <span class="tr-chip" [class.review]="s === rule.reviewStatus" [title]="s">{{ s }}</span>
                 }
-              </div>
+              </dd>
             </div>
-            <app-icon class="tr-arrow" name="chevron-right" [size]="18" />
-            <div class="tr-step">
-              <span class="tr-label"><app-icon name="check" [size]="14" /> Selesai</span>
-              <div class="tr-chips"><span class="tr-chip done">{{ rule.doneStatus }}</span></div>
+            <div class="tr-row">
+              <dt class="tr-label"><app-icon name="check" [size]="14" /> Selesai</dt>
+              <dd class="tr-chips"><span class="tr-chip done" [title]="rule.doneStatus">{{ rule.doneStatus }}</span></dd>
             </div>
-          </div>
-          <p class="tr-review-note">
-            @if (rule.reviewStatus) {
-              Waktu <strong>{{ rule.reviewStatus }}</strong> ikut dihitung ke budget.
-            } @else {
-              Waktu review tidak dihitung — masuk status selesai berarti tiket selesai.
-            }
-          </p>
+            <div class="tr-row">
+              <dt class="tr-label"><app-icon name="eye" [size]="14" /> Review</dt>
+              <dd class="tr-chips tr-review-note">
+                @if (rule.reviewStatus) {
+                  <span class="tr-chip review" [title]="rule.reviewStatus">{{ rule.reviewStatus }}</span>
+                  <span class="tr-note">Waktu <strong>{{ rule.reviewStatus }}</strong> ikut dihitung ke budget.</span>
+                } @else {
+                  <span class="tr-note">Waktu review tidak dihitung — masuk status selesai berarti tiket selesai.</span>
+                }
+              </dd>
+            </div>
+          </dl>
 
           <div class="tr-sp">
             <span class="tr-label"><app-icon name="layers" [size]="14" /> Field Story Point <small>(urut prioritas baca)</small></span>
@@ -98,7 +101,7 @@
               @for (f of rule.storyPointFields; track f.id; let n = $index) {
                 <li [attr.data-sp]="f.id">
                   <span class="tr-num">{{ n + 1 }}</span>
-                  <div class="tr-field">
+                  <div class="tr-field" [title]="f.name + ' (' + f.id + ')'">
                     <strong>{{ f.name }}</strong>
                     <code>{{ f.id }}</code>
                   </div>
@@ -118,14 +121,14 @@
               }
             </ol>
             @if (rule.storyPointFields.length > 1) {
-              <p class="tr-sp-note">Kalau field "Tulis" tidak ada di tipe card Jira-nya, Buat Card memakai field cadangan.</p>
+              <p class="tr-sp-note"><app-icon name="info" [size]="13" /> Kalau field "Tulis" tidak ada di tipe card Jira-nya, Buat Card memakai field cadangan.</p>
             }
           </div>
 
           <footer class="tr-card-foot">
-            <span class="tr-edited">
-              <app-icon name="users" [size]="13" />
-              {{ rule.editedBy }} · {{ formatEdited(rule.editedDate) }}
+            <span class="tr-edited" [title]="'Terakhir diubah ' + rule.editedBy + ' · ' + formatEdited(rule.editedDate)">
+              <app-icon name="edit" [size]="13" />
+              <span class="tr-edited-text">{{ rule.editedBy }} · {{ formatEdited(rule.editedDate) }}</span>
             </span>
             <div class="tr-actions">
               <a class="btn btn-ghost btn-sm" [routerLink]="['/admin/tracking-rules', rule.projectKey]" [attr.data-edit]="rule.projectKey">
