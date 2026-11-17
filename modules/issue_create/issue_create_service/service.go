@@ -375,7 +375,9 @@ var luceneSpecial = strings.NewReplacer(
 )
 
 func parentsJQL(project, q string) string {
-	jql := fmt.Sprintf(`project = "%s" AND sprint in openSprints() AND issuetype not in subTaskIssueTypes()`, jqlQuote(project))
+	// The search runs with the caller's own token, so currentUser() is them:
+	// only their own sprint tickets are offered (any other key can still be typed).
+	jql := fmt.Sprintf(`project = "%s" AND sprint in openSprints() AND assignee = currentUser() AND issuetype not in subTaskIssueTypes()`, jqlQuote(project))
 	q = strings.TrimSpace(q)
 	if key := strings.ToUpper(q); issueKeyRe.MatchString(key) {
 		jql += fmt.Sprintf(` AND key = "%s"`, key)
