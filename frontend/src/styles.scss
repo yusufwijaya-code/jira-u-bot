@@ -1070,7 +1070,21 @@ tr.clickable:hover td { background: var(--surface-2); }
   overflow-x: auto;
   margin: 0 -24px -24px;
   border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  // Slim, rounded scrollbar that only stands out on hover (only shows when
+  // the table really is wider than the card, e.g. on small screens).
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color var(--normal) var(--ease);
+  &:hover { scrollbar-color: var(--border-strong) transparent; }
+  &::-webkit-scrollbar { height: 8px; }
+  &::-webkit-scrollbar-track { background: transparent; margin: 0 16px; }
+  &::-webkit-scrollbar-thumb { border-radius: 999px; background: transparent; }
+  &:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
 }
+
+// Admin tables & the board rule grid get the wide layout like Papan Tiket.
+.page:has(table.admin-users), .page:has(.tr-page) { max-width: 1440px; }
 
 table.admin-users {
   width: 100%;

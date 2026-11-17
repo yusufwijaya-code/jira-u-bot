@@ -1,30 +1,92 @@
 // Keyframes fade-up / pop-in are global (styles.scss).
 :host { display: block; animation: fade-up 260ms var(--ease) backwards; }
-.tr-add { margin-left: auto; transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+
+.tr-hero .card-header h2 { font-size: 1.2rem; }
+.tr-hero .card-header p { font-size: 0.92rem; }
+.tr-add { margin-left: auto; gap: 6px; transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
   &:hover { transform: translateY(-1px); box-shadow: var(--shadow-primary); }
   &:active { transform: scale(.97); } }
-.tr-table tbody tr { animation: fade-up 260ms var(--ease) backwards; transition: opacity var(--normal) var(--ease), background-color var(--fast) var(--ease); }
-.tr-table tbody tr.inactive { opacity: .55; &:hover { opacity: .85; } }
-.tr-board { display: flex; flex-direction: column; gap: 2px; }
-.tr-key { font-weight: 800; color: var(--ink); letter-spacing: .02em; }
-.tr-name { font-size: .78rem; color: var(--text-faint); }
-.tr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.tr-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-strong);
-  font-size: .76rem; font-weight: 600; white-space: nowrap; animation: pop-in 220ms var(--ease) backwards;
+.tr-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; font-size: .9rem; color: var(--text-muted);
+  strong { color: var(--ink); font-size: 1rem; &.ok { color: var(--success); } &.off { color: var(--text-faint); } }
+  .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--border-strong); } }
+
+.tr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 18px; }
+
+.tr-card {
+  display: flex; flex-direction: column; gap: 16px; padding: 22px 24px;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-xs);
+  animation: fade-up 320ms var(--ease) backwards;
+  transition: transform var(--normal) var(--ease), box-shadow var(--normal) var(--ease), border-color var(--normal) var(--ease), opacity var(--normal) var(--ease);
+  &:hover { transform: translateY(-2px); box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.08)); border-color: var(--primary-ring); }
+  &.inactive { opacity: .6; background: var(--surface-2); &:hover { opacity: .9; } }
+  &.busy { opacity: .7; pointer-events: none; }
+}
+
+.tr-card-head { display: flex; align-items: center; gap: 14px; }
+.tr-key-badge {
+  display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 14px;
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 55%, var(--accent)));
+  color: #fff; font-weight: 800; font-size: .82rem; letter-spacing: .04em; box-shadow: var(--shadow-primary);
+  .inactive & { background: var(--border-strong); box-shadow: none; }
+}
+.tr-title { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px;
+  h3 { margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--ink); letter-spacing: .01em; }
+  .tr-name { font-size: .9rem; color: var(--text-muted); } }
+.tr-state { gap: 6px; font-size: .82rem; padding: 5px 12px;
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  &.active .pulse { animation: tr-pulse 2s var(--ease) infinite; } }
+@keyframes tr-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+
+.tr-label { display: inline-flex; align-items: center; gap: 6px; font-size: .74rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--text-faint);
+  small { text-transform: none; letter-spacing: 0; font-weight: 500; } }
+
+.tr-flow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border-radius: var(--radius-md, 12px);
+  background: var(--surface-2); border: 1px solid var(--border); }
+.tr-step { display: flex; flex-direction: column; gap: 8px; }
+.tr-arrow { color: var(--text-faint); flex: none; }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tr-chip { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-strong);
+  font-size: .9rem; font-weight: 600; white-space: nowrap; animation: pop-in 240ms var(--ease) backwards;
   &.done { background: var(--success-soft); color: var(--success); }
   &.review { background: var(--accent-soft); color: #b4630a; } }
-.tr-fields { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; counter-reset: sp;
-  li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; counter-increment: sp; font-size: .8rem;
-    &::before { content: counter(sp); display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
-      background: var(--surface-2); border: 1px solid var(--border); font-size: .68rem; color: var(--text-muted); }
-    small { color: var(--text-faint); font-size: .72rem; } } }
-.tr-tag { padding: 1px 6px; border-radius: 6px; background: var(--surface-2); border: 1px dashed var(--border-strong); font-size: .66rem; color: var(--text-muted); }
-.tr-edited { display: flex; flex-direction: column; font-size: .78rem; small { color: var(--text-faint); } }
-.tr-actions { display: inline-flex; gap: 6px; justify-content: flex-end;
-  .btn { transition: transform var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease);
+.tr-review-note { margin: -6px 0 0; font-size: .86rem; color: var(--text-muted); strong { color: var(--text); } }
+
+.tr-sp { display: flex; flex-direction: column; gap: 10px; }
+.tr-fields { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px;
+  li { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md, 12px);
+    transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease);
+    &:hover { border-color: var(--primary-ring); background: var(--primary-soft); } } }
+.tr-num { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border-strong); font-size: .8rem; font-weight: 700; color: var(--text-muted); }
+.tr-field { display: flex; flex-direction: column; min-width: 0; flex: 1;
+  strong { font-size: .95rem; color: var(--ink); }
+  code { font-size: .78rem; color: var(--text-faint); background: none; padding: 0; } }
+.tr-tags { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.tr-tag { padding: 4px 10px; border-radius: 8px; font-size: .76rem; font-weight: 700; white-space: nowrap;
+  &.card { background: var(--primary-soft); color: var(--primary-strong); }
+  &.subtask { background: var(--info-soft, var(--surface-2)); color: var(--info, var(--text-muted)); } }
+
+.tr-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding-top: 14px; margin-top: auto; border-top: 1px dashed var(--border); }
+.tr-edited { display: inline-flex; align-items: center; gap: 6px; font-size: .84rem; color: var(--text-muted); }
+.tr-actions { display: inline-flex; gap: 8px;
+  .btn { gap: 6px; transition: transform var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease);
     &:active:not(:disabled) { transform: scale(.96); } } }
 
+.tr-card-skeleton { gap: 14px; animation: none;
+  .sk-head { height: 52px; width: 60%; border-radius: 14px; }
+  .sk-line { height: 14px; width: 80%; &.short { width: 50%; } }
+  .sk-block { height: 90px; border-radius: 12px; } }
+
+@media (max-width: 640px) {
+  .tr-card { padding: 18px; }
+  .tr-fields li { flex-wrap: wrap; }
+  .tr-tags { justify-content: flex-start; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  :host, .tr-table tbody tr, .tr-chip { animation: none; }
-  .tr-table tbody tr, .tr-add, .tr-actions .btn { transition: none; }
+  :host, .tr-card, .tr-chip, .tr-state.active .pulse { animation: none; }
+  .tr-card, .tr-add, .tr-actions .btn, .tr-fields li { transition: none; }
+  .tr-card:hover { transform: none; }
 }

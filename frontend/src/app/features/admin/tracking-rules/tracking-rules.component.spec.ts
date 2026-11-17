@@ -44,9 +44,9 @@ describe('TrackingRulesComponent', () => {
   });
 
   it('lists every rule with its statuses and Story Point fields in priority order (AC2.2)', () => {
-    const rows = el().querySelectorAll('tr[data-rule]');
+    const rows = el().querySelectorAll('[data-rule]');
     expect(rows.length).toBe(3);
-    const core = el().querySelector('tr[data-rule="CORE"]')!;
+    const core = el().querySelector('[data-rule="CORE"]')!;
     for (const text of ['ESB Core', 'Code Process', 'CODE REVIEW', 'Code Completed', 'Story Point Estimate', 'customfield_10125', 'seed']) {
       expect(core.textContent).toContain(text);
     }
@@ -56,7 +56,7 @@ describe('TrackingRulesComponent', () => {
   });
 
   it('dims an inactive rule and offers Aktifkan (AC2.4)', () => {
-    const pos = el().querySelector('tr[data-rule="POS"]')!;
+    const pos = el().querySelector('[data-rule="POS"]')!;
     expect(pos.classList).toContain('inactive');
     expect(pos.querySelector('[data-activate="POS"]')).not.toBeNull();
     expect(pos.textContent).toContain('Nonaktif');
@@ -73,7 +73,7 @@ describe('TrackingRulesComponent', () => {
     expect(confirm.ask.calls.mostRecent().args[0].message).toBe('Tiket CORE berhenti dipantau. Riwayat tetap tersimpan.');
     expect(confirm.ask.calls.mostRecent().args[0].tone).toBe('danger');
     expect(api.setActive).toHaveBeenCalledWith('CORE', false);
-    expect(el().querySelector('tr[data-rule="CORE"]')!.classList).toContain('inactive');
+    expect(el().querySelector('[data-rule="CORE"]')!.classList).toContain('inactive');
     const action = toast.show.calls.mostRecent().args[4]!;
     expect(action.label).toBe('Hitung ulang semua user');
     action.run();
