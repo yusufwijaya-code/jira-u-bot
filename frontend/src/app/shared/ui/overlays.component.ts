@@ -2,15 +2,18 @@ import { Component, HostListener, inject } from '@angular/core';
 import { ToastService } from '../../core/ui/toast.service';
 import { ConfirmService } from '../../core/ui/confirm.service';
 import { IconComponent } from './icon.component';
+import { MoveFieldsDialogComponent } from './move-fields-dialog.component';
 
 const TOAST_ICONS = { success: 'check-circle', error: 'alert-circle', info: 'info' } as const;
 
-/** Hosts the global toast stack and the confirm dialog. Mounted once in AppComponent. */
+/** Hosts the global toast stack, the confirm dialog and the move-fields dialog. Mounted once in AppComponent. */
 @Component({
   selector: 'app-overlays',
   standalone: true,
-  imports: [IconComponent],
+  imports: [IconComponent, MoveFieldsDialogComponent],
   template: `
+    <app-move-fields-dialog />
+
     <div class="toast-stack" aria-live="polite">
       @for (toast of toastService.toasts(); track toast.id) {
         <div class="toast" [attr.data-tone]="toast.tone" [class.leaving]="toast.leaving" role="status">

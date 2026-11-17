@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
+import { MoveDone, MoveFieldsService } from '../../../core/ui/move-fields.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
@@ -330,6 +331,62 @@ describe('BoardPageComponent', () => {
     http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush({ error: 'bukan tiket kamu' }, { status: 403, statusText: 'Forbidden' });
     fixture.detectChanges();
     expect(el.querySelector('[data-status="To Do"] [data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  const fieldsRequiredBody = {
+    error: 'fields_required', message: 'Fill in the Merge Request Fields Before Code Review', issueKey: 'OMS-1', issueUrl: 'https://x/browse/OMS-1',
+    transition: { id: '21', name: 'Start', to: 'Code Process' },
+    fields: [{ id: 'customfield_10095', name: 'Merge Request', kind: 'textarea', multi: false, required: true }],
+  };
+
+  function holdDialog() {
+    const mf = TestBed.inject(MoveFieldsService);
+    let answer!: (v: MoveDone | null) => void;
+    spyOn(mf, 'open').and.returnValue(new Promise((r) => (answer = r)));
+    return { mf, answer: (v: MoveDone | null) => answer(v) };
+  }
+
+  it('opens the fields dialog when Jira needs fields, and puts the row back on cancel', async () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    const dialog = holdDialog();
+    startMove(fixture);
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush(fieldsRequiredBody, { status: 422, statusText: 'Unprocessable Entity' });
+    fixture.detectChanges();
+    expect(dialog.mf.open).toHaveBeenCalledWith(jasmine.objectContaining({ issueKey: 'OMS-1', transition: jasmine.objectContaining({ id: '21' }) }));
+    expect(el.querySelector('[data-status="Code Process"] [data-card="OMS-1"]')).withContext('waits at its target while the dialog is open').not.toBeNull();
+    dialog.answer(null);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-status="To Do"] [data-card="OMS-1"]')).not.toBeNull();
+  });
+
+  it('finishes like a normal move once the dialog saved the fields', async () => {
+    const fixture = render();
+    const toast = TestBed.inject(ToastService);
+    spyOn(toast, 'show').and.callThrough();
+    const dialog = holdDialog();
+    startMove(fixture);
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transition')).flush(fieldsRequiredBody, { status: 422, statusText: 'Unprocessable Entity' });
+    dialog.answer({ message: 'ok', status: 'Code Process' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(toast.show).toHaveBeenCalledWith('success', 'Status dipindah', 'OMS-1 → Code Process', 6000, jasmine.objectContaining({ label: 'Batalkan' }));
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('opens the move from a chat deep link and clears the params', async () => {
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/?move=OMS-1&to=21');
+    const dialog = holdDialog();
+    render();
+    http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/transitions')).flush({ issueKey: 'OMS-1', currentStatus: 'To Do', transitions: [{ id: '21', name: 'Start', toStatus: 'Code Process' }] });
+    const req = http.expectOne((r) => r.url.endsWith('/tickets/OMS-1/move-requirements'));
+    expect(req.request.params.get('transitionId')).toBe('21');
+    req.flush(fieldsRequiredBody);
+    expect(dialog.mf.open).toHaveBeenCalledWith(jasmine.objectContaining({ issueKey: 'OMS-1', fields: fieldsRequiredBody.fields }));
+    await new Promise((r) => setTimeout(r));
+    expect(router.url).not.toContain('move=');
   });
 
   it('undo moves back when the workflow allows it', () => {

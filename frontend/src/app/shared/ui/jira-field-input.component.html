@@ -1,0 +1,76 @@
+@let f = field();
+@switch (f.kind) {
+  @case ('textarea') {
+    <label class="cc-field"><span>{{ label() }}</span>
+      <textarea class="jf-textarea" [rows]="rows()" [attr.data-field]="f.id" [value]="text()" (input)="value.set($any($event.target).value)"></textarea>
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </label>
+  }
+  @case ('select') {
+    <div class="cc-field"><span>{{ label() }}
+      @if (f.multi && selectedCount()) { <small class="jf-count">{{ selectedCount() }} dipilih</small> }</span>
+      @if (f.multi) {
+        @if ((f.options ?? []).length > longList) {
+          <input class="jf-filter" type="search" placeholder="Cari {{ f.name }}…" [attr.data-filter]="f.id" [value]="filter()" (input)="filter.set($any($event.target).value)" />
+        }
+        <div class="cc-multi" [class.jf-scroll]="(f.options ?? []).length > longList" role="group" [attr.aria-label]="f.name" [attr.data-field]="f.id">
+          @for (o of visibleOptions(); track o.id) {
+            <button type="button" class="cc-opt" [class.on]="isSelected(o.id)" [attr.aria-pressed]="isSelected(o.id)" [attr.data-option]="o.id" (click)="toggleMulti(o.id)">{{ o.label }}</button>
+          } @empty { <small class="jf-none">Tidak ada yang cocok</small> }
+        </div>
+      } @else {
+        <app-select [attr.data-field]="f.id" [options]="fieldOptions()" [ngModel]="value() ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="value.set($event)" [ariaLabel]="f.name" />
+      }
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </div>
+  }
+  @case ('cascade') {
+    <div class="cc-field" [attr.data-field]="f.id"><span>{{ label() }}</span>
+      <app-select data-cascade-parent [options]="fieldOptions()" [ngModel]="cascade()?.id ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setCascadeParent($event)" [ariaLabel]="f.name" />
+      @if (childOptions().length) {
+        <app-select class="jf-child cc-pop" data-cascade-child [options]="childOptions()" [ngModel]="cascade()?.child ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setCascadeChild($event)" [ariaLabel]="f.name + ' (detail)'" />
+      }
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </div>
+  }
+  @case ('date') {
+    <div class="cc-field"><span>{{ label() }}</span>
+      <app-date-range-picker [attr.data-field]="f.id" [single]="true" [from]="text()" placeholder="Pilih tanggal" [ariaLabel]="f.name" (rangeChange)="value.set($event.from || null)" />
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </div>
+  }
+  @case ('labels') {
+    <div class="cc-field"><span>{{ label() }}</span>
+      <div class="jf-labels" [attr.data-field]="f.id">
+        @for (l of labels(); track l) {
+          <span class="cc-opt on jf-label">{{ l }}<button type="button" [attr.aria-label]="'Hapus label ' + l" (click)="removeLabel(l)"><app-icon name="x" [size]="12" /></button></span>
+        }
+        <input data-label-input placeholder="Ketik lalu Enter" [attr.aria-label]="f.name" [value]="labelDraft()"
+          (input)="setLabelDraft($any($event.target))" (keydown.enter)="commitLabel($event)" (blur)="commitLabel()" />
+      </div>
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </div>
+  }
+  @case ('number') {
+    <label class="cc-field"><span>{{ label() }}</span>
+      <input type="number" [attr.data-field]="f.id" [value]="value() ?? ''" (input)="setNumber($any($event.target).value)" />
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </label>
+  }
+  @case ('unsupported') {
+    <div class="cc-field jf-unsupported" [attr.data-field]="f.id" data-unsupported><span>{{ label() }}</span>
+      <p class="jf-jira">
+        <app-icon name="info" [size]="15" />
+        <span>Field ini belum bisa diisi dari Nudge.</span>
+        @if (issueUrl()) { <a [href]="issueUrl()" target="_blank" rel="noopener" data-fill-in-jira>Isi di Jira</a> }
+      </p>
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </div>
+  }
+  @default {
+    <label class="cc-field"><span>{{ label() }}</span>
+      <input [attr.data-field]="f.id" [value]="text()" (input)="value.set($any($event.target).value)" />
+      @if (error()) { <small class="cc-err">{{ error() }}</small> }
+    </label>
+  }
+}
