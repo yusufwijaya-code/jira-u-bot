@@ -38,8 +38,8 @@
 
 ### US-3 — Admin menambah aturan board baru (pilih dari Jira)
 - **AC3.1** Admin mengetik project key → tombol **Cek di Jira** memanggil lookup; menampilkan nama + avatar project, daftar status workflow (unik, gabungan semua issue type), dan daftar field angka (`schema.type = number`) dengan field bernama "story point" diurutkan paling atas.
-- **AC3.2** Status dihitung = chip multi-pilih dari daftar status; Status selesai = dropdown dari status yang **tidak** dipilih sebagai dihitung; Status review (opsional) = dropdown dari status dihitung; Field SP = multi-pilih berurutan (bisa geser naik/turun), minimal 1.
-- **AC3.3** Preview kalimat realtime: *"Budget berjalan selama {dihitung…}; selesai saat {selesai}. Review {ikut/tidak} dihitung. SP dibaca dari {field1} → {field2}."*
+- **AC3.2** Status dihitung = chip multi-pilih dari daftar status; Status selesai = dropdown dari status yang **tidak** dipilih sebagai dihitung; Status review (opsional) = dropdown dari status dihitung; Field SP baca = multi-pilih berurutan (bisa geser naik/turun), minimal 1; **Field SP tulis (card biasa)** dan **Field SP tulis (subtask)** = dropdown dari field SP baca, wajib keduanya (boleh sama).
+- **AC3.3** Preview kalimat realtime: *"Budget berjalan selama {dihitung…}; selesai saat {selesai}. Review {ikut/tidak} dihitung. SP dibaca dari {field1} → {field2}; ditulis ke {fieldTulis} (card biasa) / {fieldTulisSubtask} (subtask)."*
 - **AC3.4** Simpan → `201`, registry langsung di-refresh, toast sukses dengan aksi **Hitung ulang semua user** (memanggil backfill `RunAll` di background).
 - **AC3.5** (negatif) Project key tidak ada di Jira → `404 project_not_found`, pesan "Project XYZ tidak ditemukan di Jira".
 - **AC3.6** (negatif) Project key sudah punya aturan (aktif atau nonaktif) → `409 rule_exists`, pesan arahkan ke Edit.
@@ -57,7 +57,8 @@
 ### US-5 — Semua modul memakai aturan dari registry
 - **AC5.1** `TrackedIssuesJQL`, JQL dashboard/my-tickets/team (`project in (...)`) dan `IsTrackedProjectKey` memakai project **aktif** dari registry.
 - **AC5.2** Story Point dibaca per project dari `storyPointFields` (urutan = prioritas); `fields=` di request Jira berisi gabungan field SP semua aturan aktif + field sprint.
-- **AC5.3** Buat Card: field SP untuk create = field pertama dalam `storyPointFields` project yang ada di createmeta; semua field SP project dianggap "handled" (tidak dirender sebagai field dinamis).
+- **AC5.3** Buat Card: field SP untuk create = `storyPointWriteFieldSubtask` bila issue type subtask (termasuk bulk subtask), selain itu `storyPointWriteField` — dipakai hanya bila field itu ada di createmeta tipe tersebut (kalau tidak, input SP disembunyikan). Semua field SP project dianggap "handled" (tidak dirender sebagai field dinamis). CORE: card biasa → *Story Point Estimate* (`customfield_10125`), subtask → *Story Points* (`customfield_11053`) — **dikonfirmasi user 2026-11-17**.
+- **AC5.3b** (negatif) Field tulis yang dipilih tidak ada di createmeta tipe card → SP tidak dikirim dan input SP disembunyikan (bukan error 400 dari Jira).
 - **AC5.4** Perubahan aturan berlaku paling lambat cycle poller berikutnya di proses yang sama (refresh on save) dan ≤ 5 menit bila diubah dari luar (refresh periodik).
 - **AC5.5** Pengaturan › Notif perubahan status: daftar status diambil dari workflow Jira project board terpilih (`GET /api/dashboard/boards/:boardID/statuses`, cache 1 jam); fallback ke daftar statis lama bila Jira gagal.
 - **AC5.6** (negatif) Registry gagal refresh (DB error) → aturan terakhir yang valid tetap dipakai, log `ERROR`, tidak pernah jatuh ke kosong.
@@ -70,7 +71,7 @@
 
 | User Story | Domain (Nudge) | Sub-module |
 |------------|----------------|------------|
-| US-1 | Data / migrations | `migrations/0020_tracking_rule.sql` |
+| US-1 | Data / migrations | `migrations/0021_tracking_rule.sql` |
 | US-2, US-3, US-4 | Admin | `modules/tracking_rule` (baru), `frontend/.../admin/tracking-rules` |
 | US-5 | Jira tracking core | `jira_client_dto` (registry), `jira_client_service`, `poller`, `issue_create`, `user_dashboard` |
 
@@ -91,7 +92,7 @@
 
 ```sql
 -- Table   : ms_tracking_rule
--- Action  : NEW TABLE  (migrations/0020_tracking_rule.sql, CREATE TABLE IF NOT EXISTS — idempotent)
+-- Action  : NEW TABLE  (migrations/0021_tracking_rule.sql, CREATE TABLE IF NOT EXISTS — idempotent)
 CREATE TABLE IF NOT EXISTS ms_tracking_rule (
   projectKey        VARCHAR(20)  NOT NULL                    COMMENT 'Jira project key, UPPER',
   projectName       VARCHAR(255) NOT NULL DEFAULT ''         COMMENT 'Cache nama project dari Jira',
@@ -99,16 +100,18 @@ CREATE TABLE IF NOT EXISTS ms_tracking_rule (
   doneStatus        VARCHAR(100) NOT NULL                    COMMENT 'Status selesai (early-completion)',
   reviewStatus      VARCHAR(100) NULL                        COMMENT 'Status review yang ikut dihitung; harus ∈ trackedStatuses',
   storyPointFields  JSON         NOT NULL                    COMMENT 'Array customfield_xxx, urutan = prioritas baca',
+  storyPointWriteField        VARCHAR(50) NOT NULL         COMMENT 'Field SP yang ditulis Buat Card untuk card biasa; ∈ storyPointFields',
+  storyPointWriteFieldSubtask VARCHAR(50) NOT NULL         COMMENT 'Field SP yang ditulis Buat Card untuk subtask; ∈ storyPointFields',
   isActive          TINYINT(1)   NOT NULL DEFAULT 1,
   editedBy          VARCHAR(255) NOT NULL DEFAULT 'seed'     COMMENT 'Email admin terakhir',
   editedDate        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (projectKey)
 );
 
--- Seed (migrations/0020b_tracking_rule_seed.sql) — INSERT IGNORE: tidak menimpa editan admin (AC1.3)
-INSERT IGNORE INTO ms_tracking_rule (projectKey, projectName, trackedStatuses, doneStatus, reviewStatus, storyPointFields) VALUES
-  ('OMS',  'ESB OMS',  JSON_ARRAY('Code Process'),                'Code Review',    NULL,          JSON_ARRAY('customfield_10016')),
-  ('CORE', 'ESB Core', JSON_ARRAY('Code Process', 'CODE REVIEW'), 'Code Completed', 'CODE REVIEW', JSON_ARRAY('customfield_10125', 'customfield_11053'));
+-- Seed (migrations/0021b_tracking_rule_seed.sql) — INSERT IGNORE: tidak menimpa editan admin (AC1.3)
+INSERT IGNORE INTO ms_tracking_rule (projectKey, projectName, trackedStatuses, doneStatus, reviewStatus, storyPointFields, storyPointWriteField, storyPointWriteFieldSubtask) VALUES
+  ('OMS',  'ESB OMS',  JSON_ARRAY('Code Process'),                'Code Review',    NULL,          JSON_ARRAY('customfield_10016'),                      'customfield_10016', 'customfield_10016'),
+  ('CORE', 'ESB Core', JSON_ARRAY('Code Process', 'CODE REVIEW'), 'Code Completed', 'CODE REVIEW', JSON_ARRAY('customfield_10125', 'customfield_11053'), 'customfield_10125', 'customfield_11053');
 ```
 
 > Didaftarkan di `migrations/migrate.go` (`//go:embed` + `db.Exec`, pola yang sama dengan 0018). Rollback: tabel boleh dibiarkan (kode lama tidak membacanya) atau `DROP TABLE ms_tracking_rule`.
@@ -128,6 +131,7 @@ Semua di `router.go` grup `base.Group("/api/dashboard/admin")` + `AdminMiddlewar
       "projectKey": "CORE", "projectName": "ESB Core",
       "trackedStatuses": ["Code Process", "CODE REVIEW"], "doneStatus": "Code Completed", "reviewStatus": "CODE REVIEW",
       "storyPointFields": [{"id": "customfield_10125", "name": "Story Point Estimate"}, {"id": "customfield_11053", "name": "Story Points"}],
+      "storyPointWriteField": "customfield_10125", "storyPointWriteFieldSubtask": "customfield_11053",
       "isActive": true, "editedBy": "seed", "editedDate": "2026-11-16T09:00:00+07:00"
     }
   ]
@@ -162,14 +166,16 @@ Sumber Jira: `GET /rest/api/3/project/{key}`, `GET /rest/api/3/project/{key}/sta
   "trackedStatuses": ["string — min 1, harus ada di statuses Jira"],
   "doneStatus": "string — wajib, ∉ trackedStatuses, ada di statuses Jira",
   "reviewStatus": "string|null — opsional, ∈ trackedStatuses",
-  "storyPointFields": ["string — min 1, ada di numberFields Jira, tanpa duplikat"]
+  "storyPointFields": ["string — min 1, ada di numberFields Jira, tanpa duplikat"],
+  "storyPointWriteField": "string — wajib, ∈ storyPointFields (card biasa)",
+  "storyPointWriteFieldSubtask": "string — wajib, ∈ storyPointFields (subtask)"
 }
 ```
 **Response 201:** satu objek rule (bentuk sama dengan item list).
 
 | Code | Condition |
 |------|-----------|
-| `400` | `validation_failed` + `fields: {trackedStatuses|doneStatus|reviewStatus|storyPointFields|projectKey: "pesan"}` |
+| `400` | `validation_failed` + `fields: {trackedStatuses|doneStatus|reviewStatus|storyPointFields|storyPointWriteField|storyPointWriteFieldSubtask|projectKey: "pesan"}` |
 | `404` | `project_not_found` |
 | `409` | `rule_exists` |
 | `502` | `jira_unavailable` |
@@ -253,6 +259,7 @@ Form Aturan Board (Angular, signals)
   Setelah lookup → chips status, dropdown selesai/review, picker field SP terisi; sebelum lookup semuanya disabled
   Status dihitung on change : buang doneStatus bila jadi ∈ dihitung; buang reviewStatus bila ∉ dihitung
   Field SP      : list berurutan, tombol ↑/↓ dan hapus; "Tambah field" dari numberFields (storyPointLike di atas)
+  Field SP tulis: 2 dropdown (card biasa / subtask) dari field SP baca; default = field pertama; field dihapus dari list → dropdown yang memakainya direset
   Nilai tersimpan yang tak ada lagi di Jira → chip ⚠, tombol Simpan disabled sampai dibuang (AC4.4)
   Preview kalimat : computed dari pilihan (AC3.3)
   Simpan        : spinner; 400 → error per field; 409 → link ke Edit; sukses → kembali ke daftar + toast aksi
@@ -284,11 +291,11 @@ frontend/src/app/
 
 | # | Task | Repo | AC Coverage | 🤖 AI | 👨‍💻 Dev Verify | Blocked By |
 |---|------|------|-------------|-------|----------------|------------|
-| 1 | Migration `0020_tracking_rule.sql` + seed `0020b` + daftar di `migrate.go` + test | `nudge` | AC1.1, AC1.3 | `~1m` | `~20m` | — |
+| 1 | Migration `0021_tracking_rule.sql` + seed `0021b` + daftar di `migrate.go` + test | `nudge` | AC1.1, AC1.3 | `~1m` | `~20m` | — |
 | 2 | Registry di `jira_client_dto`: `TrackingRule` + `ProjectKey/StoryPointFields`, `atomic.Pointer` ruleset, `SetRules`, `ActiveProjectKeys`, `StoryPointFieldIDs`, `ProjectsJQLIn`; `RuleFor/JQL/IsTrackedProjectKey` baca snapshot; JQL kosong → skip | `nudge` | AC1.2, AC1.4, AC5.1 | `~2m` | `~45m` | — |
 | 3 | Story Point dinamis: `IssueFields.UnmarshalJSON` simpan field angka di `Numbers map[string]*float64`; `Issue.StoryPoints()` per rule; ganti 4 pemanggil `EffectiveStoryPoints`; `fields=` dari registry; test paritas OMS/CORE | `nudge` | AC1.2, AC5.2 | `~2m` | `~1h` | #2 |
 | 4 | Ganti 3 JQL `project in (CORE, OMS)` dengan project aktif registry; poller: sesi project nonaktif → `CloseSession(key, 0)` | `nudge` | AC4.5, AC5.1 | `~1m` | `~40m` | #2 |
-| 5 | Buat Card `meta.go`: field SP & `handled` dari rule project | `nudge` | AC5.3 | `~1m` | `~20m` | #2 |
+| 5 | Buat Card `meta.go`: field SP tulis per jenis card (biasa/subtask) & `handled` dari rule project | `nudge` | AC5.3, AC5.3b | `~1m` | `~20m` | #2 |
 | 6 | Modul `tracking_rule`: repository MySQL, service (CRUD, validasi, Jira lookup + cache, Reload, ticker 5 menit, recalc RunAll + guard), handler, routes; jira client `GetProject/GetProjectStatuses/GetFields`; wiring `main.go` (Reload sinkron sebelum poller) | `nudge` | AC2.3, AC3.1–AC3.8, AC4.1–AC4.3, AC4.6, AC5.4, AC5.6 | `~4m` | `~2h` | #1, #2 |
 | 7 | Endpoint `GET /api/dashboard/boards/:boardID/statuses` (cache 1 jam) | `nudge` | AC5.5 | `~1m` | `~20m` | #6 |
 | 8 | Frontend: `tracking-rule.service.ts`, halaman daftar, form tambah/edit, menu Admin, route, motion & style custom | `nudge` | AC2.1, AC2.2, AC2.4, AC3.1–AC3.4, AC4.1, AC4.2, AC4.4 | `~4m` | `~1.5h` | #6 |
@@ -354,7 +361,7 @@ frontend/src/app/
 
 | # | Location | Contradiction / Ambiguity | Assumption Made |
 |---|----------|---------------------------|-----------------|
-| 1 | AC5.3 | Buat Card sekarang menulis SP CORE ke `customfield_11053`, sedangkan pembacaan memprioritaskan `customfield_10125`. Dengan aturan per project, create menulis ke field pertama di daftar yang ada di createmeta → CORE akan menulis ke `10125` bila tersedia di createmeta. | Ikuti urutan daftar (baca = tulis, konsisten). Admin bisa menukar urutan bila perlu. ⚠️ Konfirmasi user |
+| 1 | AC5.3 | Field SP yang ditulis Buat Card untuk CORE. | ✅ Dikonfirmasi user 2026-11-17: card biasa → Story Point Estimate (`customfield_10125`), subtask → Story Points (`customfield_11053`); disimpan per board di `storyPointWriteField` / `storyPointWriteFieldSubtask`. |
 | 2 | AC4.2 | Menonaktifkan project: perlu juga menyembunyikan board-nya dari pemilih board user? | Tidak — pemilih board mengikuti sprint aktif berisi tiket user; tiket project nonaktif tidak lagi masuk JQL dashboard sehingga board otomatis hilang. |
 | 3 | AC3.4 | "Hitung ulang" hanya untuk semua user (bukan per project). | `RunAll` yang sudah ada; cukup untuk skala tim saat ini. |
 | 4 | Chat | Shortcut status di `/n-tiket` (`parse.go statusShortcuts`) tetap generik. | Di luar scope; status baru tetap bisa diketik dengan nama lengkap. |
@@ -367,9 +374,9 @@ frontend/src/app/
 
 | File | Change |
 |------|--------|
-| `migrations/0020_tracking_rule.sql` | Baru — tabel `ms_tracking_rule` |
-| `migrations/0020b_tracking_rule_seed.sql` | Baru — seed OMS & CORE (`INSERT IGNORE`) |
-| `migrations/migrate.go` | Embed + apply 0020/0020b |
+| `migrations/0021_tracking_rule.sql` | Baru — tabel `ms_tracking_rule` |
+| `migrations/0021b_tracking_rule_seed.sql` | Baru — seed OMS & CORE (`INSERT IGNORE`) |
+| `migrations/migrate.go` | Embed + apply 0021/0021b |
 | `modules/jira_client/jira_client_dto/tracking_rules.go` | Registry atomic, `SetRules`, `ActiveProjectKeys`, `StoryPointFieldIDs`, `ProjectsJQLIn`; `TrackingRule` + `ProjectKey`, `StoryPointFields` |
 | `modules/jira_client/jira_client_dto/issue_relations.go` | `IsTrackedProjectKey` dari registry |
 | `modules/jira_client/jira_client_dto/jira_client_dto.go` | `IssueFields.Numbers` + `UnmarshalJSON`; `Issue.StoryPoints()`; `EffectiveStoryPoints` dihapus/diganti |
@@ -381,7 +388,7 @@ frontend/src/app/
 | `modules/poller/poller_service/poller_service_impl.go` | `Issue.StoryPoints()`; sesi project nonaktif → `CloseSession(key, 0)` |
 | `modules/sprint_backfill/sprint_backfill_service/sprint_backfill_service_impl.go` | `Issue.StoryPoints()` |
 | `modules/user_dashboard/user_dashboard_service/user_dashboard_service_impl.go` | `Issue.StoryPoints()`; endpoint status board |
-| `modules/issue_create/issue_create_service/meta.go` | Field SP & `handled` dari rule project |
+| `modules/issue_create/issue_create_service/meta.go` | Field SP tulis per jenis card (subtask/biasa) & `handled` dari rule project |
 | `modules/tracking_rule/…` | Baru — dto, repository, service (CRUD, validasi, lookup, Reload, ticker, recalc), handler, routes + test |
 | `router.go`, `main.go` | Mount routes admin + board statuses; Reload sinkron sebelum poller; ticker refresh |
 | `frontend/src/app/core/services/tracking-rule.service.ts` | Baru |
