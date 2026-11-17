@@ -695,7 +695,7 @@ tr.clickable:hover td { background: var(--surface-2); }
 
   // A card with an open popover sits above its siblings, even while the
   // entrance animation still runs.
-  > *:has(.ui-select.open, .ui-time.open, .ui-date.open, .status-dropdown) {
+  > *:has(.ui-select.open, .ui-time.open, .ui-date.open, .status-dropdown, .pp.open, .up.open) {
     position: relative;
     // Above sibling cards, below the sticky navbar (30).
     z-index: 21;

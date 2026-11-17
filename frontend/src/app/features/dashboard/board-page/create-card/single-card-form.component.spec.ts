@@ -165,4 +165,36 @@ describe('SingleCardFormComponent', () => {
     expect((el.querySelector('[data-submit]') as HTMLButtonElement).disabled).toBeTrue();
     expect(el.textContent).toContain('Tidak didukung');
   });
+
+  it('lays out main fields and a Detail panel, with a hint while submit is blocked', () => {
+    const f = render();
+    const el: HTMLElement = f.nativeElement;
+    expect(el.querySelector('[data-type-empty]')).not.toBeNull();
+    choose(f, '[data-type]', 'Story');
+    expect(el.querySelector('.scf-main [data-summary]')).not.toBeNull();
+    expect(el.querySelector('.scf-side [data-field="customfield_12001"]')).not.toBeNull();
+    expect(el.querySelector('.scf-side [data-parent-key]')).withContext('Story keeps the plain Epic key input').not.toBeNull();
+    expect(el.querySelector('[data-submit-hint]')?.textContent).toContain('Isi judul dulu');
+  });
+
+  it('uses the parent picker for a subtask type and requires a parent', () => {
+    const f = render();
+    const el: HTMLElement = f.nativeElement;
+    f.componentRef.setInput('meta', { ...meta, types: [...meta.types, { id: '10143', name: 'SUB Story', subtask: true, supported: true, parentAllowed: true, fields: [] }] });
+    f.detectChanges();
+    choose(f, '[data-type]', 'SUB Story');
+    expect(el.querySelector('[data-parent-key]')).toBeNull();
+    setIn(el, '[data-summary]', 'Sub'); f.detectChanges();
+    expect((el.querySelector('[data-submit]') as HTMLButtonElement).disabled).toBeTrue();
+    expect(el.querySelector('[data-submit-hint]')?.textContent).toContain('Pilih parent dulu');
+    const input = el.querySelector('[data-parent-field] [data-parent-input]') as HTMLInputElement;
+    input.value = 'OMS-5'; input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    http.expectOne((r) => r.url.endsWith('/create/parent/OMS-5')).flush({ key: 'OMS-5', summary: 'Parent story', subtasks: [] });
+    f.detectChanges();
+    (el.querySelector('[data-submit]') as HTMLButtonElement).click();
+    const req = http.expectOne((r) => r.url.endsWith('/create/issue'));
+    expect(req.request.body).toEqual(jasmine.objectContaining({ typeId: '10143', parentKey: 'OMS-5' }));
+    req.flush({ key: 'OMS-6', url: 'u' });
+  });
 });

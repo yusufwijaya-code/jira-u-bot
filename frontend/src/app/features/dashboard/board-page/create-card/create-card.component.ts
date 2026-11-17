@@ -9,12 +9,13 @@ import { BoardContextService } from '../../../../core/services/board-context.ser
 import { CreateMeta, CreateStatus, IssueCreateService } from '../../../../core/services/issue-create.service';
 import { SingleCardFormComponent } from './single-card-form.component';
 import { BulkSubtasksComponent } from './bulk-subtasks.component';
+import { IconComponent } from '../../../../shared/ui/icon.component';
 
 /** Tab "Buat Card" (spec US-4..US-7). */
 @Component({
   selector: 'app-create-card',
   standalone: true,
-  imports: [RouterLink, FormsModule, SelectComponent, SingleCardFormComponent, BulkSubtasksComponent],
+  imports: [RouterLink, FormsModule, SelectComponent, SingleCardFormComponent, BulkSubtasksComponent, IconComponent],
   templateUrl: './create-card.component.html',
   styleUrl: './create-card.component.scss',
 })

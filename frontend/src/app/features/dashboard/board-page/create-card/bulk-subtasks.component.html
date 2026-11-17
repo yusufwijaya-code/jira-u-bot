@@ -1,40 +1,38 @@
 <div class="bs">
-  <div class="bs-parent">
-    <span class="bs-label">Parent</span>
-    @if (parent(); as p) {
-      <div class="bs-parent-chip"><strong>{{ p.key }}</strong> {{ p.summary }} <small>({{ p.subtasks.length }} subtask)</small>
-        <button type="button" class="btn btn-soft btn-sm" (click)="parent.set(null)">Ganti</button></div>
-    } @else {
-      <div class="bs-parent-pick">
-        <input placeholder="Cari tiket sprint atau ketik key, Enter" [value]="parentQuery()" (input)="parentQuery.set($any($event.target).value)" (keydown.enter)="$event.preventDefault(); pickParent(parentQuery())" data-parent-input />
-        @if (filteredCandidates().length) {
-          <ul class="bs-cands">
-            @for (c of filteredCandidates(); track c.issueKey) {
-              <li><button type="button" (click)="pickParent(c.issueKey)"><strong>{{ c.issueKey }}</strong> {{ c.summary }}</button></li>
-            }
-          </ul>
-        }
-        @if (parentError()) { <small class="cc-err">{{ parentError() }}</small> }
-      </div>
-    }
-  </div>
+  <!-- ① Parent -->
+  <section class="bs-step" [class]="'bs-step bs-step-parent ' + steps()[0]" data-step="1">
+    <header class="bs-step-head">
+      <span class="bs-step-num" aria-hidden="true">@if (steps()[0] === 'done') { <app-icon name="check" [size]="14" [stroke]="3" /> } @else { 1 }</span>
+      <div class="bs-step-title"><strong>Parent</strong><small>Tiket sprint yang akan menampung subtask (bukan Epic / subtask)</small></div>
+    </header>
+    <app-parent-picker [boardId]="boardId()" [initialKey]="initialParent()" [value]="parent()" (picked)="onParent($event)" />
+  </section>
 
-  <div class="bs-grid">
-    <div class="bs-paste" [class.busy]="normalizing()">
-      <label class="cc-field"><span>① Paste Task Breakdown</span>
-        <textarea data-paste rows="14" [attr.maxlength]="maxChars" [value]="text()" (input)="text.set($any($event.target).value)" placeholder="Copy tabel Task Breakdown dari tech spec, paste di sini"></textarea>
-      </label>
-      <div class="bs-paste-foot">
-        <small>{{ text().length }}/{{ maxChars }} · Teks dikirim ke Google Gemini untuk dirapikan.</small>
-        <button type="button" class="btn btn-primary btn-sm" data-normalize [disabled]="!aiReady() || !text().trim() || normalizing()" (click)="normalize()">
-          @if (normalizing()) { <span class="tb-spin" aria-hidden="true"></span> Merapikan… } @else { ✨ Normalize }</button>
+  <div class="bs-grid" [class.locked]="!parent()">
+    <!-- ② Paste & Normalize -->
+    <section [class]="'bs-step ' + steps()[1]" data-step="2" [attr.inert]="parent() ? null : ''" [attr.aria-disabled]="!parent()">
+      <header class="bs-step-head">
+        <span class="bs-step-num" aria-hidden="true">@switch (steps()[1]) { @case ('done') { <app-icon name="check" [size]="14" [stroke]="3" /> } @case ('locked') { <app-icon name="lock" [size]="12" /> } @default { 2 } }</span>
+        <div class="bs-step-title"><strong>Paste &amp; Normalize</strong><small>Tabel Task Breakdown dari tech spec, dirapikan AI</small></div>
+      </header>
+      <div class="bs-paste" [class.busy]="normalizing()">
+        <textarea data-paste rows="14" aria-label="Task Breakdown" [attr.maxlength]="maxChars" [value]="text()" (input)="text.set($any($event.target).value)" placeholder="Copy tabel Task Breakdown dari tech spec, paste di sini"></textarea>
+        <div class="bs-paste-foot">
+          <small>{{ text().length }}/{{ maxChars }} · Teks dikirim ke Google Gemini untuk dirapikan.</small>
+          <button type="button" class="btn btn-primary btn-sm" data-normalize [disabled]="!aiReady() || !text().trim() || normalizing()" (click)="normalize()">
+            @if (normalizing()) { <span class="tb-spin" aria-hidden="true"></span> Merapikan… } @else { ✨ Normalize }</button>
+        </div>
+        @if (!aiReady()) { <small class="tb-hint">AI belum aktif — isi baris manual dengan “＋ Tambah baris”.</small> }
+        @if (aiError()) { <p class="cc-err" role="alert">{{ aiError() }}</p> }
       </div>
-      @if (!aiReady()) { <small class="tb-hint">AI belum aktif — isi baris manual dengan “＋ Tambah baris”.</small> }
-      @if (aiError()) { <p class="cc-err" role="alert">{{ aiError() }}</p> }
-    </div>
+    </section>
 
-    <div class="bs-preview">
-      <span class="bs-label">② Preview ({{ rows().length }} baris)</span>
+    <!-- ③ Review & Buat -->
+    <section [class]="'bs-step ' + steps()[2]" data-step="3" [attr.inert]="parent() ? null : ''" [attr.aria-disabled]="!parent()">
+      <header class="bs-step-head">
+        <span class="bs-step-num" aria-hidden="true">@switch (steps()[2]) { @case ('done') { <app-icon name="check" [size]="14" [stroke]="3" /> } @case ('locked') { <app-icon name="lock" [size]="12" /> } @default { 3 } }</span>
+        <div class="bs-step-title"><strong>Review &amp; Buat</strong><small>{{ rows().length }} baris — edit, centang, lalu buat di Jira</small></div>
+      </header>
       @if (normalizing()) {
         <!-- While Gemini works: a pulsing AI badge and shimmering placeholder rows instead of a frozen table. -->
         <div class="bs-ai" data-normalizing aria-live="polite" aria-busy="true">
@@ -49,44 +47,60 @@
           }
         </div>
       } @else {
-      @for (w of warnings(); track w) { <p class="cc-warn">⚠ {{ w }}</p> }
-      <table class="bs-table">
-        <thead><tr><th></th><th>Judul</th><th class="tb-num">SP</th><th>Assignee</th><th></th></tr></thead>
-        <tbody>
-          @for (r of rows(); track r.id; let i = $index) {
-            <tr [attr.data-row]="i" [style.--i]="i" [class.done]="r.state === 'done'" [class.failed]="r.state === 'failed'">
-              <td><input type="checkbox" class="bs-check" data-check [attr.aria-label]="'Pilih baris ' + (i + 1)"[checked]="r.checked" [disabled]="r.state === 'done' || sending()" (change)="patch(r.id, { checked: $any($event.target).checked })" /></td>
-              <td>
-                <input class="bs-title" maxlength="255" [value]="r.title" [disabled]="r.state === 'done' || r.state === 'sending'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
-                @if (r.duplicateOf) { <small class="bs-dup">⚠ sudah ada: {{ r.duplicateOf }}</small> }
-                @switch (r.state) {
-                  @case ('sending') { <small class="bs-state">⏳ membuat…</small> }
-                  @case ('done') { <small class="bs-state ok">✅ {{ r.key }}</small> }
-                  @case ('failed') { <small class="bs-state err">❌ {{ r.error }}</small> }
-                }
-                <button type="button" class="bs-more" (click)="patch(r.id, { open: !r.open })">{{ r.open ? 'Tutup detail' : 'Detail' }}</button>
-                @if (r.open) { <textarea rows="3" [disabled]="r.state === 'done' || r.state === 'sending'" [value]="r.details" (input)="patch(r.id, { details: $any($event.target).value })"></textarea> }
-              </td>
-              <td class="tb-num"><input type="number" min="0" max="100" step="0.5" class="bs-sp" [value]="r.storyPoints ?? ''" [disabled]="r.state === 'done'"
-                (input)="patch(r.id, { storyPoints: $any($event.target).value === '' ? null : +$any($event.target).value })" /></td>
-              <td><app-user-picker [boardId]="boardId()" [disabled]="r.state === 'done' || r.state === 'sending'" (picked)="patch(r.id, { assignee: $event })" /></td>
-              <td><button type="button" class="tb-act" aria-label="Hapus baris" [disabled]="r.state === 'done' || sending()" (click)="removeRow(r.id)">🗑</button></td>
-            </tr>
-          }
-        </tbody>
-      </table>
-      <div class="bs-foot">
-        <button type="button" class="btn btn-soft btn-sm" data-add-row [disabled]="rows().length >= 50" (click)="addRow()">＋ Tambah baris</button>
-        <span data-total>{{ checked().length }} baris · {{ totalSP() }} SP</span>
-        @if (finished(); as s) {
-          <span data-summary-result>{{ s.ok }} dibuat, {{ s.failed }} gagal</span>
-          @if (s.failed) { <button type="button" class="btn btn-soft btn-sm" data-retry [disabled]="sending() || refreshing()" (click)="create(true)">Ulangi yang gagal</button> }
+        @for (w of warnings(); track w) { <p class="cc-warn">⚠ {{ w }}</p> }
+        @if (rows().length === 0) {
+          <div class="bs-empty" data-preview-empty>
+            <span class="bs-empty-art" aria-hidden="true"><app-icon name="layers" [size]="26" /></span>
+            <p>Hasil normalize muncul di sini, atau tambah baris manual</p>
+            <button type="button" class="btn btn-soft btn-sm" data-add-row (click)="addRow()"><app-icon name="plus" [size]="14" /> Tambah baris</button>
+          </div>
+        } @else {
+          <table class="bs-table">
+            <thead><tr><th></th><th>Judul</th><th class="tb-num">SP</th><th>Assignee</th><th></th></tr></thead>
+            <tbody>
+              @for (r of rows(); track r.id; let i = $index) {
+                <tr [attr.data-row]="i" [style.--i]="i" [class.done]="r.state === 'done'" [class.failed]="r.state === 'failed'">
+                  <td><input type="checkbox" class="bs-check" data-check [attr.aria-label]="'Pilih baris ' + (i + 1)" [checked]="r.checked" [disabled]="r.state === 'done' || sending()" (change)="patch(r.id, { checked: $any($event.target).checked })" /></td>
+                  <td>
+                    <input class="bs-title" maxlength="255" [value]="r.title" [disabled]="r.state === 'done' || r.state === 'sending'" (input)="patch(r.id, { title: $any($event.target).value })" placeholder="Judul subtask" />
+                    @if (r.duplicateOf) { <small class="bs-dup">⚠ sudah ada: {{ r.duplicateOf }}</small> }
+                    @switch (r.state) {
+                      @case ('sending') { <small class="bs-state">⏳ membuat…</small> }
+                      @case ('done') { <small class="bs-state ok">✅ {{ r.key }}</small> }
+                      @case ('failed') { <small class="bs-state err">❌ {{ r.error }}</small> }
+                    }
+                    <button type="button" class="bs-more" (click)="patch(r.id, { open: !r.open })">{{ r.open ? 'Tutup detail' : 'Detail' }}</button>
+                    @if (r.open) { <textarea rows="3" [disabled]="r.state === 'done' || r.state === 'sending'" [value]="r.details" (input)="patch(r.id, { details: $any($event.target).value })"></textarea> }
+                  </td>
+                  <td class="tb-num"><input type="number" min="0" max="100" step="0.5" class="bs-sp" [attr.aria-label]="'SP baris ' + (i + 1)" [value]="r.storyPoints ?? ''" [disabled]="r.state === 'done'"
+                    (input)="patch(r.id, { storyPoints: $any($event.target).value === '' ? null : +$any($event.target).value })" /></td>
+                  <td><app-user-picker [boardId]="boardId()" [disabled]="r.state === 'done' || r.state === 'sending'" (picked)="patch(r.id, { assignee: $event })" /></td>
+                  <td><button type="button" class="tb-act" aria-label="Hapus baris" [disabled]="r.state === 'done' || sending()" (click)="removeRow(r.id)"><app-icon name="trash" [size]="16" /></button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+          <button type="button" class="btn btn-soft btn-sm bs-add" data-add-row [disabled]="rows().length >= maxRows" (click)="addRow()"><app-icon name="plus" [size]="14" /> Tambah baris</button>
         }
-        <button type="button" class="btn btn-primary" data-create [disabled]="!canCreate()" (click)="create()">
-          @if (sending()) { <span class="tb-spin" aria-hidden="true"></span> Membuat… } @else { Buat {{ checked().length }} subtask di Jira }</button>
-      </div>
-      @if (rows().length && blocker(); as why) { <small class="tb-hint" data-blocker>{{ why }}</small> }
       }
-    </div>
+    </section>
+
+    @if (!parent()) {
+      <div class="bs-lock-hint" data-locked-hint><app-icon name="lock" [size]="14" /> Pilih parent dulu untuk lanjut ke langkah ② dan ③</div>
+    }
   </div>
+
+  @if (parent() && rows().length && !normalizing()) {
+    <!-- Sticky action bar: stays at the bottom of the viewport while the card scrolls. -->
+    <div class="bs-foot" data-footer>
+      <div class="bs-foot-info">
+        <span data-total><strong>{{ checked().length }}</strong> baris · <strong>{{ totalSP() }}</strong> SP</span>
+        @if (finished(); as s) { <span class="bs-result" [class.has-fail]="s.failed" data-summary-result>{{ s.ok }} dibuat, {{ s.failed }} gagal</span> }
+        @if (blocker(); as why) { <small class="bs-blocker" data-blocker>{{ why }}</small> }
+      </div>
+      @if (finished()?.failed) { <button type="button" class="btn btn-soft btn-sm" data-retry [disabled]="sending() || refreshing()" (click)="create(true)">Ulangi yang gagal</button> }
+      <button type="button" class="btn btn-primary" data-create [disabled]="!canCreate()" (click)="create()">
+        @if (sending()) { <span class="tb-spin" aria-hidden="true"></span> Membuat… } @else { Buat {{ checked().length }} subtask di Jira }</button>
+    </div>
+  }
 </div>

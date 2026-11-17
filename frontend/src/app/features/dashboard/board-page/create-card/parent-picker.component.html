@@ -1,0 +1,58 @@
+@if (shown(); as p) {
+  <div class="pp-card" data-parent-selected>
+    @if (p.typeIconUrl) { <img class="pp-icon" [src]="p.typeIconUrl" [alt]="p.type ?? ''" width="16" height="16" /> }
+    <div class="pp-card-main">
+      <div class="pp-card-top">
+        <strong class="pp-key">{{ p.key }}</strong>
+        @if (p.type) { <span class="pp-type">{{ p.type }}</span> }
+        @if (p.status) { <span [class]="'pp-status ' + statusClass(p.statusCategory)">{{ p.status }}</span> }
+      </div>
+      <span class="pp-card-summary">{{ p.summary }}</span>
+    </div>
+    <span class="pp-count" data-parent-count>{{ p.subtasks.length }} subtask</span>
+    <button type="button" class="btn btn-soft btn-sm" data-parent-change (click)="change()">Ganti</button>
+  </div>
+} @else {
+  <div class="pp-box" (focusout)="onFocusOut($event)">
+    <div class="pp-input" [class.busy]="validating()">
+      <span class="pp-lead" aria-hidden="true">
+        @if (validating()) { <span class="tb-spin"></span> } @else { <app-icon name="search" [size]="16" /> }
+      </span>
+      <input #inp type="text" role="combobox" autocomplete="off" spellcheck="false"
+        [attr.aria-expanded]="open()" [attr.aria-controls]="listId" aria-autocomplete="list"
+        [attr.aria-activedescendant]="active() >= 0 ? listId + '-' + active() : null"
+        [placeholder]="placeholder()" [value]="query()" [disabled]="validating()"
+        (focus)="onFocus()" (click)="openList()" (input)="onInput($any($event.target).value)" (keydown)="onKeydown($event)"
+        data-parent-input />
+      <app-icon class="pp-chevron" name="chevron-down" [size]="16" />
+    </div>
+    @if (open()) {
+      <div class="pp-list" [id]="listId" role="listbox" data-parent-list (mousedown)="$event.preventDefault()">
+        @if (loading()) {
+          @for (n of [1, 2, 3, 4]; track n) {
+            <div class="pp-skel" [style.--i]="n" data-parent-loading>
+              <span class="skeleton pp-skel-icon"></span><span class="skeleton pp-skel-key"></span><span class="skeleton pp-skel-sum"></span>
+            </div>
+          }
+        } @else if (loadFailed()) {
+          <p class="pp-empty">Gagal memuat tiket sprint — ketik key lalu Enter.</p>
+        } @else {
+          @for (c of candidates(); track c.key; let i = $index) {
+            <button type="button" class="pp-opt" role="option" tabindex="-1" [id]="listId + '-' + i"
+              [class.active]="i === active()" [attr.aria-selected]="i === active()" [attr.data-parent-option]="c.key"
+              (mouseenter)="active.set(i)" (click)="pick(c.key)">
+              @if (c.typeIconUrl) { <img class="pp-icon" [src]="c.typeIconUrl" [alt]="c.type" width="16" height="16" /> } @else { <span class="pp-icon"></span> }
+              <strong class="pp-key">{{ c.key }}</strong>
+              <span class="pp-sum">{{ c.summary }}</span>
+              <span [class]="'pp-status ' + statusClass(c.statusCategory)">{{ c.status }}</span>
+              <span class="pp-count">{{ c.subtaskCount }} subtask</span>
+            </button>
+          } @empty {
+            <p class="pp-empty" data-parent-empty>Tidak ada tiket sprint yang cocok — ketik key lalu Enter</p>
+          }
+        }
+      </div>
+    }
+  </div>
+  @if (error()) { <small class="pp-err" role="alert" data-parent-error>{{ error() }}</small> }
+}

@@ -29,4 +29,24 @@ describe('UserPickerComponent', () => {
     input.dispatchEvent(new Event('blur')); tick(150); f.detectChanges();
     expect(el.querySelector('.up-list')).toBeNull();
   }));
+
+  it('closes on Escape and on an outside click without changing the value', () => {
+    TestBed.configureTestingModule({ imports: [UserPickerComponent], providers: [provideHttpClient(), provideHttpClientTesting()] });
+    const f = TestBed.createComponent(UserPickerComponent);
+    f.componentRef.setInput('boardId', 26);
+    const emitted: (string | null)[] = [];
+    f.componentInstance.picked.subscribe((v) => emitted.push(v));
+    f.detectChanges();
+    const el: HTMLElement = f.nativeElement;
+    const input = el.querySelector('[data-user-input]') as HTMLInputElement;
+    input.dispatchEvent(new Event('focus')); f.detectChanges();
+    expect(el.querySelector('.up-list')).not.toBeNull();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); f.detectChanges();
+    expect(el.querySelector('.up-list')).toBeNull();
+    input.dispatchEvent(new Event('click')); f.detectChanges();
+    expect(el.querySelector('.up-list')).not.toBeNull();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); f.detectChanges();
+    expect(el.querySelector('.up-list')).toBeNull();
+    expect(emitted).toEqual([]);
+  });
 });

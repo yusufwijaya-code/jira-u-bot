@@ -1,9 +1,10 @@
 // Entering the tab fades the panel up (keyframes fade-up / pop-in / fade-in / spin are global).
 :host { display: block; animation: fade-up 260ms var(--ease) backwards; }
-.cc { display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.cc { display: flex; flex-direction: column; gap: 18px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-xs); }
 :host ::ng-deep {
-  .cc-form { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+  .cc-form { display: flex; flex-direction: column; gap: 12px; }
   .cc-field { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: var(--text-muted); flex: 1;
+    > span:first-child { font-weight: 600; }
     input, textarea { font: inherit; font-size: .88rem; color: var(--text); padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
       transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
     input:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--border-strong); }
@@ -32,16 +33,29 @@
 // Switching Satu card ⇄ Bulk subtask re-creates the child, so it re-enters.
 app-single-card-form, app-bulk-subtasks { display: block; animation: fade-up 240ms var(--ease) backwards; }
 .cc-banner { padding: 12px 14px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--primary) 8%, transparent); font-size: .88rem; animation: fade-in 200ms var(--ease); }
-.cc-modes { align-self: flex-start; }
-.tb-chips { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; }
-.tb-chip { border: 0; background: none; font: inherit; font-size: .8rem; padding: 5px 12px; border-radius: 999px; color: var(--text-muted); cursor: pointer;
-  transition: background .2s var(--ease), color .2s var(--ease), transform .15s;
-  &:hover:not(.active) { background: var(--surface-2); color: var(--text); }
-  &:active { transform: scale(.96); }
-  &.active { background: var(--primary); color: #fff; } }
+
+// Mode switch: a segmented control whose active indicator slides between the two options.
+.cc-seg { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.cc-seg-ind { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 6px); border-radius: var(--radius-sm);
+  background: var(--surface); box-shadow: var(--shadow-sm), 0 0 0 1.5px var(--primary);
+  transition: transform 320ms var(--ease-spring); }
+.cc-seg[data-active='bulk'] .cc-seg-ind { transform: translateX(calc(100% + 4px)); }
+.cc-seg-opt { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; border: 0; border-radius: var(--radius-sm);
+  background: none; font: inherit; text-align: left; color: var(--text-muted); cursor: pointer;
+  transition: color var(--normal) var(--ease), background-color var(--normal) var(--ease), transform .15s var(--ease);
+  &:hover:not(.active) { color: var(--text); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+  &:active { transform: scale(.985); }
+  &:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--primary-ring); }
+  &.active { color: var(--text); .cc-seg-icon { background: var(--primary); color: #fff; box-shadow: var(--shadow-primary); } } }
+.cc-seg-icon { display: inline-grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--surface); color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border); transition: background-color var(--normal) var(--ease), color var(--normal) var(--ease), box-shadow var(--normal) var(--ease); }
+.cc-seg-text { display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  strong { font-size: .92rem; }
+  small { font-size: .76rem; color: var(--text-faint); line-height: 1.35; } }
+@media (max-width: 560px) { .cc-seg-text small { display: none; } .cc-seg-opt { padding: 8px 10px; } }
 
 @media (prefers-reduced-motion: reduce) {
-  :host, app-single-card-form, app-bulk-subtasks, .cc-banner, .tb-chip { animation: none; transition: none; }
+  :host, app-single-card-form, app-bulk-subtasks, .cc-banner, .cc-seg-ind, .cc-seg-opt, .cc-seg-icon { animation: none; transition: none; }
   :host ::ng-deep {
     .cc-err, .cc-warn, .cc-pop, .cc-reveal > *, .tb-hint { animation: none; }
     .cc-opt, .cc-field input, .cc-field textarea { transition: none; }
