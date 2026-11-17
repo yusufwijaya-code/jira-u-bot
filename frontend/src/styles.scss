@@ -402,7 +402,10 @@ input:checked + .check-box {
 /* ==========================================================================
    App shell
    ========================================================================== */
-.app-shell { display: flex; min-height: 100vh; }
+// `overflow: clip` (not hidden: no scroll container, sticky still works) keeps
+// an absolutely positioned popover from growing the document past the shell,
+// which used to leave a white strip under the 100vh sidebar.
+.app-shell { display: flex; min-height: 100vh; min-height: 100dvh; overflow: clip; }
 
 .sidebar {
   position: sticky;
@@ -413,6 +416,11 @@ input:checked + .check-box {
   flex-shrink: 0;
   width: var(--sidebar-w);
   height: 100vh;
+  height: 100dvh;
+  // Its own scroll on very short screens, so the dark column always spans the viewport.
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
   padding: 18px 14px;
   background:
     radial-gradient(120% 60% at 0% 0%, rgba(124, 108, 255, 0.22) 0%, transparent 60%),
@@ -2389,6 +2397,19 @@ table.admin-users {
   transform-origin: top;
   animation: pop-in 160ms var(--ease);
 }
+
+/* Opens upward when there's no room below in the viewport (shouldDropUp). */
+.ui-select.drop-up > .ui-select-list,
+.ui-time.drop-up > .ui-time-popup,
+.ui-date.drop-up > .ui-date-popup {
+  top: auto;
+  bottom: calc(100% + 6px);
+  animation-name: pop-up-in;
+}
+.ui-select.drop-up > .ui-select-list { transform-origin: bottom; }
+.ui-time.drop-up > .ui-time-popup,
+.ui-date.drop-up > .ui-date-popup { transform-origin: bottom left; }
+@keyframes pop-up-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
 
 .ui-select-option {
   display: flex;
