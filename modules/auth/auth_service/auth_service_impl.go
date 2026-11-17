@@ -20,9 +20,8 @@ import (
 )
 
 // sessionLifetime is how long a session stays valid after login (spec
-// Database Changes) — 30 days, matching an internal tool's "stay logged in"
-// expectation rather than a short-lived web session.
-const sessionLifetime = 30 * 24 * time.Hour
+// Database Changes) — 3 days, so an idle login doesn't linger a whole month.
+const sessionLifetime = 3 * 24 * time.Hour
 
 // signInScopes is the minimum OIDC scope set needed to get email + name
 // claims on the ID token — this is a separate OAuth Client (type "Web
