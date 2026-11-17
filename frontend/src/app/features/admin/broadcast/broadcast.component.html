@@ -8,27 +8,76 @@
     </div>
   </header>
 
-  <div class="field">
-    <textarea
-      [(ngModel)]="message"
-      placeholder="Tulis pengumuman fitur baru / update di sini..."
-      [disabled]="submitting"
-      rows="4"
-      maxlength="2000"
-      aria-label="Isi pengumuman"
-    ></textarea>
-    <span class="char-count">{{ message.length }} / 2000</span>
+  <div class="bc-layout">
+    <div class="bc-compose">
+      <label class="bc-label" for="bc-message">Isi pengumuman</label>
+      <div class="bc-editor" [class.disabled]="submitting">
+        <textarea
+          #editor
+          id="bc-message"
+          [(ngModel)]="message"
+          (input)="autoGrow()"
+          placeholder="Tulis pengumuman fitur baru / update di sini..."
+          [disabled]="submitting"
+          rows="6"
+          [attr.maxlength]="max"
+          aria-label="Isi pengumuman"
+          aria-describedby="bc-help bc-count"
+        ></textarea>
+        <div class="bc-meter" [attr.data-level]="usageLevel">
+          <div class="bc-bar" role="progressbar" aria-label="Panjang pesan" [attr.aria-valuenow]="message.length" aria-valuemin="0" [attr.aria-valuemax]="max">
+            <span [style.transform]="'scaleX(' + usage + ')'"></span>
+          </div>
+          <span class="char-count" id="bc-count">{{ message.length }} / {{ max }}</span>
+        </div>
+      </div>
+      <p class="bc-help" id="bc-help">
+        <app-icon name="info" [size]="14" />
+        <span>Format Google Chat: <code>*tebal*</code> <code>_miring_</code> <code>~coret~</code> <code>`kode`</code>. Enter = baris baru.</span>
+      </p>
+    </div>
+
+    <div class="bc-preview-wrap">
+      <span class="bc-label"><app-icon name="eye" [size]="14" /> Preview di Google Chat</span>
+      <div class="bc-preview" aria-live="polite">
+        <div class="bc-chat-head">
+          <span class="bc-bot" aria-hidden="true">N</span>
+          <strong>Nudge</strong>
+          <span class="bc-app-badge">App</span>
+          <span class="bc-time">Sekarang</span>
+        </div>
+        @if (message.trim()) {
+          <div class="bc-bubble" data-preview [innerHTML]="previewHtml"></div>
+        } @else {
+          <div class="bc-bubble placeholder" data-preview>Pesanmu akan tampil seperti ini…</div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="bc-recipients" data-recipients>
+    <span class="bc-rcp-icon"><app-icon name="users" [size]="18" /></span>
+    @if (recipientSummary; as r) {
+      <span>
+        Dikirim ke <strong>{{ r.active }}</strong> user aktif
+        <small>· {{ r.activated }} sudah aktivasi Nudge App. User yang belum bisa dihubungi akan dilewati.</small>
+      </span>
+    } @else if (recipients === 'error') {
+      <span>Dikirim ke semua user aktif. <small>Jumlah penerima belum bisa dimuat; user yang belum bisa dihubungi akan dilewati.</small></span>
+    } @else {
+      <span class="skeleton bc-rcp-skeleton" aria-hidden="true"></span>
+    }
   </div>
 
   <div class="card-footer">
-    <p class="msg" [class.error]="result.isError" [class.success]="!result.isError" *ngIf="result">
+    <p class="msg bc-result" [class.error]="result.isError" [class.success]="!result.isError" *ngIf="result" role="status">
       <app-icon [name]="result.isError ? 'alert-circle' : 'check-circle'" [size]="16" />
       {{ result.text }}
     </p>
     <span class="spacer"></span>
-    <button type="button" class="btn btn-primary" [class.loading]="submitting" (click)="onSend()" [disabled]="!canSend">
+    <button type="button" class="btn btn-primary bc-send" [class.loading]="submitting" (click)="onSend()" [disabled]="!canSend">
       <span class="spinner" aria-hidden="true"></span>
-      <span class="btn-label"><app-icon name="send" [size]="16" /> Kirim</span>
+      <span class="btn-label"><app-icon name="send" [size]="16" /> {{ submitting ? 'Mengirim…' : 'Kirim' }}</span>
     </button>
   </div>
 </section>
