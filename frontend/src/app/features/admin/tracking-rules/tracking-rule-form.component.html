@@ -193,6 +193,67 @@
         </div>
       </section>
 
+      <section class="card trf-card" data-section="create-fields">
+        <header class="card-header">
+          <span class="card-icon"><app-icon name="edit" [size]="20" /></span>
+          <div>
+            <h2>Field form Buat Card</h2>
+            <p>Pilih field Jira opsional yang ikut tampil saat membuat card {{ l.projectKey }}. Field wajib di Jira selalu tampil.</p>
+          </div>
+          @if (cfTypes()) { <span class="trf-cf-total" data-cf-total>{{ cfTotal() }} field tambahan</span> }
+        </header>
+        @if (cfLoading()) {
+          <div class="trf-cf-sk" data-cf-loading aria-busy="true" aria-label="Memuat field Jira">
+            <div class="trf-sk-chips">
+              @for (w of [74, 96, 120, 84]; track $index) { <div class="skeleton trf-sk-chip" [style.width.px]="w"></div> }
+            </div>
+            @for (i of [0, 1, 2, 3]; track i) { <div class="skeleton trf-cf-sk-row"></div> }
+          </div>
+        } @else if (cfError()) {
+          <p class="msg error trf-pop" data-cf-error>
+            <app-icon name="alert-circle" [size]="16" /> {{ cfError() }}
+            <button type="button" class="btn btn-ghost btn-sm" data-cf-retry (click)="loadCreateFields()">Coba lagi</button>
+          </p>
+        } @else if (cfTypes()) {
+          @let types = cfTypes() ?? [];
+          @if (types.length === 0) {
+            <p class="trf-empty">Bot Jira tidak bisa membuat card di project ini.</p>
+          } @else {
+            <div class="trf-cf-types" role="tablist" aria-label="Tipe card">
+              @for (t of types; track t.typeId) {
+                <button type="button" role="tab" class="trf-cf-type" [class.on]="t.typeId === cfTypeId()" [attr.aria-selected]="t.typeId === cfTypeId()"
+                  [attr.data-cf-type]="t.typeId" (click)="cfTypeId.set(t.typeId)">
+                  {{ t.typeName }}
+                  @if (t.subtask) { <span class="trf-cf-badge">subtask</span> }
+                  @if (cfCount(t.typeId)) { <span class="trf-cf-count">{{ cfCount(t.typeId) }}</span> }
+                </button>
+              }
+            </div>
+            @if (cfType(); as t) {
+              <ul class="trf-cf-list" role="tabpanel" [attr.aria-label]="t.typeName">
+                @for (f of t.fields; track f.id; let i = $index) {
+                  <li>
+                    <label class="trf-cf-row" [class.locked]="f.required" [class.on]="f.required || cfChosen(t.typeId, f.id)" [attr.data-cf-field]="f.id" [style.--i]="i">
+                      <input type="checkbox" class="visually-hidden" [checked]="f.required || cfChosen(t.typeId, f.id)" [disabled]="f.required"
+                        (change)="toggleCreateField(t.typeId, f.id)" />
+                      <span class="check-box" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M20 6 9 17l-5-5" /></svg></span>
+                      <span class="trf-cf-name">{{ f.name }} <code>{{ f.id }}</code></span>
+                      <span class="trf-cf-kind">{{ kindLabels[f.kind] }}</span>
+                      @if (f.required) { <span class="trf-cf-req"><app-icon name="lock" [size]="11" /> Wajib di Jira</span> }
+                    </label>
+                  </li>
+                } @empty {
+                  <li class="trf-empty">Tipe ini tidak punya field lain yang bisa diisi dari Nudge.</li>
+                }
+              </ul>
+            }
+          }
+        }
+        @if (fieldErrors().createFields) {
+          <p class="trf-err">{{ fieldErrors().createFields }}</p>
+        }
+      </section>
+
       <section class="card trf-card" data-section="preview">
         <header class="card-header">
           <span class="card-icon accent"><app-icon name="zap" [size]="20" /></span>

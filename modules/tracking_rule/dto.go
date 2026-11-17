@@ -20,9 +20,11 @@ type Rule struct {
 	StoryPointFields            []string
 	StoryPointWriteField        string
 	StoryPointWriteFieldSubtask string
-	IsActive                    bool
-	EditedBy                    string
-	EditedDate                  time.Time
+	// CreateFields: issue type id → optional fields Buat Card shows (nil = none).
+	CreateFields map[string][]string
+	IsActive     bool
+	EditedBy     string
+	EditedDate   time.Time
 	// AvatarBoardID: a board of this project with a cached avatar (0 = none).
 	AvatarBoardID int64
 }
@@ -37,6 +39,7 @@ func (r Rule) Tracking() jira_client_dto.TrackingRule {
 		StoryPointFields:            r.StoryPointFields,
 		StoryPointWriteField:        r.StoryPointWriteField,
 		StoryPointWriteFieldSubtask: r.StoryPointWriteFieldSubtask,
+		CreateFields:                r.CreateFields,
 	}
 }
 
@@ -56,22 +59,25 @@ type RuleView struct {
 	StoryPointFields            []FieldRef `json:"storyPointFields"`
 	StoryPointWriteField        string     `json:"storyPointWriteField"`
 	StoryPointWriteFieldSubtask string     `json:"storyPointWriteFieldSubtask"`
-	IsActive                    bool       `json:"isActive"`
-	EditedBy                    string     `json:"editedBy"`
-	EditedDate                  time.Time  `json:"editedDate"`
+	// CreateFields: issue type id → optional field ids shown on Buat Card ({} = none).
+	CreateFields map[string][]string `json:"createFields"`
+	IsActive     bool                `json:"isActive"`
+	EditedBy     string              `json:"editedBy"`
+	EditedDate   time.Time           `json:"editedDate"`
 	// BoardID: serve the project picture via GET /api/dashboard/boards/:boardId/avatar (null = no picture).
 	BoardID *int64 `json:"boardId"`
 }
 
 // RuleInput is the POST/PUT body (projectKey is ignored on PUT).
 type RuleInput struct {
-	ProjectKey                  string   `json:"projectKey"`
-	TrackedStatuses             []string `json:"trackedStatuses"`
-	DoneStatus                  string   `json:"doneStatus"`
-	ReviewStatus                *string  `json:"reviewStatus"`
-	StoryPointFields            []string `json:"storyPointFields"`
-	StoryPointWriteField        string   `json:"storyPointWriteField"`
-	StoryPointWriteFieldSubtask string   `json:"storyPointWriteFieldSubtask"`
+	ProjectKey                  string              `json:"projectKey"`
+	TrackedStatuses             []string            `json:"trackedStatuses"`
+	DoneStatus                  string              `json:"doneStatus"`
+	ReviewStatus                *string             `json:"reviewStatus"`
+	StoryPointFields            []string            `json:"storyPointFields"`
+	StoryPointWriteField        string              `json:"storyPointWriteField"`
+	StoryPointWriteFieldSubtask string              `json:"storyPointWriteFieldSubtask"`
+	CreateFields                map[string][]string `json:"createFields"`
 }
 
 // Lookup is what the form picks from: GET /admin/tracking-rules/jira/:projectKey.
@@ -81,6 +87,23 @@ type Lookup struct {
 	AvatarURL    string                        `json:"avatarUrl"`
 	Statuses     []string                      `json:"statuses"`
 	NumberFields []jira_client_dto.NumberField `json:"numberFields"`
+}
+
+// CreateField is one fillable createmeta field of an issue type.
+type CreateField struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	Required bool   `json:"required"`
+}
+
+// CreateFieldType is an issue type and the fields Buat Card can fill on it:
+// GET /admin/tracking-rules/jira/create-fields?projectKey=X.
+type CreateFieldType struct {
+	TypeID   string        `json:"typeId"`
+	TypeName string        `json:"typeName"`
+	Subtask  bool          `json:"subtask"`
+	Fields   []CreateField `json:"fields"`
 }
 
 var (

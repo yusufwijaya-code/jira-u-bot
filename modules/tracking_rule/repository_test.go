@@ -86,7 +86,8 @@ func TestRepository_InsertFindUpdateSetActive(t *testing.T) {
 	rule := Rule{
 		ProjectKey: "ZZTRT", ProjectName: "Test", TrackedStatuses: []string{"In Progress", "Review"}, DoneStatus: "Done", ReviewStatus: "Review",
 		StoryPointFields: []string{"customfield_1", "customfield_2"}, StoryPointWriteField: "customfield_1", StoryPointWriteFieldSubtask: "customfield_2",
-		IsActive: true, EditedBy: "admin@esb.co.id",
+		CreateFields: map[string][]string{"10206": {"duedate", "priority"}},
+		IsActive:     true, EditedBy: "admin@esb.co.id",
 	}
 	if err := repo.Insert(ctx, rule); err != nil {
 		t.Fatal(err)
@@ -101,10 +102,14 @@ func TestRepository_InsertFindUpdateSetActive(t *testing.T) {
 	}
 
 	rule.ProjectName, rule.TrackedStatuses, rule.ReviewStatus, rule.EditedBy = "Test 2", []string{"In Progress"}, "", "other@esb.co.id"
+	rule.CreateFields = nil
 	if err := repo.Update(ctx, rule); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ = repo.Find(ctx, "ZZTRT")
+	if got.CreateFields != nil {
+		t.Fatalf("createFields after clearing = %v, want nil (NULL)", got.CreateFields)
+	}
 	if got.ProjectName != "Test 2" || got.ReviewStatus != "" || len(got.TrackedStatuses) != 1 || got.EditedBy != "other@esb.co.id" || !got.IsActive {
 		t.Fatalf("after update = %+v", got)
 	}

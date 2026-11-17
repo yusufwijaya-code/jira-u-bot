@@ -78,6 +78,8 @@ func (h *Handler) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusPreconditionFailed, gin.H{"error": "jira_token_required", "message": "Isi token Jira di Pengaturan dulu"})
 	case errors.Is(err, svc.ErrBoardNotAllowed):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "board tidak terdaftar untuk kamu"})
+	case errors.As(err, &v) && v.Field != "":
+		c.JSON(http.StatusBadRequest, gin.H{"error": v.Message, "fields": gin.H{v.Field: v.Message}})
 	case errors.As(err, &v):
 		c.JSON(http.StatusBadRequest, gin.H{"error": v.Message})
 	case errors.Is(err, svc.ErrParentNotFound):

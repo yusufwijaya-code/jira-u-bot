@@ -29,6 +29,19 @@ type TrackingRule struct {
 	// writes Story Points for a normal card / a subtask.
 	StoryPointWriteField        string
 	StoryPointWriteFieldSubtask string
+	// CreateFields: per issue type id, the OPTIONAL createmeta fields the
+	// admin chose to show on the Buat Card form (required ones always show).
+	CreateFields map[string][]string
+}
+
+// ExtraCreateField reports whether the admin chose fieldID for typeID.
+func (r TrackingRule) ExtraCreateField(typeID, fieldID string) bool {
+	for _, id := range r.CreateFields[typeID] {
+		if id == fieldID {
+			return true
+		}
+	}
+	return false
 }
 
 // ruleSet is one immutable snapshot of the active rules: readers load it
@@ -79,6 +92,7 @@ func SetRules(active []TrackingRule) {
 		r.ProjectKey = key
 		r.TrackedStatuses = append([]string(nil), r.TrackedStatuses...)
 		r.StoryPointFields = append([]string(nil), r.StoryPointFields...)
+		r.CreateFields = copyCreateFields(r.CreateFields)
 		if _, dup := set.byKey[key]; !dup {
 			set.keys = append(set.keys, key)
 		}
@@ -86,6 +100,17 @@ func SetRules(active []TrackingRule) {
 	}
 	sort.Strings(set.keys)
 	currentRules.Store(set)
+}
+
+func copyCreateFields(m map[string][]string) map[string][]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(m))
+	for k, v := range m {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
 }
 
 func snapshot() *ruleSet { return currentRules.Load() }

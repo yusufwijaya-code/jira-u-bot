@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { Subject, of, throwError } from 'rxjs';
 import { TrackingRuleFormComponent } from './tracking-rule-form.component';
-import { JiraProjectLookup, TrackingRule, TrackingRuleService } from '../../../core/services/tracking-rule.service';
+import { CreateFieldType, JiraProjectLookup, TrackingRule, TrackingRuleService } from '../../../core/services/tracking-rule.service';
 import { ToastService } from '../../../core/ui/toast.service';
 
 const POS: JiraProjectLookup = {
@@ -20,12 +20,23 @@ const CORE_RULE: TrackingRule = {
   storyPointWriteField: 'customfield_10125', storyPointWriteFieldSubtask: 'customfield_11053', isActive: true, editedBy: 'seed', editedDate: '2026-11-16T09:00:00+07:00',
 };
 
+const OMS_TYPES: CreateFieldType[] = [
+  { typeId: '10143', typeName: 'SUB Story', subtask: true, fields: [{ id: 'duedate', name: 'Due date', kind: 'date', required: false }] },
+  { typeId: '10206', typeName: 'Bug', subtask: false, fields: [
+    { id: 'customfield_10286', name: 'Service', kind: 'cascade', required: true },
+    { id: 'customfield_10016', name: 'Story point estimate', kind: 'number', required: false },
+    { id: 'duedate', name: 'Due date', kind: 'date', required: false },
+    { id: 'priority', name: 'Priority', kind: 'select', required: false },
+  ] },
+];
+
 describe('TrackingRuleFormComponent', () => {
   let api: jasmine.SpyObj<TrackingRuleService>;
   let toast: jasmine.SpyObj<ToastService>;
 
   function setup(key: string | null): void {
-    api = jasmine.createSpyObj('TrackingRuleService', ['list', 'lookup', 'create', 'update', 'setActive', 'recalculate']);
+    api = jasmine.createSpyObj('TrackingRuleService', ['list', 'lookup', 'create', 'update', 'setActive', 'recalculate', 'createFields']);
+    api.createFields.and.returnValue(of({ types: [] }));
     toast = jasmine.createSpyObj('ToastService', ['show', 'success', 'error', 'info']);
     TestBed.configureTestingModule({
       imports: [TrackingRuleFormComponent],
@@ -144,6 +155,7 @@ describe('TrackingRuleFormComponent', () => {
     expect(api.create).toHaveBeenCalledWith({
       projectKey: 'POS', trackedStatuses: ['In Progress'], doneStatus: 'Done', reviewStatus: null,
       storyPointFields: ['customfield_10016'], storyPointWriteField: 'customfield_10016', storyPointWriteFieldSubtask: 'customfield_10016',
+      createFields: {},
     });
     expect(toast.show.calls.mostRecent().args[4]!.label).toBe('Hitung ulang semua user');
     expect(router.navigate).toHaveBeenCalledWith(['/admin/tracking-rules']);
@@ -201,5 +213,79 @@ describe('TrackingRuleFormComponent', () => {
     (el.querySelector('[data-lookup]') as HTMLButtonElement).click();
     expect(api.lookup.calls.count()).toBe(2);
     expect(api.lookup.calls.mostRecent().args).toEqual(['CORE', true]);
+  });
+
+  describe('Field form Buat Card', () => {
+    function omsForm(rule?: Partial<TrackingRule>) {
+      setup(rule ? 'OMS' : null);
+      api.lookup.and.returnValue(of({ ...POS, projectKey: 'OMS', projectName: 'ESB OMS' }));
+      api.createFields.and.returnValue(of({ types: OMS_TYPES }));
+      if (rule) api.list.and.returnValue(of({ rules: [{ ...CORE_RULE, projectKey: 'OMS', ...rule }] }));
+      const r = create();
+      if (!rule) { r.c.onKeyInput('OMS'); r.c.runLookup(); r.fixture.detectChanges(); }
+      return r;
+    }
+
+    it('lists issue types (non-subtask first selected) with required fields locked and SP fields hidden', () => {
+      const { fixture, el, c } = omsForm();
+      c.addField('customfield_10016');
+      fixture.detectChanges();
+      expect(api.createFields).toHaveBeenCalledWith('OMS', false);
+      expect(el.querySelector('[data-cf-type="10143"]')?.textContent).toContain('subtask');
+      expect(el.querySelector('[data-cf-type="10206"]')?.classList).toContain('on');
+      const service = el.querySelector('[data-cf-field="customfield_10286"]')!;
+      expect(service.textContent).toContain('Wajib di Jira');
+      expect((service.querySelector('input') as HTMLInputElement).checked).toBeTrue();
+      expect((service.querySelector('input') as HTMLInputElement).disabled).toBeTrue();
+      expect(el.querySelector('[data-cf-field="customfield_10016"]')).withContext('the SP field has its own input').toBeNull();
+      expect((el.querySelector('[data-cf-field="duedate"] input') as HTMLInputElement).checked).toBeFalse();
+    });
+
+    it('toggles optional fields per type, counts them and saves them with the rule', () => {
+      const { fixture, el, c } = omsForm();
+      api.create.and.returnValue(of({ ...CORE_RULE, projectKey: 'OMS' }));
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+      const check = (id: string) => (el.querySelector(`[data-cf-field="${id}"] input`) as HTMLInputElement);
+      check('duedate').click(); check('priority').click(); fixture.detectChanges();
+      check('priority').click(); fixture.detectChanges();
+      expect(el.querySelector('[data-cf-type="10206"] .trf-cf-count')?.textContent?.trim()).toBe('1');
+      (el.querySelector('[data-cf-type="10143"]') as HTMLButtonElement).click(); fixture.detectChanges();
+      check('duedate').click(); fixture.detectChanges();
+      expect(el.querySelector('[data-cf-total]')?.textContent).toContain('2 field tambahan');
+      c.toggleTracked('In Progress'); c.setDone('Done'); c.addField('customfield_10016');
+      fixture.detectChanges();
+      (el.querySelector('[data-save]') as HTMLButtonElement).click();
+      expect(api.create.calls.mostRecent().args[0].createFields).toEqual({ '10206': ['duedate'], '10143': ['duedate'] });
+    });
+
+    it('loads stored choices on Edit and drops ones Jira no longer offers when saving', () => {
+      const { fixture, el, c } = omsForm({ createFields: { '10206': ['priority', 'customfield_gone', 'customfield_10286'], '999': ['duedate'] } });
+      api.update.and.returnValue(of(CORE_RULE));
+      expect(api.createFields).toHaveBeenCalledWith('OMS', true);
+      expect((el.querySelector('[data-cf-field="priority"] input') as HTMLInputElement).checked).toBeTrue();
+      c.dropStaleStatus('Code Completed'); c.dropStaleStatus('Code Process'); c.setDone('Done');
+      c.spFields.set(['customfield_10016']); c.writeField.set('customfield_10016'); c.writeFieldSubtask.set('customfield_10016');
+      fixture.detectChanges();
+      (el.querySelector('[data-save]') as HTMLButtonElement).click();
+      expect(api.update.calls.mostRecent().args[1].createFields).toEqual({ '10206': ['priority'] });
+    });
+
+    it('shows a skeleton while loading and a retry on error, without blocking the rest of the form', () => {
+      setup(null);
+      api.lookup.and.returnValue(of(POS));
+      const pending = new Subject<{ types: CreateFieldType[] }>();
+      api.createFields.and.returnValue(pending);
+      const { fixture, el, c } = create();
+      c.onKeyInput('POS'); c.runLookup(); fixture.detectChanges();
+      expect(el.querySelector('[data-cf-loading]')).not.toBeNull();
+      pending.error({ status: 502 });
+      fixture.detectChanges();
+      expect(el.querySelector('[data-cf-error]')?.textContent).toContain('Gagal memuat field Jira');
+      expect(el.querySelector('[data-section="statuses"]')).not.toBeNull();
+      api.createFields.and.returnValue(of({ types: OMS_TYPES }));
+      (el.querySelector('[data-cf-retry]') as HTMLButtonElement).click(); fixture.detectChanges();
+      expect(el.querySelector('[data-cf-error]')).toBeNull();
+      expect(el.querySelectorAll('[data-cf-type]').length).toBe(2);
+    });
   });
 });

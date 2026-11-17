@@ -7,7 +7,54 @@ import (
 	"strings"
 )
 
-var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,19}$`)
+var (
+	projectKeyPattern  = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,19}$`)
+	issueTypeIDPattern = regexp.MustCompile(`^[0-9]{1,18}$`)
+	fieldIDPattern     = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
+)
+
+const (
+	maxCreateFieldsPerType = 50
+	maxCreateFieldTypes    = 100
+)
+
+// normalizeCreateFields checks the "Field form Buat Card" map: issue type
+// ids are numeric, field ids ^[a-z0-9_]+$, at most 50 fields per type.
+// Duplicates and empty lists are dropped; nil when nothing is chosen.
+func normalizeCreateFields(in map[string][]string) (map[string][]string, string) {
+	if len(in) > maxCreateFieldTypes {
+		return nil, fmt.Sprintf("Maksimal %d tipe card", maxCreateFieldTypes)
+	}
+	var out map[string][]string
+	for rawType, ids := range in {
+		typeID := strings.TrimSpace(rawType)
+		if !issueTypeIDPattern.MatchString(typeID) {
+			return nil, fmt.Sprintf("Tipe card %q tidak valid", rawType)
+		}
+		var list []string
+		for _, raw := range ids {
+			id := strings.TrimSpace(raw)
+			if !fieldIDPattern.MatchString(id) {
+				return nil, fmt.Sprintf("Field %q tidak valid", raw)
+			}
+			if !slices.Contains(list, id) {
+				list = append(list, id)
+			}
+		}
+		if len(list) > maxCreateFieldsPerType {
+			return nil, fmt.Sprintf("Maksimal %d field tambahan per tipe card", maxCreateFieldsPerType)
+		}
+		if len(list) == 0 {
+			continue
+		}
+		if out == nil {
+			out = map[string][]string{}
+		}
+		slices.Sort(list)
+		out[typeID] = list
+	}
+	return out, ""
+}
 
 // NormalizeProjectKey trims and upper-cases raw (AC3.8); ok=false when the
 // result is not a valid Jira project key.
@@ -108,5 +155,10 @@ func buildRule(in RuleInput, l Lookup) (Rule, map[string]string) {
 	}
 	rule.StoryPointWriteField = writeField("storyPointWriteField", in.StoryPointWriteField, "card biasa")
 	rule.StoryPointWriteFieldSubtask = writeField("storyPointWriteFieldSubtask", in.StoryPointWriteFieldSubtask, "subtask")
+	if fields, msg := normalizeCreateFields(in.CreateFields); msg != "" {
+		errs["createFields"] = msg
+	} else {
+		rule.CreateFields = fields
+	}
 	return rule, errs
 }

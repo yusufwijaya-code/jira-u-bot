@@ -50,6 +50,13 @@ export class TrackingRulesComponent {
     });
   }
 
+  /** Optional Buat Card fields of the rule (null = only required fields). */
+  protected extraFields(rule: TrackingRule): { fields: number; types: number } | null {
+    const lists = Object.values(rule.createFields ?? {}).filter((ids) => ids.length > 0);
+    const fields = lists.reduce((n, ids) => n + ids.length, 0);
+    return fields ? { fields, types: lists.length } : null;
+  }
+
   protected formatEdited(iso: string): string {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('id-ID', {

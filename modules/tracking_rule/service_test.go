@@ -93,6 +93,29 @@ type fakeJira struct {
 	fields   []jira_client_dto.NumberField
 	err      error
 	calls    int
+	// createTypes / createFields: createmeta per project / per issue type id.
+	createTypes  map[string][]jira_client_dto.CreateMetaIssueType
+	createFields map[string][]jira_client_dto.CreateMetaField
+	createCalls  int
+}
+
+func (f *fakeJira) GetCreateMetaIssueTypes(_ context.Context, key string) ([]jira_client_dto.CreateMetaIssueType, error) {
+	f.createCalls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	types, ok := f.createTypes[key]
+	if !ok {
+		return nil, jira_client_service.ErrProjectNotFound
+	}
+	return types, nil
+}
+
+func (f *fakeJira) GetCreateMetaFields(_ context.Context, _, typeID string) ([]jira_client_dto.CreateMetaField, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.createFields[typeID], nil
 }
 
 func (f *fakeJira) GetProject(_ context.Context, key string) (jira_client_dto.ProjectInfo, error) {

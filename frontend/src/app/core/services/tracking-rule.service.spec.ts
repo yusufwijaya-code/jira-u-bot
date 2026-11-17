@@ -11,6 +11,7 @@ describe('TrackingRuleService', () => {
     const input: TrackingRuleInput = {
       trackedStatuses: ['In Progress'], doneStatus: 'Done', reviewStatus: null,
       storyPointFields: ['customfield_1'], storyPointWriteField: 'customfield_1', storyPointWriteFieldSubtask: 'customfield_1',
+      createFields: { '10206': ['duedate'] },
     };
 
     svc.list().subscribe();
@@ -19,9 +20,14 @@ describe('TrackingRuleService', () => {
     http.expectOne((r) => r.method === 'GET' && r.url.endsWith('/api/dashboard/admin/tracking-rules/jira/POS')).flush({});
     svc.lookup('POS', true).subscribe();
     http.expectOne((r) => r.method === 'GET' && r.url.endsWith('/api/dashboard/admin/tracking-rules/jira/POS?fresh=1')).flush({});
+    svc.createFields('OMS').subscribe();
+    http.expectOne((r) => r.method === 'GET' && r.url.endsWith('/api/dashboard/admin/tracking-rules/jira/create-fields') && r.params.get('projectKey') === 'OMS' && !r.params.has('fresh')).flush({ types: [] });
+    svc.createFields('OMS', true).subscribe();
+    http.expectOne((r) => r.url.endsWith('/jira/create-fields') && r.params.get('fresh') === '1').flush({ types: [] });
     svc.create({ ...input, projectKey: 'POS' }).subscribe();
     const created = http.expectOne((r) => r.method === 'POST' && r.url.endsWith('/api/dashboard/admin/tracking-rules'));
     expect(created.request.body.projectKey).toBe('POS');
+    expect(created.request.body.createFields).toEqual({ '10206': ['duedate'] });
     created.flush({});
     svc.update('POS', input).subscribe();
     http.expectOne((r) => r.method === 'PUT' && r.url.endsWith('/api/dashboard/admin/tracking-rules/POS')).flush({});

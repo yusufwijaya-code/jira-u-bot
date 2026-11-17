@@ -45,6 +45,10 @@ func (f *fakeAPI) Recalculate() error { return f.err }
 func (f *fakeAPI) BoardStatuses(context.Context, int64) ([]string, error) {
 	return []string{"To Do"}, f.err
 }
+func (f *fakeAPI) CreateFields(_ context.Context, key string, fresh bool) ([]CreateFieldType, error) {
+	f.gotKey, f.gotFresh = key, fresh
+	return []CreateFieldType{{TypeID: "10206", TypeName: "Bug", Fields: []CreateField{{ID: "duedate", Name: "Due date", Kind: "date"}}}}, f.err
+}
 
 func serve(api *fakeAPI, method, path, body string) *httptest.ResponseRecorder {
 	gin.SetMode(gin.TestMode)
@@ -75,6 +79,7 @@ func TestRoutes_HappyPaths(t *testing.T) {
 		{http.MethodPut, "/api/dashboard/admin/tracking-rules/OMS/active", `{"active":false}`, http.StatusOK, `"isActive":false`},
 		{http.MethodPost, "/api/dashboard/admin/tracking-rules/recalculate", ``, http.StatusAccepted, `"started":true`},
 		{http.MethodGet, "/api/dashboard/boards/26/statuses", "", http.StatusOK, `"statuses":["To Do"]`},
+		{http.MethodGet, "/api/dashboard/admin/tracking-rules/jira/create-fields?projectKey=oms", "", http.StatusOK, `"types":[{"typeId":"10206","typeName":"Bug","subtask":false,"fields":[{"id":"duedate"`},
 	}
 	for _, c := range cases {
 		api := &fakeAPI{}
@@ -95,6 +100,10 @@ func TestRoutes_HappyPaths(t *testing.T) {
 	serve(api, http.MethodGet, "/api/dashboard/admin/tracking-rules/jira/pos?fresh=1", "")
 	if !api.gotFresh || api.gotKey != "pos" {
 		t.Errorf("lookup ?fresh=1 got fresh=%v key=%q", api.gotFresh, api.gotKey)
+	}
+	serve(api, http.MethodGet, "/api/dashboard/admin/tracking-rules/jira/create-fields?projectKey=oms&fresh=1", "")
+	if !api.gotFresh || api.gotKey != "oms" {
+		t.Errorf("create-fields got fresh=%v key=%q, want the query's project key (not the lookup wildcard)", api.gotFresh, api.gotKey)
 	}
 	serve(api, http.MethodPut, "/api/dashboard/admin/tracking-rules/OMS/active", `{"active":false}`)
 	if api.gotKey != "OMS" || api.gotActive == nil || *api.gotActive {
