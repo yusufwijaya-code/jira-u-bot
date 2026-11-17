@@ -179,6 +179,8 @@ func (i Issue) StoryPoints() *float64 {
 }
 
 type Status struct {
+	// ID is the status id (a transition's target, matched against workflow rules).
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 }
 

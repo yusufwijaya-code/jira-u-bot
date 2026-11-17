@@ -1,14 +1,8 @@
 package issue_create_service
 
 import (
-	"errors"
-	"fmt"
-	"regexp"
-	"slices"
-	"strings"
-	"time"
-
 	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_fields"
 )
 
 func handledFor(rule jira_client_dto.TrackingRule, id string) bool {
@@ -77,35 +71,9 @@ func mapType(rule jira_client_dto.TrackingRule, t jira_client_dto.CreateMetaIssu
 	return tm
 }
 
-func toField(f jira_client_dto.CreateMetaField) (Field, bool) {
-	kind, multi := f.FormKind()
-	if kind == "" {
-		return Field{}, false
-	}
-	field := Field{ID: f.ID(), Name: f.Name, Kind: kind, Multi: multi, Required: f.Required}
-	if jira_client_dto.NeedsOptions(kind) {
-		field.Options = options(f.AllowedValues, kind == jira_client_dto.FieldKindCascade)
-	}
-	return field, true
-}
-
-func options(values []jira_client_dto.AllowedValue, withChildren bool) []Option {
-	out := []Option{}
-	for _, v := range values {
-		if !v.Pickable() {
-			continue
-		}
-		o := Option{ID: v.ID, Label: v.Label()}
-		if withChildren {
-			o.Children = options(v.Children, false)
-			if len(o.Children) == 0 {
-				o.Children = nil
-			}
-		}
-		out = append(out, o)
-	}
-	return out
-}
+// toField / encodeField / adf: the shared jira_fields helpers (also used by
+// moves that need fields filled first).
+func toField(f jira_client_dto.CreateMetaField) (Field, bool) { return jira_fields.FromMeta(f) }
 
 func (m Meta) typeByID(id string) (TypeMeta, bool) {
 	for _, t := range m.Types {
@@ -116,131 +84,9 @@ func (m Meta) typeByID(id string) (TypeMeta, bool) {
 	return TypeMeta{}, false
 }
 
-var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+func encodeField(f Field, v any) (value any, ok bool, err error) { return jira_fields.Encode(f, v) }
 
-// encodeField turns a form value into Jira's create shape; ok=false when
-// empty, err when the value can't be sent (unknown option, bad date…).
-func encodeField(f Field, v any) (value any, ok bool, err error) {
-	switch f.Kind {
-	case jira_client_dto.FieldKindText:
-		s := text(v)
-		return s, s != "", nil
-	case jira_client_dto.FieldKindTextarea:
-		// Multi-line custom fields take ADF on API v3.
-		s := text(v)
-		return adf(s), s != "", nil
-	case jira_client_dto.FieldKindNumber:
-		n, isNum := v.(float64)
-		if isNum && n != n {
-			return nil, false, errors.New("angka tidak valid")
-		}
-		return n, isNum, nil
-	case jira_client_dto.FieldKindDate:
-		s := text(v)
-		if s == "" {
-			return nil, false, nil
-		}
-		if _, perr := time.Parse("2006-01-02", s); perr != nil || !dateRe.MatchString(s) {
-			return nil, false, errors.New("tanggal harus YYYY-MM-DD")
-		}
-		return s, true, nil
-	case jira_client_dto.FieldKindLabels:
-		out := []string{}
-		for _, x := range list(v) {
-			l := text(x)
-			if l == "" || slices.Contains(out, l) {
-				continue
-			}
-			if strings.ContainsAny(l, " \t\n") {
-				return nil, false, fmt.Errorf("label %q tidak boleh berisi spasi", l)
-			}
-			out = append(out, l)
-		}
-		return out, len(out) > 0, nil
-	case jira_client_dto.FieldKindSelect:
-		if f.Multi {
-			out := []map[string]any{}
-			seen := map[string]bool{}
-			for _, x := range list(v) {
-				id := text(x)
-				if id == "" || seen[id] {
-					continue
-				}
-				if _, found := optionByID(f.Options, id); !found {
-					return nil, false, errors.New("pilihan tidak valid")
-				}
-				seen[id] = true
-				out = append(out, map[string]any{"id": id})
-			}
-			return out, len(out) > 0, nil
-		}
-		id := text(v)
-		if id == "" {
-			return nil, false, nil
-		}
-		if _, found := optionByID(f.Options, id); !found {
-			return nil, false, errors.New("pilihan tidak valid")
-		}
-		return map[string]any{"id": id}, true, nil
-	case jira_client_dto.FieldKindCascade:
-		// {"id": parent, "child": child} from the form; a bare parent id is accepted too.
-		var parentID, childID string
-		switch c := v.(type) {
-		case string:
-			parentID = strings.TrimSpace(c)
-		case map[string]any:
-			parentID, childID = text(c["id"]), text(c["child"])
-		}
-		if parentID == "" {
-			return nil, false, nil
-		}
-		parent, found := optionByID(f.Options, parentID)
-		if !found {
-			return nil, false, errors.New("pilihan tidak valid")
-		}
-		out := map[string]any{"id": parentID}
-		if childID != "" {
-			if _, found := optionByID(parent.Children, childID); !found {
-				return nil, false, errors.New("sub-pilihan tidak valid")
-			}
-			out["child"] = map[string]any{"id": childID}
-		}
-		return out, true, nil
-	}
-	return nil, false, nil
-}
-
-func text(v any) string {
-	s, _ := v.(string)
-	return strings.TrimSpace(s)
-}
-
-func list(v any) []any {
-	l, _ := v.([]any)
-	return l
-}
-
-func optionByID(opts []Option, id string) (Option, bool) {
-	for _, o := range opts {
-		if o.ID == id {
-			return o, true
-		}
-	}
-	return Option{}, false
-}
-
-// adf wraps plain text as Atlassian Document Format, one paragraph per non-empty line.
-func adf(text string) map[string]any {
-	content := []any{}
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		content = append(content, map[string]any{"type": "paragraph", "content": []any{map[string]any{"type": "text", "text": line}}})
-	}
-	return map[string]any{"type": "doc", "version": 1, "content": content}
-}
+func adf(text string) map[string]any { return jira_fields.ADF(text) }
 
 func truncateRunes(s string, n int) string {
 	r := []rune(s)

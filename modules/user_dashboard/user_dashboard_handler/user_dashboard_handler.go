@@ -33,6 +33,8 @@ type UserDashboardHandler interface {
 	// transition id (Papan Tiket), or by the legacy target slug through the
 	// same path as the bot's /n-geser.
 	TransitionTicket(c *gin.Context)
+	// GetMoveRequirements: the fields a move still needs (?transitionId=).
+	GetMoveRequirements(c *gin.Context)
 	SaveCredential(c *gin.Context)
 	DeleteCredential(c *gin.Context)
 }

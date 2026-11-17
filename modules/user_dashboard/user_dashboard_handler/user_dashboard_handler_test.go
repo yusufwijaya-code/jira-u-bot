@@ -19,7 +19,9 @@ import (
 	"nudge/modules/auth/auth_middleware"
 	"nudge/modules/chat_interactive/chat_interactive_service"
 	"nudge/modules/jira_client/jira_client_dto"
+	"nudge/modules/jira_client/jira_fields"
 	"nudge/modules/jira_credential/jira_credential_service"
+	"nudge/modules/move_fields"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 	"nudge/modules/user_dashboard/user_dashboard_service"
 	"nudge/modules/user_setting/user_setting_dto"
@@ -53,6 +55,22 @@ type fakeUserDashboardService struct {
 	transitionEmail    string
 	transitionKey      string
 	transitionIDCalled string
+
+	// move-fields
+	requirements     move_fields.Required
+	requirementsErr  error
+	withFieldsValues map[string]any
+	withFieldsErr    error
+}
+
+func (f *fakeUserDashboardService) MoveRequirements(ctx context.Context, email, issueKey, transitionID string) (move_fields.Required, error) {
+	f.transitionEmail, f.transitionKey, f.transitionIDCalled = email, issueKey, transitionID
+	return f.requirements, f.requirementsErr
+}
+
+func (f *fakeUserDashboardService) TransitionWithFields(ctx context.Context, email, issueKey, transitionID string, values map[string]any) (string, error) {
+	f.transitionEmail, f.transitionKey, f.transitionIDCalled, f.withFieldsValues = email, issueKey, transitionID, values
+	return f.transitionStatus, f.withFieldsErr
 }
 
 func (f *fakeUserDashboardService) ListTransitions(ctx context.Context, email, issueKey string) (user_dashboard_dto.TicketTransitions, error) {
@@ -93,6 +111,7 @@ type fakeChatInteractiveForHandler struct {
 	lastSenderEmail string
 	lastCommand     string
 	response        string
+	geserFields     *move_fields.Required
 }
 
 func (f *fakeChatInteractiveForHandler) RouteCommand(ctx context.Context, senderEmail, messageText string) string {
@@ -956,5 +975,90 @@ func TestListBoards_ReportsOtherBoardsWithCustomSettingsOrMute(t *testing.T) {
 func (f *fakeChatInteractiveForHandler) Geser(ctx context.Context, senderEmail, issueKey, targetSlug string) chat_interactive_service.GeserResult {
 	f.lastSenderEmail = senderEmail
 	f.lastCommand = issueKey + ":" + targetSlug
+	if f.geserFields != nil {
+		return chat_interactive_service.GeserResult{FieldsRequired: f.geserFields, Message: f.response}
+	}
 	return chat_interactive_service.GeserResult{OK: true, Message: f.response}
+}
+
+// --- move-fields ---
+
+func mergeRequestRequired() move_fields.Required {
+	return move_fields.Required{
+		Transition: move_fields.Transition{ID: "9", Name: "Merge Request to Snapshot Branch", To: "Code Review"},
+		Message:    "Fill in the Merge Request Fields Before Code Review",
+		Fields:     []jira_fields.Field{{ID: "customfield_10095", Name: "Merge Request", Kind: "textarea", Required: true}},
+		IssueKey:   "OMS-1", IssueURL: "https://jira/browse/OMS-1",
+	}
+}
+
+func TestTransitionTicket_FieldsRequiredIs422WithFields(t *testing.T) {
+	svc := &fakeUserDashboardService{transitionErr: &move_fields.FieldsRequiredError{Required: mergeRequestRequired()}}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"transitionId":"9"}`)
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.TransitionTicket(c)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("code = %d", w.Code)
+	}
+	var body struct {
+		Error      string `json:"error"`
+		Message    string `json:"message"`
+		Transition struct{ ID, Name, To string }
+		Fields     []jira_fields.Field `json:"fields"`
+		IssueURL   string              `json:"issueUrl"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &body)
+	if body.Error != "fields_required" || body.Message == "" || body.Transition.ID != "9" || body.Transition.To != "Code Review" ||
+		len(body.Fields) != 1 || body.Fields[0].Kind != "textarea" || !body.Fields[0].Required || body.IssueURL == "" {
+		t.Errorf("body = %s", w.Body.String())
+	}
+}
+
+func TestTransitionTicket_WithFieldsUsesTransitionWithFields(t *testing.T) {
+	svc := &fakeUserDashboardService{transitionStatus: "Code Review"}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"transitionId":"9","fields":{"customfield_10095":"MR !1"}}`)
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.TransitionTicket(c)
+	if w.Code != http.StatusOK || svc.withFieldsValues["customfield_10095"] != "MR !1" || svc.transitionIDCalled != "9" {
+		t.Fatalf("got %d %s, values %v", w.Code, w.Body.String(), svc.withFieldsValues)
+	}
+
+	svc.withFieldsErr = &move_fields.ValidationError{Fields: map[string]string{"customfield_9": "tanggal harus YYYY-MM-DD"}}
+	w, c = newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"transitionId":"9","fields":{}}`)
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.TransitionTicket(c)
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"error":"invalid_fields"`) || !strings.Contains(w.Body.String(), "customfield_9") {
+		t.Errorf("invalid: got %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetMoveRequirements(t *testing.T) {
+	svc := &fakeUserDashboardService{requirements: mergeRequestRequired()}
+	handler := NewUserDashboardHandler(svc, &fakeChatInteractiveForHandler{}, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+	w, c := newTestContextWithUser("GET", "/api/dashboard/tickets/OMS-1/move-requirements?transitionId=9", "")
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.GetMoveRequirements(c)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"customfield_10095"`) || svc.transitionIDCalled != "9" || svc.transitionEmail != "dev@esb.co.id" {
+		t.Fatalf("got %d %s", w.Code, w.Body.String())
+	}
+	w, c = newTestContextWithUser("GET", "/api/dashboard/tickets/OMS-1/move-requirements", "")
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.GetMoveRequirements(c)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("missing transitionId: %d", w.Code)
+	}
+}
+
+func TestTransitionTicket_TargetFieldsRequiredIs422(t *testing.T) {
+	r := mergeRequestRequired()
+	chat := &fakeChatInteractiveForHandler{geserFields: &r}
+	handler := NewUserDashboardHandler(&fakeUserDashboardService{}, chat, &fakeJiraCredentialForHandler{}, &fakeUserSettingsForHandler{}, nil)
+	w, c := newTestContextWithUser("POST", "/api/dashboard/tickets/OMS-1/transition", `{"target":"code-review"}`)
+	c.Params = gin.Params{{Key: "issueKey", Value: "OMS-1"}}
+	handler.TransitionTicket(c)
+	if w.Code != http.StatusUnprocessableEntity || !strings.Contains(w.Body.String(), `"fields_required"`) {
+		t.Errorf("got %d %s", w.Code, w.Body.String())
+	}
 }

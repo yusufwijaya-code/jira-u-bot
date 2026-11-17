@@ -17,6 +17,7 @@ import (
 
 	"nudge/modules/jira_client/jira_client_dto"
 	"nudge/modules/jira_client/jira_client_service"
+	"nudge/modules/jira_client/jira_fields"
 	"nudge/modules/user_dashboard/user_dashboard_dto"
 )
 
@@ -69,20 +70,9 @@ type Deps struct {
 	Now         func() time.Time
 }
 
-type Option struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	// Children: second-level options of a "cascade" field.
-	Children []Option `json:"children,omitempty"`
-}
-type Field struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Kind     string   `json:"kind"`
-	Multi    bool     `json:"multi"`
-	Required bool     `json:"required"`
-	Options  []Option `json:"options,omitempty"`
-}
+// Option / Field live in jira_fields (shared with the move dialog).
+type Option = jira_fields.Option
+type Field = jira_fields.Field
 type TypeMeta struct {
 	ID              string  `json:"id"`
 	Name            string  `json:"name"`
@@ -459,7 +449,33 @@ func (s *Service) CreateOne(ctx context.Context, email string, req CreateRequest
 		return "", err
 	}
 	fields["assignee"] = map[string]any{"accountId": assignee}
-	return s.d.Jira.CreateIssueAs(ctx, cred, fields)
+	key, err := s.d.Jira.CreateIssueAs(ctx, cred, fields)
+	if err != nil {
+		s.forgetStaleMeta(project, t, err)
+	}
+	return key, err
+}
+
+// forgetStaleMeta drops the project's cached meta when Jira rejected a
+// create over a field the form doesn't know (a board added a required field
+// after the meta was cached), so the next form load shows it.
+func (s *Service) forgetStaleMeta(project string, t TypeMeta, err error) {
+	var rej *jira_client_service.RejectedError
+	if !errors.As(err, &rej) {
+		return
+	}
+	known := map[string]bool{t.StoryPointField: true}
+	for _, f := range t.Fields {
+		known[f.ID] = true
+	}
+	for id := range rej.Fields {
+		if !known[id] && !jira_client_dto.BaseFormFieldIDs[id] {
+			s.mu.Lock()
+			delete(s.meta, project)
+			s.mu.Unlock()
+			return
+		}
+	}
 }
 
 func (s *Service) assignee(ctx context.Context, cred *jira_client_dto.Credential, id *string) (string, error) {

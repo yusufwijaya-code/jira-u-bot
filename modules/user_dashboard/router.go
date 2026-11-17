@@ -23,6 +23,7 @@ func Router(api *gin.RouterGroup, handler user_dashboard_handler.UserDashboardHa
 	api.GET("/team", handler.GetTeam)
 	api.GET("/overdue", handler.GetOverdue)
 	api.GET("/tickets/:issueKey/transitions", handler.GetTransitions)
+	api.GET("/tickets/:issueKey/move-requirements", handler.GetMoveRequirements)
 	api.POST("/tickets/:issueKey/transition", handler.TransitionTicket)
 	api.POST("/credential", handler.SaveCredential)
 	api.DELETE("/credential", handler.DeleteCredential)
