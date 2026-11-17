@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, finalize, share } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface QuietHours {
@@ -65,9 +65,25 @@ export function boardParams(boardId: number | null | undefined): HttpParams {
 export class BoardService {
   private http = inject(HttpClient);
   private base = `${environment.apiBasePath}/api/dashboard`;
+  /** GET /settings requests in flight, per scope — concurrent callers share one. */
+  private settingsInFlight = new Map<number, Observable<SettingsResponse>>();
 
+  /**
+   * Concurrent calls for the same scope (the shell seeding the mute badge
+   * while Pengaturan loads, a selection re-emitted on arrival) share one
+   * request; a call after it finished fetches again.
+   */
   getSettings(boardId: number | null = null): Observable<SettingsResponse> {
-    return this.http.get<SettingsResponse>(`${this.base}/settings`, { params: boardParams(boardId) });
+    const key = boardId ?? 0;
+    let request = this.settingsInFlight.get(key);
+    if (!request) {
+      request = this.http.get<SettingsResponse>(`${this.base}/settings`, { params: boardParams(boardId) }).pipe(
+        finalize(() => this.settingsInFlight.delete(key)),
+        share(),
+      );
+      this.settingsInFlight.set(key, request);
+    }
+    return request;
   }
 
   saveNotificationSettings(settings: NotificationSettings, boardId: number | null = null): Observable<NotificationSettings> {

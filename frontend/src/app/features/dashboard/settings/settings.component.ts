@@ -98,6 +98,8 @@ export class SettingsComponent {
   private saved: NotificationSettings | null = null;
   /** The in-flight GET /settings, cancelled when the scope changes again. */
   private loadSub?: Subscription;
+  /** Scope of the in-flight GET /settings (undefined = none). */
+  private loadingBoard: number | null | undefined;
   /** Admin mode: the target user's master switch (read-only here). */
   protected targetSwitch = signal<NotificationSwitchState | null>(null);
   /** Boards outside the active sprints that still have custom settings or a mute. */
@@ -112,6 +114,8 @@ export class SettingsComponent {
   protected tab = signal<SettingsTab>(inject(SettingsScope).selectedId() === null ? 'umum' : 'board');
   /** Panels opened so far: each is mounted on first visit and then only hidden, never destroyed. */
   protected visited = signal<Record<SettingsTab, boolean>>({ umum: this.tab() === 'umum', board: this.tab() === 'board' });
+  /** The user switched tabs at least once: only then does the incoming panel cross-fade (not on arrival). */
+  protected tabSwitched = signal(false);
   private tabBar = viewChild<ElementRef<HTMLElement>>('tabBar');
   private injector = inject(Injector);
   protected useDefault = signal(false);
@@ -233,25 +237,70 @@ export class SettingsComponent {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => clearTimeout(this.releaseHoldTimer));
-    // Reload whenever the navbar board changes.
+    // Reload whenever the navbar board changes — but not again for a
+    // selection re-emitted while that same board is still loading (arrival).
     effect(() => {
       const boardId = this.boardContext.selectedId();
-      untracked(() => this.loadSettings(boardId));
+      untracked(() => {
+        if (this.loadingBoard !== undefined && this.loadingBoard === boardId) return;
+        this.loadSettings(boardId);
+      });
     });
     // Pengaturan › Notif perubahan status: the board's real workflow (AC5.5).
     effect(() => {
       const boardId = this.scopeBoardId();
-      untracked(() => this.loadBoardStatuses(boardId));
+      untracked(() => {
+        // Arriving on a board: the initial "no scope yet" must not cancel
+        // the statuses prefetched with that board's settings.
+        if (boardId === null && this.loadingBoard) return;
+        this.loadBoardStatuses(boardId);
+      });
     });
   }
 
+  /** Workflow statuses per board, kept for the page's lifetime (board switches show them at once). */
+  private statusCache = new Map<number, string[] | null>();
+  /** Board whose statuses are being fetched. */
+  private statusesBoard: number | null = null;
+
+  /**
+   * Loads the board's workflow statuses — started together with the settings
+   * (not after them) so the status filter rarely changes size after the
+   * cards appear, and served from the cache on a revisit.
+   */
   private loadBoardStatuses(boardId: number | null): void {
+    if (boardId !== null && this.statusCache.has(boardId)) {
+      this.statusesSub?.unsubscribe();
+      this.statusesBoard = null;
+      if (this.scopeBoardId() === boardId) this.jiraStatuses.set(this.statusCache.get(boardId) ?? null);
+      return;
+    }
+    if (boardId === null) {
+      this.statusesSub?.unsubscribe();
+      this.statusesBoard = null;
+      this.jiraStatuses.set(null);
+      return;
+    }
+    // Prefetched with the settings: the scope now shows this board, so drop
+    // the previous board's list until its own arrives.
+    if (boardId === this.statusesBoard && this.statusesSub && !this.statusesSub.closed) {
+      if (this.scopeBoardId() === boardId) this.jiraStatuses.set(null);
+      return;
+    }
     this.statusesSub?.unsubscribe();
-    this.jiraStatuses.set(null);
-    if (boardId === null) return;
+    this.statusesBoard = boardId;
+    // While prefetching for a board that isn't on screen yet, the current
+    // list stays (the content is dimmed until the switch lands).
+    if (this.scopeBoardId() === boardId) this.jiraStatuses.set(null);
     this.statusesSub = this.trackingRules.boardStatuses(boardId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (res) => this.jiraStatuses.set(res.statuses?.length ? res.statuses : null),
-      error: () => this.jiraStatuses.set(null),
+      next: (res) => {
+        const statuses = res.statuses?.length ? res.statuses : null;
+        this.statusCache.set(boardId, statuses);
+        if (this.statusesBoard === boardId) this.jiraStatuses.set(statuses);
+      },
+      error: () => {
+        if (this.statusesBoard === boardId) this.jiraStatuses.set(null);
+      },
     });
   }
 
@@ -272,6 +321,7 @@ export class SettingsComponent {
     const inView = !!bar && barTop >= 0 && barTop < window.innerHeight;
 
     this.visited.update((v) => ({ ...v, [next]: true }));
+    this.tabSwitched.set(true);
     this.tab.set(next);
     if (!bar || !stack) return;
 
@@ -312,11 +362,16 @@ export class SettingsComponent {
     this.editingCustom.set(false);
     this.fieldErrors.set({});
 
+    // Fetch the board's statuses alongside the settings, not after them.
+    if (boardId !== null) this.loadBoardStatuses(boardId);
+
     // Switching boards quickly must never let an older response land last
     // and show (then save) another board's settings.
     this.loadSub?.unsubscribe();
+    this.loadingBoard = boardId;
     this.loadSub = this.boardService.getSettings(boardId).subscribe({
       next: (res) => {
+        this.loadingBoard = undefined;
         this.scopeBoardId.set(res.scope === 'board' ? res.boardId : null);
         this.useDefault.set(res.scope === 'board' && res.useDefault);
         // An older API has no status filter: treat it as "every status".
@@ -340,6 +395,7 @@ export class SettingsComponent {
         this.endSwitch();
       },
       error: () => {
+        this.loadingBoard = undefined;
         this.error = 'Gagal memuat pengaturan, coba lagi';
         this.loading = false;
         this.endSwitch();

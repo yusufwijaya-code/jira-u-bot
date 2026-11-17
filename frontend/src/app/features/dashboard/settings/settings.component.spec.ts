@@ -141,6 +141,41 @@ describe('SettingsComponent', () => {
     expect(el().querySelector('[data-tab="board"]')!.getAttribute('aria-selected')).toBe('true');
   });
 
+  it('arriving on a board: a skeleton shaped like Per board, statuses fetched with the settings, each once', () => {
+    const http = TestBed.inject(HttpTestingController);
+    const pending = new Subject<SettingsResponse>();
+    boardService.getSettings.calls.reset();
+    boardService.getSettings.and.returnValue(pending);
+    context.selectedId.set(28);
+    fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+
+    const skeleton = el().querySelector('[data-skeleton]') as HTMLElement;
+    expect(skeleton.dataset['skeleton']).toBe('board');
+    expect(skeleton.querySelectorAll('.skeleton-chip').length).toBeGreaterThan(0);
+    expect(skeleton.querySelectorAll('.skeleton-card').length).toBe(4);
+    expect(el().querySelector('.settings-stack')!.classList).not.toContain('tab-switched');
+    // statuses already on their way, in parallel with the settings
+    const statuses = http.expectOne((r) => r.url.endsWith('/boards/28/statuses'));
+
+    pending.next(sample({ scope: 'board', boardId: 28, useDefault: true, mute: { global: OFF, board: OFF } }));
+    fixture.detectChanges();
+    statuses.flush({ statuses: ['To Do', 'Done'] });
+    fixture.detectChanges();
+
+    expect(boardService.getSettings).toHaveBeenCalledTimes(1);
+    http.expectNone((r) => r.url.endsWith('/statuses'));
+    expect(el().querySelector('.skeleton-card')).toBeNull();
+    expect(component().statusOptions()).toEqual(['To Do', 'Done']);
+  });
+
+  it('cross-fades panels only after a tab switch, not on arrival', () => {
+    expect(el().querySelector('.settings-stack')!.classList).toContain('tab-switched'); // beforeEach opened Per board
+    fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(el().querySelector('.settings-stack')!.classList).not.toContain('tab-switched');
+  });
+
   it('opens on Umum, or on Per board when a board is already picked', () => {
     expect(TestBed.createComponent(SettingsComponent).componentInstance['tab']()).toBe('umum');
     context.selectedId.set(28);

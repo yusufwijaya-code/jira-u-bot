@@ -5,6 +5,7 @@ import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { IconComponent } from '../../shared/ui/icon.component';
 import { TopbarHeightDirective } from '../../shared/ui/topbar-height.directive';
+import { scrollTopOnPageChange } from '../../shared/ui/scroll-top-on-page-change';
 import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { environment } from '../../../environments/environment';
 
@@ -29,6 +30,8 @@ interface AdminPage {
 export class AdminShellComponent {
   protected authService = inject(AuthService);
   private router = inject(Router);
+  // Each page opens at the top; ?board= switches keep the scroll.
+  private readonly scrollReset = scrollTopOnPageChange();
   private route = inject(ActivatedRoute);
 
   @ViewChild('userMenu') private userMenu?: ElementRef<HTMLElement>;
