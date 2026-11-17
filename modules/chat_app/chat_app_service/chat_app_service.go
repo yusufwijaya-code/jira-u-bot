@@ -474,6 +474,9 @@ func geserStatus(ev chat_app_dto.Event, res chat_interactive_service.GeserResult
 		now := time.Now().In(user_setting_dto.Jakarta)
 		return fmt.Sprintf("✅ Digeser ke %s oleh %s · %s WIB", res.StatusName, ev.User.DisplayName, now.Format("15:04"))
 	}
+	if res.FieldsRequired != nil {
+		return res.Message // already "⚠️ … belum bisa dipindah …" + the web link
+	}
 	return "⚠️ Tidak bisa digeser: " + res.Message
 }
 
