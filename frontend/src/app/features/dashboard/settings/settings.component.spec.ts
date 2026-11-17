@@ -135,6 +135,24 @@ describe('SettingsComponent', () => {
     expect(component().tab()).toBe('board');
   });
 
+  it('keeps the current board on screen, dimmed with a spinner, while the next board loads', () => {
+    const pending = new Subject<SettingsResponse>();
+    boardService.getSettings.and.returnValue(pending);
+    (el().querySelector('[data-scope-chip="28"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('.skeleton-card')).toBeNull();
+    expect(cardNames()).toEqual(['reminder', 'overage', 'events', 'quiet']);
+    expect(el().querySelector('.settings-stack')!.classList).toContain('switching');
+    expect(el().querySelector('[data-scope-chip="28"] [data-switch-spinner]')).not.toBeNull();
+
+    pending.next(sample({ scope: 'board', boardId: 28, useDefault: true, mute: { global: OFF, board: OFF } }));
+    fixture.detectChanges();
+    expect(el().querySelector('.settings-stack')!.classList).not.toContain('switching');
+    expect(el().querySelector('[data-switch-spinner]')).toBeNull();
+    expect(el().querySelector('[data-scope-chip="28"]')!.classList).toContain('active');
+  });
+
   it('checks the saved pre-budget tiers and shows a custom tier tile', () => {
     const tiles = Array.from(card('reminder').querySelectorAll('.tier-tile'));
     const checked = tiles

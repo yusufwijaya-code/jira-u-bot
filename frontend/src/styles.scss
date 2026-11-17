@@ -3418,8 +3418,11 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
    ========================================================================== */
 .settings-tabs {
   position: sticky;
-  top: calc(var(--topbar-h) + 8px);
+  // --topbar-actual = the navbar's measured height (TopbarHeightDirective);
+  // the gap keeps the tabs clear of the navbar's bottom border and blur.
+  top: calc(var(--topbar-actual, var(--topbar-h)) + 12px);
   z-index: 15;
+  scroll-margin-top: calc(var(--topbar-actual, var(--topbar-h)) + 12px);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
@@ -3427,8 +3430,9 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  box-shadow: 0 1px 2px rgba(15, 18, 34, 0.04), 0 8px 24px rgba(15, 18, 34, 0.08);
 }
 .settings-tab {
   display: flex;
@@ -3506,6 +3510,23 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     box-shadow: 0 0 0 3px var(--primary-ring);
   }
   &:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  &.pending { border-color: var(--primary-ring); }
+}
+// Inline spinner on the board whose settings are loading.
+.settings-board-spinner {
+  width: 16px; height: 16px; margin-left: auto; flex-shrink: 0;
+  border: 2px solid var(--primary-ring); border-top-color: var(--primary); border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+/* Switching board: the previous board's content stays (dimmed) until the new
+   settings land, then fades back in, so nothing unmounts or jumps. */
+.settings-stack > :not(.settings-tabs):not(.settings-boards) {
+  transition: opacity var(--normal) var(--ease), filter var(--normal) var(--ease);
+}
+.settings-stack.switching > :not(.settings-tabs):not(.settings-boards) {
+  opacity: 0.45;
+  filter: saturate(0.6);
+  pointer-events: none;
 }
 .settings-board-icon {
   display: grid;
@@ -3535,8 +3556,13 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   &.muted { background: var(--error-soft); color: var(--error-strong); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .settings-stack > *, .settings-tabs ~ section, .settings-tabs ~ .settings-boards, .settings-tabs ~ app-chat-sender-card { transition: none; animation: none; }
+  .settings-board-spinner { animation-duration: 1.6s; }
+}
+
 @media (max-width: 640px) {
-  .settings-tabs { top: calc(var(--topbar-h) + 4px); }
+  .settings-tabs { top: calc(var(--topbar-actual, var(--topbar-h)) + 8px); }
   .settings-tab { padding: 8px 10px; gap: 8px; small { display: none; } > .icon { width: 30px; height: 30px; } }
   .settings-boards { grid-template-columns: 1fr; }
 }
