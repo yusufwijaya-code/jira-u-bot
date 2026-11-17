@@ -538,15 +538,22 @@ func (s *service) withNote(v view, msg string) view {
 	return v
 }
 
-// Geser keeps the reminder card buttons ("todo" / "code-review") working on
-// top of the Papan Tiket rules: the sender's own active-sprint tickets.
-var geserTargets = map[string]string{"todo": "To Do", "code-review": "Code Review"}
+// Geser keeps the reminder card buttons ("todo" / "code-review") and the
+// web's "code-completed" (review tickets) working on top of the Papan Tiket
+// rules: the sender's own active-sprint tickets. A target lists every status
+// name it means, in order — CORE ends at "Code Completed", OMS at "Done".
+var geserTargets = map[string][]string{
+	"todo":           {"To Do"},
+	"code-review":    {"Code Review"},
+	"code-completed": {"Code Completed", "Done"},
+}
 
 func (s *service) Geser(ctx context.Context, email, issueKey, targetSlug string) GeserResult {
-	target, ok := geserTargets[strings.ToLower(targetSlug)]
+	names, ok := geserTargets[strings.ToLower(targetSlug)]
 	if !ok {
-		return GeserResult{Message: fmt.Sprintf("Target %q nggak dikenali. Target yang didukung: todo, code-review", targetSlug)}
+		return GeserResult{Message: fmt.Sprintf("Target %q nggak dikenali. Target yang didukung: todo, code-review, code-completed", targetSlug)}
 	}
+	target := names[0]
 	key, ok := normalizeKey(issueKey)
 	if !ok {
 		return GeserResult{Message: fmt.Sprintf("Tiket %s nggak valid", issueKey)}
@@ -558,15 +565,17 @@ func (s *service) Geser(ctx context.Context, email, issueKey, targetSlug string)
 	if err != nil {
 		return GeserResult{Message: fmt.Sprintf("Gagal ambil daftar transisi buat %s dari Jira, coba lagi beberapa saat 🙏", key)}
 	}
-	for _, tr := range trs.Transitions {
-		if !strings.EqualFold(tr.ToStatus, target) {
-			continue
+	for _, name := range names {
+		for _, tr := range trs.Transitions {
+			if !strings.EqualFold(tr.ToStatus, name) {
+				continue
+			}
+			status, err := s.d.Dashboard.Transition(ctx, email, key, tr.ID)
+			if err != nil {
+				return GeserResult{Message: fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", key, name)}
+			}
+			return GeserResult{OK: true, StatusName: status, Message: fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", key, status)}
 		}
-		status, err := s.d.Dashboard.Transition(ctx, email, key, tr.ID)
-		if err != nil {
-			return GeserResult{Message: fmt.Sprintf("Gagal geser %s ke %s, coba lagi beberapa saat 🙏", key, target)}
-		}
-		return GeserResult{OK: true, StatusName: status, Message: fmt.Sprintf("✅ *%s* berhasil digeser ke *%s*", key, status)}
 	}
 	return GeserResult{Message: fmt.Sprintf("Nggak ada jalur langsung dari status tiket %s sekarang ke %q di workflow project ini 🤔", key, target)}
 }

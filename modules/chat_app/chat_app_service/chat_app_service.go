@@ -216,7 +216,9 @@ func (s *service) welcome(u *registration_dto.User) chat_app_dto.Response {
 }
 
 // added connects a registered user's DM. Unknown senders are told to
-// register on the web first — the app never signs anyone up.
+// register on the web first — the app never signs anyone up. Installing the
+// app is the user asking for Nudge's messages, so notifications are switched
+// on; only if that fails does the welcome card still offer the buttons.
 func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto.Response {
 	u, reply, ok := s.findUser(ctx, ev.User.Email)
 	if !ok {
@@ -225,6 +227,15 @@ func (s *service) added(ctx context.Context, ev chat_app_dto.Event) chat_app_dto
 	if err := s.d.States.SetSpace(ctx, ev.User.Email, ev.Space.Name, ev.User.Name); err != nil {
 		log.Printf("chat_app_service: storing the DM of %s failed: %v", ev.User.Email, err)
 		return chat_app_dto.Response{Text: errorText}
+	}
+	if s.d.Notifications != nil && !u.NotificationsEnabled {
+		if _, err := s.d.Notifications.SetNotificationsEnabled(ctx, u.UserID, true); err != nil {
+			log.Printf("chat_app_service: turning notifications on for %s at install failed: %v", ev.User.Email, err)
+		} else {
+			on := *u
+			on.NotificationsEnabled = true
+			u = &on
+		}
 	}
 	return s.welcome(u)
 }

@@ -27,7 +27,7 @@ const (
 	// round-trip — confirmed live: a 5-minute window expired mid-challenge
 	// and broke an otherwise-successful login.
 	stateCookieMaxAge   = 15 * 60        // 15 minutes
-	sessionCookieMaxAge = 30 * 24 * 3600 // 30 days, matches auth_service.sessionLifetime
+	sessionCookieMaxAge = 3 * 24 * 3600 // 3 days, matches auth_service.sessionLifetime
 )
 
 type authHandlerImpl struct {

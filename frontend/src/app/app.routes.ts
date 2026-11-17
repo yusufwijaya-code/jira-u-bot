@@ -4,9 +4,10 @@ import { DashboardShellComponent } from './layouts/dashboard-shell/dashboard-she
 import { HomeComponent } from './features/dashboard/home/home.component';
 import { AuthGuard } from './core/guards/auth.guard';
 import { AdminGuard } from './core/guards/admin.guard';
+import { GuestGuard } from './core/guards/guest.guard';
 
 export const routes: Routes = [
-  { path: '', component: LoginComponent, title: 'Masuk · Nudge' },
+  { path: '', pathMatch: 'full', component: LoginComponent, canActivate: [GuestGuard], title: 'Masuk · Nudge' },
   {
     path: 'dashboard',
     component: DashboardShellComponent,

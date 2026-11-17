@@ -367,9 +367,22 @@
                   <span class="btn-label"><app-icon name="send" [size]="14" /> Code Review</span>
                 </button>
                 }
+                @if (review) {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-soft"
+                  [class.loading]="movingKey() === t.issueKey"
+                  [disabled]="movingKey() !== null"
+                  (click)="move(t, 'code-completed')"
+                >
+                  <span class="spinner" aria-hidden="true"></span>
+                  <span class="btn-label"><app-icon name="send" [size]="14" /> Code Completed</span>
+                </button>
+                } @else {
                 <button type="button" class="btn btn-sm btn-ghost" [disabled]="movingKey() !== null" (click)="move(t, 'todo')">
                   To Do
                 </button>
+                }
               </div>
             </li>
 </ng-template>

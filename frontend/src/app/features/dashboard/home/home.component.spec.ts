@@ -293,10 +293,11 @@ describe('HomeComponent', () => {
       expect(levels).toEqual(['over', 'warn']);
     });
 
-    it('only offers the To Do action for review tickets', () => {
+    it('only offers the Code Completed action for review tickets', () => {
       const actions = el().querySelectorAll('[data-card="review"] .ticket-row')[0].querySelectorAll('.ticket-actions button');
       expect(actions.length).toBe(1);
-      expect(actions[0].textContent).toContain('To Do');
+      expect(actions[0].textContent).toContain('Code Completed');
+      expect(actions[0].textContent).not.toContain('To Do');
     });
 
     it('sits right below "Sedang dikerjakan"', () => {
