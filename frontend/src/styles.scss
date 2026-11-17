@@ -1084,7 +1084,8 @@ tr.clickable:hover td { background: var(--surface-2); }
 }
 
 // Admin tables & the board rule grid get the wide layout like Papan Tiket.
-.page:has(table.admin-users), .page:has(.tr-page) { max-width: 1440px; }
+// `.admin-wide` sits on the page root, so the width is right while loading too.
+.page:has(table.admin-users), .page:has(.tr-page), .page:has(.admin-wide) { max-width: 1440px; }
 
 table.admin-users {
   width: 100%;

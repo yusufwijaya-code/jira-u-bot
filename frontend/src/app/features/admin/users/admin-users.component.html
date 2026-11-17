@@ -1,4 +1,4 @@
-<div class="page-stack">
+<div class="page-stack admin-wide admin-users-page">
   <section class="card">
     <header class="card-header with-actions">
       <span class="card-icon"><app-icon name="users" [size]="20" /></span>
@@ -6,18 +6,46 @@
         <h2>Daftar User</h2>
         <p>Klik user untuk mengatur notifikasi, mute, dan Jira credential-nya.</p>
       </div>
-      <label class="search-input" *ngIf="!loading && !error">
-        <app-icon name="search" [size]="16" />
-        <input type="search" placeholder="Cari email..." [(ngModel)]="query" aria-label="Cari email" />
-      </label>
-      <label class="filter-check" *ngIf="!loading && !error">
-        <input type="checkbox" data-filter-chat-app [(ngModel)]="onlyNotActivated" />
-        Belum aktivasi Nudge App
-      </label>
+      <div class="users-tools" *ngIf="!error">
+        <label class="search-input">
+          <app-icon name="search" [size]="16" />
+          <input type="search" placeholder="Cari email..." [(ngModel)]="query" [disabled]="loading" aria-label="Cari email" />
+        </label>
+        <label class="filter-check" [class.checked]="onlyNotActivated" [class.disabled]="loading">
+          <input type="checkbox" class="visually-hidden" data-filter-chat-app [(ngModel)]="onlyNotActivated" [disabled]="loading" />
+          <span class="check-box" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14"><path d="M20 6 9 17l-5-5" /></svg>
+          </span>
+          Belum aktivasi Nudge App
+        </label>
+      </div>
     </header>
 
-    <div class="table-skeleton" *ngIf="loading" aria-busy="true">
-      <div class="skeleton skeleton-row" *ngFor="let i of [1, 2, 3, 4]"></div>
+    <div class="table-wrap" *ngIf="loading" aria-busy="true" aria-label="Memuat daftar user">
+      <table class="admin-users users-skeleton">
+        <thead>
+          <tr><th>User</th><th>Status</th><th>Jira Account ID</th><th>Credential</th><th>Nudge App</th><th>Pengirim</th><th class="th-actions">Aksi</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let i of skeletonRows" [style.animation-delay.ms]="i * 60">
+            <td>
+              <div class="user-cell">
+                <span class="skeleton sk-avatar"></span>
+                <div class="sk-lines">
+                  <span class="skeleton sk-line" [style.width.px]="150 + (i % 3) * 24"></span>
+                  <span class="skeleton sk-line short"></span>
+                </div>
+              </div>
+            </td>
+            <td><span class="skeleton sk-pill"></span></td>
+            <td><span class="skeleton sk-input"></span></td>
+            <td><span class="skeleton sk-pill wide"></span></td>
+            <td><span class="skeleton sk-pill"></span></td>
+            <td><span class="skeleton sk-line" style="width: 64px"></span></td>
+            <td class="actions"><div class="sk-actions"><span class="skeleton sk-btn"></span><span class="skeleton sk-btn wide"></span><span class="skeleton sk-icon"></span></div></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <div class="empty-state" *ngIf="error">
