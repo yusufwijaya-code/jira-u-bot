@@ -59,7 +59,32 @@
 .trf-sk-row { display: flex; gap: 14px; flex-wrap: wrap; }
 .trf-sk-input { flex: 1; min-width: 220px; height: 40px; border-radius: var(--radius-sm); }
 
+// Field form Buat Card: type tabs, then a checklist (global .check-box).
+.trf-cf-total { margin-left: auto; align-self: center; padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-strong); font-size: .74rem; font-weight: 600; }
+.trf-cf-types { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.trf-cf-type { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  font: inherit; font-size: .82rem; color: var(--text-muted); cursor: pointer; transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease);
+  &:hover { border-color: var(--primary-light); color: var(--text); }
+  &:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--primary-ring); }
+  &.on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; } }
+.trf-cf-badge { padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--text-faint); font-size: .66rem; font-weight: 600; }
+.trf-cf-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--primary); color: #fff; font-size: .68rem; font-weight: 700; }
+.trf-cf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.trf-cf-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  cursor: pointer; animation: fade-up 220ms var(--ease) backwards; animation-delay: calc(min(var(--i, 0), 10) * 20ms); transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease);
+  &:hover:not(.locked) { border-color: var(--primary-light); }
+  &.on { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
+  &.locked { cursor: default; background: var(--surface-2); .check-box { opacity: .6; } }
+  &:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; } }
+.trf-cf-name { flex: 1; min-width: 0; font-size: .84rem; color: var(--text);
+  code { margin-left: 4px; font-size: .7rem; color: var(--text-faint); } }
+.trf-cf-kind { font-size: .72rem; color: var(--text-faint); }
+.trf-cf-req { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: #b4630a; font-size: .7rem; font-weight: 600; }
+.trf-cf-sk { display: flex; flex-direction: column; gap: 8px; }
+.trf-cf-sk-row { height: 40px; border-radius: var(--radius-sm); }
+@media (max-width: 560px) { .trf-cf-kind { display: none; } }
+
 @media (prefers-reduced-motion: reduce) {
-  :host, .trf-card, .trf-chip, .trf-field-row, .trf-pop, .trf-err, .trf-loading, .skeleton { animation: none; }
-  .trf-chip, .trf-field-row, .trf-field input, .trf-x { transition: none; }
+  :host, .trf-card, .trf-chip, .trf-field-row, .trf-pop, .trf-err, .trf-loading, .skeleton, .trf-cf-row { animation: none; }
+  .trf-chip, .trf-field-row, .trf-field input, .trf-x, .trf-cf-type, .trf-cf-row { transition: none; }
 }

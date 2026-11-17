@@ -123,6 +123,9 @@
             @if (rule.storyPointFields.length > 1) {
               <p class="tr-sp-note"><app-icon name="info" [size]="13" /> Kalau field "Tulis" tidak ada di tipe card Jira-nya, Buat Card memakai field cadangan.</p>
             }
+            @if (extraFields(rule); as x) {
+              <p class="tr-sp-note" data-create-fields><app-icon name="edit" [size]="13" /> Field tambahan Buat Card: {{ x.fields }} field di {{ x.types }} tipe card</p>
+            }
           </div>
 
           <footer class="tr-card-foot">

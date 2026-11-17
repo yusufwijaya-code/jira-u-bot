@@ -3,6 +3,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
+  CreateFieldKind,
+  CreateFieldType,
   JiraProjectLookup,
   PROJECT_KEY_PATTERN,
   TrackingRule,
@@ -19,6 +21,10 @@ import { recalculateAction } from './recalculate-action';
 
 const MAX_FIELD_SUGGESTIONS = 12;
 
+const KIND_LABELS: Record<CreateFieldKind, string> = {
+  text: 'Teks', textarea: 'Teks panjang', number: 'Angka', select: 'Pilihan', cascade: 'Pilihan bertingkat', date: 'Tanggal', labels: 'Label',
+};
+
 function hasFold(list: string[], value: string): boolean {
   return list.some((v) => v.toLowerCase() === value.toLowerCase());
 }
@@ -27,7 +33,8 @@ function hasFold(list: string[], value: string): boolean {
  * Tambah / edit satu aturan board (Tech Spec "Aturan Board (Admin CRUD)",
  * US-3/US-4): statuses and Story Point fields are picked from the project's
  * Jira data; stored values Jira no longer has are flagged ⚠ and must be
- * dropped before saving.
+ * dropped before saving. "Field form Buat Card" picks, per issue type, the
+ * optional Jira fields the create form shows (required ones always show).
  */
 @Component({
   selector: 'app-tracking-rule-form',
@@ -59,6 +66,23 @@ export class TrackingRuleFormComponent {
   protected writeField = signal('');
   protected writeFieldSubtask = signal('');
   protected fieldQuery = signal('');
+
+  /** Issue type id → optional fields shown on Buat Card. */
+  protected createFields = signal<Record<string, string[]>>({});
+  protected cfTypes = signal<CreateFieldType[] | null>(null);
+  protected cfLoading = signal(false);
+  protected cfError = signal<string | null>(null);
+  protected cfTypeId = signal('');
+  protected readonly kindLabels = KIND_LABELS;
+  /** The selected type, without the Story Point fields (Buat Card has its own SP input). */
+  protected cfType = computed(() => {
+    const t = (this.cfTypes() ?? []).find((x) => x.typeId === this.cfTypeId());
+    if (!t) return null;
+    const sp = new Set(this.spFields());
+    return { ...t, fields: t.fields.filter((f) => !sp.has(f.id)) };
+  });
+  /** Total optional fields chosen, over the types Jira still has. */
+  protected cfTotal = computed(() => (this.cfTypes() ?? []).reduce((n, t) => n + this.cfCount(t.typeId), 0));
 
   protected saving = signal(false);
   protected fieldErrors = signal<Partial<Record<TrackingRuleField, string>>>({});
@@ -171,6 +195,7 @@ export class TrackingRuleFormComponent {
     this.spFields.set(rule.storyPointFields.map((f) => f.id));
     this.writeField.set(rule.storyPointWriteField);
     this.writeFieldSubtask.set(rule.storyPointWriteFieldSubtask);
+    this.createFields.set(Object.fromEntries(Object.entries(rule.createFields ?? {}).map(([k, v]) => [k, [...v]])));
   }
 
   protected onKeyInput(value: string): void {
@@ -185,6 +210,9 @@ export class TrackingRuleFormComponent {
       this.spFields.set([]);
       this.writeField.set('');
       this.writeFieldSubtask.set('');
+      this.createFields.set({});
+      this.cfTypes.set(null);
+      this.cfError.set(null);
     }
   }
 
@@ -201,6 +229,7 @@ export class TrackingRuleFormComponent {
       next: (l) => {
         this.lookingUp.set(false);
         this.lookup.set(l);
+        this.loadCreateFields();
       },
       error: (err: HttpErrorResponse) => {
         this.lookingUp.set(false);
@@ -214,6 +243,58 @@ export class TrackingRuleFormComponent {
         );
       },
     });
+  }
+
+  /** Issue types + fillable fields for "Field form Buat Card"; a failure only affects that section. */
+  protected loadCreateFields(): void {
+    const key = this.lookup()?.projectKey;
+    if (!key) return;
+    this.cfLoading.set(true);
+    this.cfError.set(null);
+    this.api.createFields(key, this.isEdit).subscribe({
+      next: (res) => {
+        if (this.lookup()?.projectKey !== key) return;
+        this.cfLoading.set(false);
+        const types = res.types ?? [];
+        this.cfTypes.set(types);
+        if (!types.some((t) => t.typeId === this.cfTypeId())) this.cfTypeId.set(types.find((t) => !t.subtask)?.typeId ?? types[0]?.typeId ?? '');
+      },
+      error: () => {
+        this.cfLoading.set(false);
+        this.cfTypes.set(null);
+        this.cfError.set('Gagal memuat field Jira, coba lagi.');
+      },
+    });
+  }
+
+  protected cfCount(typeId: string): number {
+    const t = (this.cfTypes() ?? []).find((x) => x.typeId === typeId);
+    const chosen = this.createFields()[typeId] ?? [];
+    return t ? t.fields.filter((f) => !f.required && chosen.includes(f.id)).length : chosen.length;
+  }
+
+  protected cfChosen(typeId: string, fieldId: string): boolean {
+    return (this.createFields()[typeId] ?? []).includes(fieldId);
+  }
+
+  protected toggleCreateField(typeId: string, fieldId: string): void {
+    const cur = this.createFields()[typeId] ?? [];
+    const next = cur.includes(fieldId) ? cur.filter((f) => f !== fieldId) : [...cur, fieldId];
+    this.createFields.set({ ...this.createFields(), [typeId]: next });
+    this.clearErrors('createFields');
+  }
+
+  /** What is saved: with Jira's list loaded, only optional fields Jira still has on types it still has. */
+  private createFieldsInput(): Record<string, string[]> {
+    const types = this.cfTypes();
+    const out: Record<string, string[]> = {};
+    for (const [typeId, ids] of Object.entries(this.createFields())) {
+      const t = types?.find((x) => x.typeId === typeId);
+      if (types && !t) continue;
+      const keep = t ? ids.filter((id) => t.fields.some((f) => f.id === id && !f.required)) : ids;
+      if (keep.length) out[typeId] = keep;
+    }
+    return out;
   }
 
   protected isTracked(status: string): boolean {
@@ -299,6 +380,7 @@ export class TrackingRuleFormComponent {
       storyPointFields: this.spFields(),
       storyPointWriteField: this.writeField(),
       storyPointWriteFieldSubtask: this.writeFieldSubtask(),
+      createFields: this.createFieldsInput(),
     };
     this.saving.set(true);
     this.existingKey.set(null);

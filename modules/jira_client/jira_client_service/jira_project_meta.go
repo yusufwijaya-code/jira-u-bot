@@ -25,6 +25,11 @@ type ProjectMetaClient interface {
 	// GetNumberFields: numeric customfield_* fields, "story point" names
 	// first, then by name.
 	GetNumberFields(ctx context.Context) ([]jira_client_dto.NumberField, error)
+	// GetCreateMetaIssueTypes / GetCreateMetaFields: the project's createmeta
+	// (issue types, then every field of one type) — Aturan Board picks the
+	// optional fields Buat Card shows.
+	GetCreateMetaIssueTypes(ctx context.Context, projectKey string) ([]jira_client_dto.CreateMetaIssueType, error)
+	GetCreateMetaFields(ctx context.Context, projectKey, typeID string) ([]jira_client_dto.CreateMetaField, error)
 }
 
 // ErrProjectNotFound is Jira's 404 for a project key.
@@ -72,6 +77,24 @@ func (c *projectMetaClient) GetProjectStatuses(ctx context.Context, projectKey s
 		}
 	}
 	return out, nil
+}
+
+func (c *projectMetaClient) GetCreateMetaIssueTypes(ctx context.Context, projectKey string) ([]jira_client_dto.CreateMetaIssueType, error) {
+	u := fmt.Sprintf("%s/rest/api/3/issue/createmeta/%s/issuetypes?maxResults=100", c.base.cfg.JiraBaseURL, url.PathEscape(projectKey))
+	page, err := curl_helper.CurlRequest[jira_client_dto.CreateMetaIssueTypesPage](ctx, u, c.base.authHeaders(), nil, http.MethodGet, 10000, true)
+	if err != nil {
+		return nil, projectErr(err, "GetCreateMetaIssueTypes("+projectKey+")")
+	}
+	return page.Items(), nil
+}
+
+func (c *projectMetaClient) GetCreateMetaFields(ctx context.Context, projectKey, typeID string) ([]jira_client_dto.CreateMetaField, error) {
+	u := fmt.Sprintf("%s/rest/api/3/issue/createmeta/%s/issuetypes/%s?maxResults=200", c.base.cfg.JiraBaseURL, url.PathEscape(projectKey), url.PathEscape(typeID))
+	page, err := curl_helper.CurlRequest[jira_client_dto.CreateMetaFieldsPage](ctx, u, c.base.authHeaders(), nil, http.MethodGet, 10000, true)
+	if err != nil {
+		return nil, projectErr(err, "GetCreateMetaFields("+projectKey+", "+typeID+")")
+	}
+	return page.Items(), nil
 }
 
 func (c *projectMetaClient) GetNumberFields(ctx context.Context) ([]jira_client_dto.NumberField, error) {

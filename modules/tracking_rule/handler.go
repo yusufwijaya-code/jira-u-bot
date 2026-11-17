@@ -23,6 +23,7 @@ type API interface {
 	SetActive(ctx context.Context, projectKey string, active bool, editor string) (RuleView, error)
 	Recalculate() error
 	BoardStatuses(ctx context.Context, boardID int64) ([]string, error)
+	CreateFields(ctx context.Context, projectKey string, fresh bool) ([]CreateFieldType, error)
 }
 
 type Handler struct{ api API }
@@ -33,6 +34,8 @@ func NewHandler(api API) *Handler { return &Handler{api: api} }
 // AuthMiddlewareAPI + AdminMiddleware.
 func AdminRoutes(g *gin.RouterGroup, h *Handler) {
 	g.GET("/tracking-rules", h.list)
+	// Static segment: gin matches it before the :projectKey wildcard.
+	g.GET("/tracking-rules/jira/create-fields", h.createFields)
 	g.GET("/tracking-rules/jira/:projectKey", h.lookup)
 	g.POST("/tracking-rules", h.create)
 	g.POST("/tracking-rules/recalculate", h.recalculate)
@@ -112,6 +115,16 @@ func (h *Handler) lookup(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, l)
+}
+
+func (h *Handler) createFields(c *gin.Context) {
+	key := c.Query("projectKey")
+	types, err := h.api.CreateFields(c.Request.Context(), key, c.Query("fresh") == "1")
+	if err != nil {
+		fail(c, err, displayKey(key))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"types": types})
 }
 
 func (h *Handler) create(c *gin.Context) {

@@ -16,6 +16,7 @@ const CORE: TrackingRule = {
 const OMS: TrackingRule = {
   ...CORE, projectKey: 'OMS', projectName: 'ESB OMS', trackedStatuses: ['Code Process'], doneStatus: 'Code Review', reviewStatus: null,
   storyPointFields: [{ id: 'customfield_10016', name: 'Story point estimate' }], storyPointWriteField: 'customfield_10016', storyPointWriteFieldSubtask: 'customfield_10016',
+  createFields: { '10206': ['duedate', 'priority'], '10249': ['duedate'], '10143': [] },
 };
 const POS: TrackingRule = { ...OMS, projectKey: 'POS', projectName: 'ESB POS', isActive: false };
 
@@ -57,6 +58,11 @@ describe('TrackingRulesComponent', () => {
     const order = Array.from(core.querySelectorAll('[data-sp]')).map((li) => li.getAttribute('data-sp'));
     expect(order).toEqual(['customfield_10125', 'customfield_11053']);
     expect(el().querySelector('[data-add-rule]')?.getAttribute('href')).toBe('/admin/tracking-rules/new');
+  });
+
+  it('summarises the extra Buat Card fields of a rule', () => {
+    expect(el().querySelector('[data-rule="OMS"] [data-create-fields]')?.textContent).toContain('3 field di 2 tipe card');
+    expect(el().querySelector('[data-rule="CORE"] [data-create-fields]')).toBeNull();
   });
 
   it('labels the write field and the fallback per card type', () => {

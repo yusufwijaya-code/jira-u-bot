@@ -73,6 +73,7 @@ func TestApply_NewColumnsExistOnMsUserAndTrIssuesession(t *testing.T) {
 		{"ms_user", "chatAppUserID"},
 		{"ms_user", "chatAppActivatedDate"},
 		{"ms_user", "chatSender"},
+		{"ms_tracking_rule", "createFields"},
 	}
 	for _, c := range cases {
 		var name string

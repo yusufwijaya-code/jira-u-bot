@@ -65,6 +65,11 @@ type cachedFields struct {
 	at   time.Time
 }
 
+type cachedCreateFields struct {
+	types []CreateFieldType
+	at    time.Time
+}
+
 type cachedStatuses struct {
 	list []string
 	at   time.Time
@@ -79,6 +84,7 @@ type Service struct {
 	lookups       map[string]cachedLookup
 	fields        *cachedFields
 	boardStatuses map[string]cachedStatuses
+	createFields  map[string]cachedCreateFields
 	recalcRunning atomic.Bool
 }
 
@@ -92,7 +98,7 @@ func NewService(d Deps) *Service {
 	if d.Lifetime == nil {
 		d.Lifetime = context.Background()
 	}
-	return &Service{d: d, lookups: map[string]cachedLookup{}, boardStatuses: map[string]cachedStatuses{}}
+	return &Service{d: d, lookups: map[string]cachedLookup{}, boardStatuses: map[string]cachedStatuses{}, createFields: map[string]cachedCreateFields{}}
 }
 
 // Reload loads the table and installs the active rules. On error the
@@ -237,6 +243,10 @@ func view(r Rule, names map[string]string) RuleView {
 		ProjectKey: r.ProjectKey, ProjectName: r.ProjectName, TrackedStatuses: r.TrackedStatuses, DoneStatus: r.DoneStatus,
 		StoryPointFields: make([]FieldRef, 0, len(r.StoryPointFields)), StoryPointWriteField: r.StoryPointWriteField,
 		StoryPointWriteFieldSubtask: r.StoryPointWriteFieldSubtask, IsActive: r.IsActive, EditedBy: r.EditedBy, EditedDate: r.EditedDate,
+		CreateFields: map[string][]string{},
+	}
+	for typeID, ids := range r.CreateFields {
+		v.CreateFields[typeID] = ids
 	}
 	if r.ReviewStatus != "" {
 		review := r.ReviewStatus
@@ -350,6 +360,51 @@ func (s *Service) afterSave(ctx context.Context, key string) (RuleView, error) {
 		return RuleView{}, ErrRuleNotFound
 	}
 	return view(saved, s.fieldNames(ctx)), nil
+}
+
+// CreateFields lists the project's issue types and the fields Buat Card can
+// fill on each (Aturan Board › Field form Buat Card), read with the bot
+// credential and cached 10 minutes; fresh bypasses the cache. Fields the
+// form fills itself (summary, description, assignee, parent, sprint…) and
+// kinds Nudge can't fill are left out; required ones are flagged.
+func (s *Service) CreateFields(ctx context.Context, projectKey string, fresh bool) ([]CreateFieldType, error) {
+	key, ok := NormalizeProjectKey(projectKey)
+	if !ok {
+		return nil, ErrInvalidProjectKey
+	}
+	s.mu.Lock()
+	cached, hit := s.createFields[key]
+	s.mu.Unlock()
+	if !fresh && hit && s.d.Now().Sub(cached.at) < lookupTTL {
+		return cached.types, nil
+	}
+	types, err := s.d.Jira.GetCreateMetaIssueTypes(ctx, key)
+	if err != nil {
+		return nil, jiraErr(err)
+	}
+	out := make([]CreateFieldType, 0, len(types))
+	for _, t := range types {
+		fields, err := s.d.Jira.GetCreateMetaFields(ctx, key, t.ID)
+		if err != nil {
+			return nil, jiraErr(err)
+		}
+		ct := CreateFieldType{TypeID: t.ID, TypeName: t.Name, Subtask: t.Subtask, Fields: []CreateField{}}
+		for _, f := range fields {
+			if jira_client_dto.BaseFormFieldIDs[f.ID()] {
+				continue
+			}
+			kind, _ := f.FormKind()
+			if kind == "" {
+				continue
+			}
+			ct.Fields = append(ct.Fields, CreateField{ID: f.ID(), Name: f.Name, Kind: kind, Required: f.Required})
+		}
+		out = append(out, ct)
+	}
+	s.mu.Lock()
+	s.createFields[key] = cachedCreateFields{types: out, at: s.d.Now()}
+	s.mu.Unlock()
+	return out, nil
 }
 
 // Recalculate starts sprint_backfill RunAll in the background; one run at a time.

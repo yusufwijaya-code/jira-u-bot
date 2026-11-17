@@ -20,6 +20,8 @@ export interface TrackingRule {
   storyPointFields: FieldRef[];
   storyPointWriteField: string;
   storyPointWriteFieldSubtask: string;
+  /** Issue type id → optional Jira fields shown on Buat Card ({} = only required fields). */
+  createFields?: Record<string, string[]>;
   isActive: boolean;
   editedBy: string;
   editedDate: string;
@@ -36,6 +38,25 @@ export interface TrackingRuleInput {
   storyPointFields: string[];
   storyPointWriteField: string;
   storyPointWriteFieldSubtask: string;
+  createFields: Record<string, string[]>;
+}
+
+/** Buat Card control kinds (same as the create form). */
+export type CreateFieldKind = 'text' | 'textarea' | 'number' | 'select' | 'cascade' | 'date' | 'labels';
+
+/** A Jira field Buat Card can fill on an issue type; required ones always show. */
+export interface CreateFieldOption {
+  id: string;
+  name: string;
+  kind: CreateFieldKind;
+  required: boolean;
+}
+
+export interface CreateFieldType {
+  typeId: string;
+  typeName: string;
+  subtask: boolean;
+  fields: CreateFieldOption[];
 }
 
 export interface NumberField {
@@ -60,7 +81,8 @@ export type TrackingRuleField =
   | 'reviewStatus'
   | 'storyPointFields'
   | 'storyPointWriteField'
-  | 'storyPointWriteFieldSubtask';
+  | 'storyPointWriteFieldSubtask'
+  | 'createFields';
 
 export interface TrackingRuleError {
   error: string;
@@ -88,6 +110,13 @@ export class TrackingRuleService {
   lookup(projectKey: string, fresh = false): Observable<JiraProjectLookup> {
     const url = `${this.base}/jira/${encodeURIComponent(projectKey)}`;
     return this.http.get<JiraProjectLookup>(fresh ? `${url}?fresh=1` : url);
+  }
+
+  /** The project's issue types and the fields Buat Card can fill on each (createmeta, bot credential). */
+  createFields(projectKey: string, fresh = false): Observable<{ types: CreateFieldType[] }> {
+    const params: Record<string, string> = { projectKey };
+    if (fresh) params['fresh'] = '1';
+    return this.http.get<{ types: CreateFieldType[] }>(`${this.base}/jira/create-fields`, { params });
   }
 
   create(input: TrackingRuleInput): Observable<TrackingRule> {
