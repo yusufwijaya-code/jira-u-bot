@@ -50,6 +50,9 @@ type Deps struct {
 	// Apply installs the active rules; defaults to jira_client_dto.SetRules.
 	Apply func([]jira_client_dto.TrackingRule)
 	Now   func() time.Time
+	// Lifetime is cancelled on shutdown; background work (Recalculate)
+	// derives from it. Defaults to context.Background().
+	Lifetime context.Context
 }
 
 type cachedLookup struct {
@@ -85,6 +88,9 @@ func NewService(d Deps) *Service {
 	}
 	if d.Now == nil {
 		d.Now = time.Now
+	}
+	if d.Lifetime == nil {
+		d.Lifetime = context.Background()
 	}
 	return &Service{d: d, lookups: map[string]cachedLookup{}, boardStatuses: map[string]cachedStatuses{}}
 }
@@ -349,7 +355,7 @@ func (s *Service) Recalculate() error {
 	}
 	go func() {
 		defer s.recalcRunning.Store(false)
-		added := s.d.Recalc.RunAll(context.Background())
+		added := s.d.Recalc.RunAll(s.d.Lifetime)
 		log.Printf("tracking_rule: recalculation for every user done (%d session(s) added)", added)
 	}()
 	return nil

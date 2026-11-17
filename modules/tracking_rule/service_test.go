@@ -142,14 +142,24 @@ func newFakeJira() *fakeJira {
 	}
 }
 
-type fakeRecalc struct{ started, release chan struct{} }
+type fakeRecalc struct {
+	started, release chan struct{}
+	// stopped receives the run's ctx error when it ends.
+	stopped chan error
+}
 
-func (f *fakeRecalc) RunAll(context.Context) int {
+func (f *fakeRecalc) RunAll(ctx context.Context) int {
 	if f.started != nil {
 		f.started <- struct{}{}
 	}
 	if f.release != nil {
-		<-f.release
+		select {
+		case <-f.release:
+		case <-ctx.Done():
+		}
+	}
+	if f.stopped != nil {
+		f.stopped <- ctx.Err()
 	}
 	return 0
 }
@@ -469,6 +479,26 @@ func TestRecalculate_OneRunAtATime(t *testing.T) {
 		t.Errorf("second call err = %v, want ErrAlreadyRunning", err)
 	}
 	close(recalc.release)
+}
+
+func TestRecalculate_StopsOnShutdown(t *testing.T) {
+	h := newHarness(seedRules()...)
+	lifetime, shutdown := context.WithCancel(ctx)
+	recalc := &fakeRecalc{started: make(chan struct{}, 1), release: make(chan struct{}), stopped: make(chan error, 1)}
+	h.svc.d.Recalc, h.svc.d.Lifetime = recalc, lifetime
+	if err := h.svc.Recalculate(); err != nil {
+		t.Fatal(err)
+	}
+	<-recalc.started
+	shutdown()
+	select {
+	case err := <-recalc.stopped:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("run ctx err = %v, want canceled by shutdown", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the recalculation ignored the shutdown")
+	}
 }
 
 func TestBoardStatuses_CachedPerProjectForAnHour(t *testing.T) {

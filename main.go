@@ -279,17 +279,18 @@ func main() {
 	// Tech Spec "Aturan Board (Admin CRUD)": tracking rules come from
 	// ms_tracking_rule — loaded before the poller and the backfill start,
 	// refreshed on every admin save and every 5 minutes.
+	shutdownMgr := shutdown.NewManager()
 	trackingRuleSvc := tracking_rule.NewService(tracking_rule.Deps{
-		Store:  tracking_rule.NewRepository(db),
-		Jira:   jira_client_service.NewProjectMetaClient(&cfg),
-		Boards: boardSvc,
-		Recalc: sprintBackfillSvc,
+		Store:    tracking_rule.NewRepository(db),
+		Jira:     jira_client_service.NewProjectMetaClient(&cfg),
+		Boards:   boardSvc,
+		Recalc:   sprintBackfillSvc,
+		Lifetime: shutdownMgr.Context(),
 	})
 	if err := trackingRuleSvc.Reload(context.Background()); err != nil {
 		log.Fatalf("failed to load tracking rules: %v", err)
 	}
 
-	shutdownMgr := shutdown.NewManager()
 	shutdownMgr.AddWorker()
 	go func() {
 		defer shutdownMgr.WorkerDone()
