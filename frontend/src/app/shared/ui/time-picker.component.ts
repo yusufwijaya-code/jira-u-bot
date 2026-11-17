@@ -1,5 +1,9 @@
 import { AfterViewChecked, Component, ElementRef, HostListener, computed, inject, input, output, signal } from '@angular/core';
 import { IconComponent } from './icon.component';
+import { shouldDropUp } from './popover-position';
+
+/** Rendered height of the time popup (two 200px columns + head + footer). */
+const POPUP_HEIGHT = 290;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -12,7 +16,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
   selector: 'app-time-picker',
   standalone: true,
   imports: [IconComponent],
-  host: { class: 'ui-time', '[class.open]': 'open()' },
+  host: { class: 'ui-time', '[class.open]': 'open()', '[class.drop-up]': 'open() && dropUp()' },
   template: `
     <button
       type="button"
@@ -58,6 +62,8 @@ export class TimePickerComponent implements AfterViewChecked {
   valueChange = output<string>();
 
   protected open = signal(false);
+  /** Opens above the trigger when there's no room below in the viewport. */
+  protected dropUp = signal(false);
   protected readonly hours = Array.from({ length: 24 }, (_, h) => pad(h));
   protected hour = computed(() => (this.value() || '00:00').slice(0, 2));
   protected minute = computed(() => (this.value() || '00:00').slice(3, 5));
@@ -70,6 +76,7 @@ export class TimePickerComponent implements AfterViewChecked {
   private scrollPending = false;
 
   protected toggle(): void {
+    if (!this.open()) this.dropUp.set(shouldDropUp(this.host.nativeElement, POPUP_HEIGHT));
     this.open.set(!this.open());
     this.scrollPending = this.open();
   }

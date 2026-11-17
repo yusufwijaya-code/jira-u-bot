@@ -1,5 +1,9 @@
 import { Component, ElementRef, HostListener, computed, inject, input, output, signal } from '@angular/core';
 import { IconComponent } from './icon.component';
+import { shouldDropUp } from './popover-position';
+
+/** Rendered height of the calendar popup (header, 6 week rows, footer). */
+const POPUP_HEIGHT = 400;
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -66,7 +70,7 @@ interface DayCell {
   selector: 'app-date-range-picker',
   standalone: true,
   imports: [IconComponent],
-  host: { class: 'ui-date', '[class.open]': 'open()' },
+  host: { class: 'ui-date', '[class.open]': 'open()', '[class.drop-up]': 'open() && dropUp()' },
   template: `
     <button
       type="button"
@@ -142,6 +146,8 @@ export class DateRangePickerComponent {
   protected count = daysInRange;
 
   protected open = signal(false);
+  /** Opens above the trigger when there's no room below in the viewport. */
+  protected dropUp = signal(false);
   /** The range being picked inside the open popup. */
   protected draftFrom = signal('');
   protected draftTo = signal('');
@@ -189,6 +195,7 @@ export class DateRangePickerComponent {
     this.picking.set(false);
     const [y, m] = parts(this.from() || this.today);
     this.view.set({ y, m: m - 1 });
+    this.dropUp.set(shouldDropUp(this.host.nativeElement, POPUP_HEIGHT));
     this.open.set(true);
   }
 

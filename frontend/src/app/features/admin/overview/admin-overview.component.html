@@ -1,4 +1,4 @@
-<div class="page-stack">
+<div class="page-stack admin-wide ov-page">
   @if (error(); as message) {
     <section class="card">
       <div class="empty-state">
@@ -7,66 +7,95 @@
       </div>
     </section>
   } @else if (loading()) {
-    <div class="table-skeleton" aria-busy="true">
-      @for (i of [1, 2, 3]; track i) {
-        <div class="skeleton skeleton-row"></div>
+    <div class="ov-stats" aria-busy="true" aria-label="Memuat ringkasan">
+      @for (i of [0, 1, 2, 3]; track i) {
+        <div class="ov-stat ov-stat-skeleton" [style.--i]="i">
+          <span class="skeleton sk-icon"></span>
+          <span class="skeleton sk-value"></span>
+          <span class="skeleton sk-label"></span>
+          <span class="skeleton sk-caption"></span>
+        </div>
+      }
+    </div>
+    <div class="ov-lists" aria-hidden="true">
+      @for (i of [0, 1]; track i) {
+        <section class="card ov-list ov-list-skeleton" [style.--i]="i + 4">
+          <div class="sk-head"><span class="skeleton sk-icon"></span><span class="sk-lines"><span class="skeleton sk-line"></span><span class="skeleton sk-line short"></span></span></div>
+          @for (r of [0, 1, 2]; track r) {
+            <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-lines"><span class="skeleton sk-line"></span><span class="skeleton sk-line short"></span></span></div>
+          }
+        </section>
       }
     </div>
   } @else {
-    <div class="stat-grid">
-      <div class="stat-card" style="--i: 0">
-        <span class="stat-icon"><app-icon name="users" [size]="20" /></span>
-        <div><span class="stat-value">{{ users().length }}</span><span class="stat-label">Total user</span></div>
+    <div class="ov-stats">
+      <div class="stat-card ov-stat" style="--i: 0">
+        <span class="stat-icon"><app-icon name="users" [size]="22" /></span>
+        <span class="stat-value">{{ users().length }}</span>
+        <span class="stat-label">Total user</span>
+        <small class="ov-caption">Terdaftar di Nudge</small>
       </div>
-      <div class="stat-card" style="--i: 1">
-        <span class="stat-icon success"><app-icon name="user-check" [size]="20" /></span>
-        <div><span class="stat-value">{{ activeCount() }}</span><span class="stat-label">User aktif</span></div>
+      <div class="stat-card ov-stat tone-success" style="--i: 1">
+        <span class="stat-icon success"><app-icon name="user-check" [size]="22" /></span>
+        <span class="stat-value">{{ activeCount() }}</span>
+        <span class="stat-label">User aktif</span>
+        <small class="ov-caption">Menerima reminder</small>
       </div>
-      <div class="stat-card" style="--i: 2">
-        <span class="stat-icon accent"><app-icon name="key" [size]="20" /></span>
-        <div><span class="stat-value">{{ credentialCount() }}</span><span class="stat-label">Punya credential</span></div>
+      <div class="stat-card ov-stat tone-accent" style="--i: 2">
+        <span class="stat-icon accent"><app-icon name="key" [size]="22" /></span>
+        <span class="stat-value">{{ credentialCount() }}</span>
+        <span class="stat-label">Punya credential</span>
+        <small class="ov-caption">Aksi Jira pakai akun sendiri</small>
       </div>
-      <a class="stat-card" style="--i: 3" routerLink="/admin/users" [queryParams]="{ chatApp: 'inactive' }" data-stat="chat-app-inactive">
-        <span class="stat-icon"><app-icon name="bell" [size]="20" /></span>
-        <div><span class="stat-value">{{ chatAppInactiveCount() }}</span><span class="stat-label">Belum aktivasi Nudge App</span></div>
+      <a class="stat-card ov-stat ov-stat-link" style="--i: 3" routerLink="/admin/users" [queryParams]="{ chatApp: 'inactive' }" data-stat="chat-app-inactive">
+        <span class="stat-icon"><app-icon name="bell" [size]="22" /></span>
+        <span class="stat-value">{{ chatAppInactiveCount() }}</span>
+        <span class="stat-label">Belum aktivasi Nudge App</span>
+        <small class="ov-caption">Lihat daftarnya <app-icon name="chevron-right" [size]="14" /></small>
       </a>
     </div>
 
-    <div class="admin-shortlists">
-      <ng-container *ngTemplateOutlet="shortlist; context: { title: 'User tanpa credential', hint: 'Aksi Jira user ini masih memakai akun bot.', icon: 'key', users: withoutCredential(), kind: 'credential', empty: 'Semua user sudah punya credential.' }" />
-      <ng-container *ngTemplateOutlet="shortlist; context: { title: 'User nonaktif', hint: 'Tidak menerima reminder sampai diaktifkan lagi.', icon: 'power', users: inactive(), kind: 'inactive', empty: 'Semua user sudah aktif.' }" />
+    <div class="ov-lists admin-shortlists">
+      <ng-container *ngTemplateOutlet="shortlist; context: { title: 'User tanpa credential', hint: 'Aksi Jira user ini masih memakai akun bot.', icon: 'key', users: withoutCredential(), total: withoutCredentialTotal(), kind: 'credential', empty: 'Semua user sudah punya credential.', i: 4 }" />
+      <ng-container *ngTemplateOutlet="shortlist; context: { title: 'User nonaktif', hint: 'Tidak menerima reminder sampai diaktifkan lagi.', icon: 'power', users: inactive(), total: inactiveTotal(), kind: 'inactive', empty: 'Semua user sudah aktif.', i: 5 }" />
     </div>
   }
 </div>
 
-<ng-template #shortlist let-title="title" let-hint="hint" let-icon="icon" let-users="users" let-kind="kind" let-empty="empty">
-  <section class="card shortlist" [attr.data-list]="kind">
+<ng-template #shortlist let-title="title" let-hint="hint" let-icon="icon" let-users="users" let-total="total" let-kind="kind" let-empty="empty" let-i="i">
+  <section class="card shortlist ov-list" [attr.data-list]="kind" [style.--i]="i">
     <header class="card-header">
       <span class="card-icon"><app-icon [name]="icon" [size]="20" /></span>
       <div>
         <h2>{{ title }}</h2>
         <p>{{ hint }}</p>
       </div>
+      @if (total) {
+        <span class="count-pill ov-count"><strong>{{ total }}</strong> user</span>
+      }
     </header>
     @if (users.length) {
       <ul class="shortlist-items">
-        @for (user of users; track user.userId) {
-          <li>
+        @for (user of users; track user.userId; let n = $index) {
+          <li [style.--n]="n">
             <a [routerLink]="['/admin/users', user.userId]">
-              <app-user-avatar [src]="avatarUrl(user.userId)" [name]="user.email" />
+              <app-user-avatar [src]="avatarUrl(user.userId)" [name]="user.email" size="lg" />
               <span class="shortlist-text">
-                <strong>{{ user.email }}</strong>
+                <strong [title]="user.email">{{ user.email }}</strong>
                 @if (user.userName) {
                   <small>{{ user.userName }}</small>
                 }
               </span>
-              <app-icon name="chevron-right" [size]="16" />
+              <app-icon class="ov-chevron" name="chevron-right" [size]="16" />
             </a>
           </li>
         }
       </ul>
     } @else {
-      <p class="empty-row">{{ empty }}</p>
+      <div class="ov-empty">
+        <span class="ov-empty-icon"><app-icon name="check-circle" [size]="26" /></span>
+        <p>{{ empty }}</p>
+      </div>
     }
     <a class="shortlist-more" routerLink="/admin/users">Lihat semua user <app-icon name="chevron-right" [size]="14" /></a>
   </section>

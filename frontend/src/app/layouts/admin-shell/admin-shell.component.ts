@@ -4,6 +4,7 @@ import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterLinkActive, Ro
 import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { IconComponent } from '../../shared/ui/icon.component';
+import { TopbarHeightDirective } from '../../shared/ui/topbar-height.directive';
 import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { environment } from '../../../environments/environment';
 
@@ -22,7 +23,7 @@ interface AdminPage {
 @Component({
   selector: 'app-admin-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, IconComponent, UserAvatarComponent],
+  imports: [TopbarHeightDirective, RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, IconComponent, UserAvatarComponent],
   templateUrl: './admin-shell.component.html',
 })
 export class AdminShellComponent {

@@ -1,6 +1,7 @@
 import { Component, ElementRef, HostListener, computed, forwardRef, inject, input, signal } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { IconComponent } from './icon.component';
+import { shouldDropUp } from './popover-position';
 
 export interface SelectOption<T = unknown> {
   value: T;
@@ -17,7 +18,7 @@ export interface SelectOption<T = unknown> {
   standalone: true,
   imports: [IconComponent],
   providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => SelectComponent), multi: true }],
-  host: { class: 'ui-select', '[class.open]': 'open()', '[class.disabled]': 'disabled()' },
+  host: { class: 'ui-select', '[class.open]': 'open()', '[class.disabled]': 'disabled()', '[class.drop-up]': 'open() && dropUp()' },
   template: `
     <button
       type="button"
@@ -61,6 +62,8 @@ export class SelectComponent<T = unknown> implements ControlValueAccessor {
   ariaLabel = input<string>('');
 
   protected open = signal(false);
+  /** Opens above the trigger when there's no room below in the viewport. */
+  protected dropUp = signal(false);
   protected disabled = signal(false);
   protected activeIndex = signal(0);
   private value = signal<T | null>(null);
@@ -82,6 +85,8 @@ export class SelectComponent<T = unknown> implements ControlValueAccessor {
     }
     const current = this.options().findIndex((o) => o.value === this.value());
     this.activeIndex.set(Math.max(0, current));
+    // List height: ~36px per option + padding, capped by the CSS max-height (260px).
+    this.dropUp.set(shouldDropUp(this.host.nativeElement, Math.min(260, this.options().length * 36 + 12)));
     this.open.set(true);
   }
 

@@ -242,6 +242,10 @@ func view(r Rule, names map[string]string) RuleView {
 		review := r.ReviewStatus
 		v.ReviewStatus = &review
 	}
+	if r.AvatarBoardID > 0 {
+		id := r.AvatarBoardID
+		v.BoardID = &id
+	}
 	for _, id := range r.StoryPointFields {
 		name := names[id]
 		if name == "" {

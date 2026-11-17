@@ -4,7 +4,6 @@ import { MutePanelComponent } from './mute-panel.component';
 import { BoardService } from '../../../core/services/board.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
 import { ToastService } from '../../../core/ui/toast.service';
-import { ConfirmService } from '../../../core/ui/confirm.service';
 import { BoardContextService } from '../../../core/services/board-context.service';
 import { SETTINGS_MODE, SettingsApi, SettingsScope } from '../../../core/services/settings-api';
 
@@ -37,9 +36,9 @@ describe('MutePanelComponent', () => {
     fixture.detectChanges();
   });
 
-  it('offers 1 jam / 2 jam / Sampai besok / Selamanya when not muted', () => {
+  it('offers 1 jam / 2 jam / Sampai besok (no Selamanya) when not muted', () => {
     const labels = Array.from(el().querySelectorAll('.mute-actions button')).map((b) => b.textContent!.trim());
-    expect(labels).toEqual(['1 jam', '2 jam', 'Sampai besok', 'Selamanya']);
+    expect(labels).toEqual(['1 jam', '2 jam', 'Sampai besok']);
     expect(el().querySelector('.mute-banner')).toBeNull();
   });
 
@@ -87,29 +86,18 @@ describe('MutePanelComponent', () => {
     expect(muteState.active()).toBeFalse();
   });
 
-  it('asks for confirmation before muting forever, and does nothing if cancelled', async () => {
-    const confirm = spyOn(TestBed.inject(ConfirmService), 'ask').and.resolveTo(false);
-
-    (el().querySelectorAll('.mute-actions button')[3] as HTMLButtonElement).click();
-    await fixture.whenStable();
-
-    expect(confirm).toHaveBeenCalledWith(jasmine.objectContaining({ tone: 'danger' }));
-    expect(boardService.mute).not.toHaveBeenCalled();
-  });
-
-  it('mutes forever after confirmation and shows the "dimatikan" banner', async () => {
-    spyOn(TestBed.inject(ConfirmService), 'ask').and.resolveTo(true);
-    boardService.mute.and.returnValue(of({ active: true, until: '9999-12-31T23:59:59+07:00', forever: true }));
-
-    (el().querySelectorAll('.mute-actions button')[3] as HTMLButtonElement).click();
-    await fixture.whenStable();
+  it('shows an existing forever mute and switches it back on', () => {
+    muteState.set({ active: true, until: '9999-12-31T23:59:59+07:00', forever: true });
     fixture.detectChanges();
-
-    expect(boardService.mute).toHaveBeenCalledWith({ until: 'forever' }, null);
-    expect(muteState.forever()).toBeTrue();
     const banner = el().querySelector('.mute-banner.forever');
     expect(banner?.textContent).toContain('Notifikasi dimatikan');
     expect(banner?.querySelector('button')?.textContent).toContain('Aktifkan lagi');
+
+    boardService.unmute.and.returnValue(of({ active: false, until: null }));
+    (banner!.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(boardService.unmute).toHaveBeenCalledWith(null);
+    expect(el().querySelector('.mute-actions')).not.toBeNull();
   });
 
   describe('board scope', () => {

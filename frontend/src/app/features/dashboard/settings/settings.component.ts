@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, ElementRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
@@ -77,7 +77,18 @@ export class SettingsComponent {
     { value: null, label: 'Berhenti' },
   ];
 
+  /** First load only (nothing to show yet): the skeleton cards. */
   protected loading = true;
+  /**
+   * Reloading while settings are already on screen (board switch, Batal,
+   * reset): the old content stays, dimmed, until the new response lands, so
+   * the page never unmounts to the skeleton and collapses.
+   */
+  protected switching = signal(false);
+  /** Page height held while switching, so a shorter layout can't jump the scroll. */
+  protected holdHeight = signal<number | null>(null);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private releaseHoldTimer?: ReturnType<typeof setTimeout>;
   protected error: string | null = null;
   protected hasCredential = false;
   protected credentialMasked: string | null = null;
@@ -217,6 +228,7 @@ export class SettingsComponent {
   }
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => clearTimeout(this.releaseHoldTimer));
     // Reload whenever the navbar board changes.
     effect(() => {
       const boardId = this.boardContext.selectedId();
@@ -239,8 +251,20 @@ export class SettingsComponent {
     });
   }
 
+  /** The board chip whose settings are loading (gets the inline spinner). */
+  protected isPending(boardId: number | null): boolean {
+    return this.switching() && this.boardContext.selectedId() === boardId;
+  }
+
   protected loadSettings(boardId: number | null = this.boardContext.selectedId()): void {
-    this.loading = true;
+    if (this.draft() && !this.error) {
+      clearTimeout(this.releaseHoldTimer);
+      const height = this.host.nativeElement.firstElementChild?.getBoundingClientRect().height ?? 0;
+      this.holdHeight.set(height > 0 ? Math.round(height) : null);
+      this.switching.set(true);
+    } else {
+      this.loading = true;
+    }
     this.error = null;
     this.editingCustom.set(false);
     this.fieldErrors.set({});
@@ -270,12 +294,21 @@ export class SettingsComponent {
         this.hasCredential = res.credential.hasCredential;
         this.credentialMasked = res.credential.maskedPreview;
         this.loading = false;
+        this.endSwitch();
       },
       error: () => {
         this.error = 'Gagal memuat pengaturan, coba lagi';
         this.loading = false;
+        this.endSwitch();
       },
     });
+  }
+
+  /** New content is in: fade it back in, then let the page take its natural height. */
+  private endSwitch(): void {
+    this.switching.set(false);
+    clearTimeout(this.releaseHoldTimer);
+    this.releaseHoldTimer = setTimeout(() => this.holdHeight.set(null), 260);
   }
 
   protected patch(changes: Partial<NotificationSettings>): void {

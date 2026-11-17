@@ -1,0 +1,39 @@
+// Global table / skeleton / check-box styles live in styles.scss.
+.users-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-left: auto;
+  .search-input { margin-left: 0; } }
+
+.filter-check {
+  display: inline-flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  font-size: .86rem; font-weight: 500; color: var(--text); cursor: pointer; user-select: none;
+  transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease), transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+  &:hover { border-color: #c5c0ff; background: #fcfbff; }
+  &:active { transform: scale(.98); }
+  &:has(input:focus-visible) { box-shadow: 0 0 0 4px var(--primary-ring); border-color: var(--primary); }
+  &.checked { border-color: var(--primary); background: var(--primary-soft); color: var(--primary-strong); }
+  &.disabled { opacity: .55; pointer-events: none; }
+  .check-box { width: 20px; height: 20px; border-radius: 6px; }
+}
+
+table.admin-users { font-size: .9rem; }
+table.admin-users tbody tr { animation: fade-in 260ms var(--ease) backwards; }
+
+// Skeleton rows share the real table's columns and row height, so swapping
+// to the data doesn't shift anything.
+.users-skeleton {
+  tbody tr { animation: fade-up 320ms var(--ease) backwards; cursor: default; }
+  tbody tr:hover { background: transparent; }
+  .sk-avatar { width: 32px; height: 32px; border-radius: 50%; flex: none; }
+  .sk-lines { display: flex; flex-direction: column; gap: 6px; }
+  .sk-line { display: block; height: 12px; width: 150px; &.short { width: 90px; height: 10px; } }
+  .sk-pill { display: block; height: 22px; width: 70px; border-radius: 999px; &.wide { width: 96px; border-radius: 6px; } }
+  .sk-input { display: block; height: 34px; width: 220px; border-radius: var(--radius-sm); }
+  .sk-actions { display: inline-flex; align-items: center; gap: 6px; }
+  .sk-btn { display: block; height: 30px; width: 64px; border-radius: 8px; &.wide { width: 112px; } }
+  .sk-icon { display: block; width: 32px; height: 32px; border-radius: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  table.admin-users tbody tr, .users-skeleton tbody tr { animation: none; }
+  .filter-check { transition: none; &:active { transform: none; } }
+}

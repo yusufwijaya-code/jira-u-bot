@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { BroadcastComponent } from './broadcast.component';
+import { BroadcastComponent, chatPreviewHtml } from './broadcast.component';
 import { AdminService } from '../../../core/services/admin.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 
@@ -10,7 +10,14 @@ describe('BroadcastComponent', () => {
   let confirmService: jasmine.SpyObj<ConfirmService>;
 
   beforeEach(async () => {
-    adminService = jasmine.createSpyObj('AdminService', ['broadcast']);
+    adminService = jasmine.createSpyObj('AdminService', ['broadcast', 'listUsers']);
+    adminService.listUsers.and.returnValue(of({
+      users: [
+        { userId: 1, email: 'a@x.com', userName: '', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: true, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'nudge' as const },
+        { userId: 2, email: 'b@x.com', userName: '', flagActive: true, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const },
+        { userId: 3, email: 'c@x.com', userName: '', flagActive: false, createdDate: '', jiraAccountId: '', hasCredential: false, credentialMasked: '', chatAppActivated: false, chatAppActivatedDate: null, chatSender: null, effectiveChatSender: 'operator' as const },
+      ],
+    }));
     confirmService = jasmine.createSpyObj('ConfirmService', ['ask']);
 
     await TestBed.configureTestingModule({
@@ -107,5 +114,43 @@ describe('BroadcastComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.msg').textContent).toContain('gagal mengirim broadcast, coba lagi');
     expect(fixture.componentInstance['message']).toBe('Update baru!');
+  });
+
+  it('summarises the recipients from the active users', () => {
+    const text = fixture.nativeElement.querySelector('[data-recipients]').textContent;
+    expect(text).toContain('Dikirim ke 2 user aktif');
+    expect(text).toContain('1 sudah aktivasi Nudge App');
+  });
+
+  it('falls back to a note when the user list cannot be loaded', () => {
+    adminService.listUsers.and.returnValue(throwError(() => ({ status: 500 })));
+    fixture = TestBed.createComponent(BroadcastComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-recipients]').textContent).toContain('Jumlah penerima belum bisa dimuat');
+  });
+
+  it('previews the message with Google Chat markup and escapes HTML', () => {
+    fixture.componentInstance['message'] = '*Baru* _cek_ <b>x</b>' + String.fromCharCode(10) + 'baris 2';
+    fixture.detectChanges();
+    const preview = fixture.nativeElement.querySelector('[data-preview]') as HTMLElement;
+    expect(preview.querySelector('strong')?.textContent).toBe('Baru');
+    expect(preview.querySelector('em')?.textContent).toBe('cek');
+    expect(preview.querySelector('br')).not.toBeNull();
+    expect(preview.querySelector('b')).toBeNull();
+    expect(preview.textContent).toContain('<b>x</b>');
+  });
+
+  it('keeps word-internal underscores and asterisks as plain text', () => {
+    expect(chatPreviewHtml('snake_case_name 2*3*4')).toBe('snake_case_name 2*3*4');
+  });
+
+  it('turns the counter to warning and danger near the limit', () => {
+    fixture.componentInstance['message'] = 'x'.repeat(1700);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.bc-meter').getAttribute('data-level')).toBe('warn');
+    fixture.componentInstance['message'] = 'x'.repeat(1950);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.bc-meter').getAttribute('data-level')).toBe('danger');
+    expect(fixture.nativeElement.querySelector('.char-count').textContent).toContain('1950 / 2000');
   });
 });

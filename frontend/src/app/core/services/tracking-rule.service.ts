@@ -23,6 +23,8 @@ export interface TrackingRule {
   isActive: boolean;
   editedBy: string;
   editedDate: string;
+  /** A board of this project with a cached Jira avatar (null = none); shown via the board avatar proxy. */
+  boardId?: number | null;
 }
 
 export interface TrackingRuleInput {

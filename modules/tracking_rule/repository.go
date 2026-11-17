@@ -12,8 +12,11 @@ import (
 
 const mysqlDuplicateKeyErrNo = 1062
 
+// The last column is a board of the project with a cached avatar (ms_board),
+// so the admin page can show the project picture through the board avatar proxy.
 const ruleColumns = `projectKey, projectName, trackedStatuses, doneStatus, reviewStatus, storyPointFields,
-	storyPointWriteField, storyPointWriteFieldSubtask, isActive, editedBy, editedDate`
+	storyPointWriteField, storyPointWriteFieldSubtask, isActive, editedBy, editedDate,
+	(SELECT MIN(b.boardID) FROM ms_board b WHERE b.projectKey = ms_tracking_rule.projectKey AND b.avatarURL <> '')`
 
 // Repository reads and writes ms_tracking_rule.
 type Repository struct{ db *sql.DB }
@@ -26,10 +29,12 @@ func scanRule(row rowScanner) (Rule, error) {
 	var r Rule
 	var tracked, fields []byte
 	var review sql.NullString
+	var avatarBoard sql.NullInt64
 	if err := row.Scan(&r.ProjectKey, &r.ProjectName, &tracked, &r.DoneStatus, &review, &fields,
-		&r.StoryPointWriteField, &r.StoryPointWriteFieldSubtask, &r.IsActive, &r.EditedBy, &r.EditedDate); err != nil {
+		&r.StoryPointWriteField, &r.StoryPointWriteFieldSubtask, &r.IsActive, &r.EditedBy, &r.EditedDate, &avatarBoard); err != nil {
 		return Rule{}, err
 	}
+	r.AvatarBoardID = avatarBoard.Int64
 	if err := json.Unmarshal(tracked, &r.TrackedStatuses); err != nil {
 		return Rule{}, fmt.Errorf("tracking_rule: trackedStatuses of %s: %w", r.ProjectKey, err)
 	}

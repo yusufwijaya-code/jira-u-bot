@@ -1,4 +1,4 @@
-<div class="page-stack">
+<div class="page-stack settings-stack" [class.switching]="switching()" [attr.aria-busy]="switching() || null" [style.min-height.px]="holdHeight()">
   <!-- Umum = applies to every board; Per board = notification settings of one board / the default -->
   <nav class="settings-tabs" role="tablist" aria-label="Bagian pengaturan">
     <button type="button" role="tab" class="settings-tab" data-tab="umum" [class.active]="tab() === 'umum'" [attr.aria-selected]="tab() === 'umum'" (click)="tab.set('umum')">
@@ -112,15 +112,16 @@
 
     <!-- Which board this tab configures (shares the navbar choice) -->
     <div class="settings-boards" role="tablist" aria-label="Pilih board">
-      <button type="button" role="tab" class="settings-board" data-scope-chip="default" [class.active]="scopeBoardId() === null" [attr.aria-selected]="scopeBoardId() === null" (click)="boardContext.select(null)">
+      <button type="button" role="tab" class="settings-board" data-scope-chip="default" [class.active]="scopeBoardId() === null" [attr.aria-selected]="scopeBoardId() === null" [class.pending]="isPending(null)" (click)="boardContext.select(null)">
         <span class="settings-board-icon"><app-icon name="layers" [size]="18" /></span>
         <span class="settings-board-text">
           <strong>Default semua board</strong>
           <small>Dipakai board tanpa pengaturan khusus</small>
         </span>
+        @if (isPending(null)) { <span class="settings-board-spinner" data-switch-spinner aria-hidden="true"></span> }
       </button>
       @for (b of boardContext.boards(); track b.boardId) {
-        <button type="button" role="tab" class="settings-board" [attr.data-scope-chip]="b.boardId" [class.active]="scopeBoardId() === b.boardId" [attr.aria-selected]="scopeBoardId() === b.boardId" (click)="boardContext.select(b.boardId)">
+        <button type="button" role="tab" class="settings-board" [attr.data-scope-chip]="b.boardId" [class.active]="scopeBoardId() === b.boardId" [attr.aria-selected]="scopeBoardId() === b.boardId" [class.pending]="isPending(b.boardId)" (click)="boardContext.select(b.boardId)">
           <app-board-avatar [boardId]="b.boardId" [projectKey]="b.projectKey" [size]="32" />
           <span class="settings-board-text">
             <strong>{{ b.name }}</strong>
@@ -129,6 +130,7 @@
               @if (otherBoardMuteLabel(b)) { <span class="board-state muted">🔕 Dimute</span> }
             </small>
           </span>
+          @if (isPending(b.boardId)) { <span class="settings-board-spinner" data-switch-spinner aria-hidden="true"></span> }
         </button>
       }
     </div>

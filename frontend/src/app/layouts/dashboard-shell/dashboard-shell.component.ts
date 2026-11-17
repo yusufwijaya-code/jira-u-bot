@@ -10,6 +10,7 @@ import { NotificationSwitchService } from '../../core/services/notification-swit
 import { BoardAvatarComponent } from '../../shared/ui/board-avatar.component';
 import { NotificationConsentComponent } from '../../shared/ui/notification-consent.component';
 import { IconComponent } from '../../shared/ui/icon.component';
+import { TopbarHeightDirective } from '../../shared/ui/topbar-height.directive';
 import { UserAvatarComponent, myAvatarUrl } from '../../shared/ui/user-avatar.component';
 import { ChatAppBannerComponent } from '../../shared/ui/chat-app-banner.component';
 import { environment } from '../../../environments/environment';
@@ -22,7 +23,7 @@ interface PageHeading {
 @Component({
   selector: 'app-dashboard-shell',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, UserAvatarComponent, BoardAvatarComponent, NotificationConsentComponent, ChatAppBannerComponent],
+  imports: [TopbarHeightDirective, RouterOutlet, RouterLink, RouterLinkActive, AsyncPipe, NgIf, IconComponent, UserAvatarComponent, BoardAvatarComponent, NotificationConsentComponent, ChatAppBannerComponent],
   templateUrl: './dashboard-shell.component.html',
 })
 export class DashboardShellComponent implements OnInit {

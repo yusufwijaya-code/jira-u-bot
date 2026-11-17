@@ -14,10 +14,13 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
   standalone: true,
   imports: [NgFor, NgIf, FormsModule, RouterLink, IconComponent, UserAvatarComponent],
   templateUrl: './admin-users.component.html',
+  styleUrl: './admin-users.component.scss',
 })
 export class AdminUsersComponent implements OnInit {
   protected readonly avatarUrl = adminUserAvatarUrl;
   protected readonly activationDate = formatActivationDate;
+  /** Placeholder rows while the first load runs (same columns as the real table). */
+  protected readonly skeletonRows = [0, 1, 2, 3, 4, 5];
   protected users: UserRow[] = [];
   protected loading = true;
   protected error: string | null = null;
