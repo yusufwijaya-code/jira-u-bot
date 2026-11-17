@@ -2,7 +2,15 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 
-export interface CreateField { id: string; name: string; kind: 'text' | 'number' | 'select'; multi: boolean; required: boolean; options?: { id: string; label: string }[] }
+export type CreateFieldKind = 'text' | 'textarea' | 'number' | 'select' | 'cascade' | 'date' | 'labels';
+export interface CreateOption { id: string; label: string; /** Second level of a "cascade" field. */ children?: { id: string; label: string }[] }
+/**
+ * A createmeta field the form fills. Values sent in `fields`: text/textarea → string, number → number,
+ * select → option id (multi: id[]), cascade → { id, child? }, date → "YYYY-MM-DD", labels → string[].
+ */
+export interface CreateField { id: string; name: string; kind: CreateFieldKind; multi: boolean; required: boolean; options?: CreateOption[] }
+/** Cascade value: parent option id + optional child option id. */
+export interface CascadeValue { id: string; child?: string }
 export interface CreateType { id: string; name: string; subtask: boolean; supported: boolean; parentAllowed: boolean; storyPointField?: string; fields: CreateField[] }
 export interface CreateMeta { projectKey: string; types: CreateType[]; subtaskTypeId: string }
 export interface JiraUser { accountId: string; displayName: string; avatarUrl: string }

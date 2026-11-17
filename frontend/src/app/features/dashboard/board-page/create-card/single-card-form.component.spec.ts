@@ -197,4 +197,121 @@ describe('SingleCardFormComponent', () => {
     expect(req.request.body).toEqual(jasmine.objectContaining({ typeId: '10143', parentKey: 'OMS-5' }));
     req.flush({ key: 'OMS-6', url: 'u' });
   });
+
+  describe('field kinds', () => {
+    const kinds: CreateMeta = { projectKey: 'OMS', subtaskTypeId: '', types: [{ id: '10206', name: 'Bug', subtask: false, supported: true, parentAllowed: false, fields: [
+      { id: 'cf_mr', name: 'Merge Request', kind: 'textarea', multi: false, required: true },
+      { id: 'cf_service', name: 'Service', kind: 'cascade', multi: false, required: true, options: [
+        { id: '10200', label: 'Order', children: [{ id: '11099', label: 'ESO' }, { id: '11100', label: 'Kiosk' }] },
+        { id: '10201', label: 'Other' },
+      ] },
+      { id: 'duedate', name: 'Due date', kind: 'date', multi: false, required: false },
+      { id: 'labels', name: 'Labels', kind: 'labels', multi: true, required: false },
+      { id: 'versions', name: 'Affects versions', kind: 'select', multi: true, required: false,
+        options: Array.from({ length: 20 }, (_, i) => ({ id: `v${i}`, label: `POS v.2.${100 + i}.0` })) },
+    ] }] };
+    function renderKinds() {
+      const f = render();
+      f.componentRef.setInput('meta', kinds);
+      f.detectChanges();
+      choose(f, '[data-type]', 'Bug');
+      return f;
+    }
+
+    it('puts textarea fields in the main column and the rest in Detail', () => {
+      const el: HTMLElement = renderKinds().nativeElement;
+      expect(el.querySelector('.scf-main textarea[data-field="cf_mr"]')).not.toBeNull();
+      expect(el.querySelector('.scf-side [data-field="cf_mr"]')).toBeNull();
+      expect(el.querySelector('.scf-side [data-field="cf_service"]')).not.toBeNull();
+      expect(el.querySelector('.scf-side app-date-range-picker[data-field="duedate"]')).not.toBeNull();
+      expect(el.textContent).toContain('Merge Request *');
+      expect(el.querySelector('select')).toBeNull();
+    });
+
+    it('cascade: child select appears for a parent with children and resets when the parent changes', async () => {
+      const f = renderKinds();
+      const el: HTMLElement = f.nativeElement;
+      expect(el.querySelector('[data-cascade-child]')).toBeNull();
+      choose(f, '[data-cascade-parent]', 'Order');
+      expect(el.querySelector('[data-cascade-child]')).not.toBeNull();
+      choose(f, '[data-cascade-child]', 'Kiosk');
+      choose(f, '[data-cascade-parent]', 'Other');
+      expect(el.querySelector('[data-cascade-child]')).withContext('Other has no children').toBeNull();
+      choose(f, '[data-cascade-parent]', 'Order');
+      await f.whenStable(); f.detectChanges();
+      expect(shown(el, '[data-cascade-child]')).toBe('Pilih…');
+      choose(f, '[data-cascade-child]', 'ESO');
+      setIn(el, '[data-summary]', 'Bug'); setIn(el, 'textarea[data-field="cf_mr"]', 'https://mr'); f.detectChanges();
+      (el.querySelector('[data-submit]') as HTMLButtonElement).click();
+      const req = http.expectOne((r) => r.url.endsWith('/create/issue'));
+      expect(req.request.body.fields).toEqual({ cf_service: { id: '10200', child: '11099' }, cf_mr: 'https://mr' });
+      req.flush({ key: 'OMS-9', url: 'u' });
+    });
+
+    it('cascade: the parent alone satisfies a required field', () => {
+      const f = renderKinds();
+      const el: HTMLElement = f.nativeElement;
+      setIn(el, '[data-summary]', 'Bug'); setIn(el, 'textarea[data-field="cf_mr"]', 'mr'); f.detectChanges();
+      expect(el.querySelector('[data-submit-hint]')?.textContent).toContain('Service wajib diisi');
+      choose(f, '[data-cascade-parent]', 'Order');
+      expect((el.querySelector('[data-submit]') as HTMLButtonElement).disabled).toBeFalse();
+    });
+
+    it('date: the single-date picker sets YYYY-MM-DD and Hapus clears it', () => {
+      const f = renderKinds();
+      const el: HTMLElement = f.nativeElement;
+      const trigger = () => el.querySelector('[data-field="duedate"] .ui-date-trigger') as HTMLButtonElement;
+      trigger().click(); f.detectChanges();
+      expect(el.querySelector('[data-field="duedate"] [data-done]')).withContext('single mode has no Selesai').toBeNull();
+      const day = el.querySelector('[data-field="duedate"] .ui-date-cell:not(.outside)') as HTMLButtonElement;
+      const date = day.getAttribute('data-day')!;
+      day.click(); f.detectChanges();
+      expect(el.querySelector('[data-field="duedate"] .ui-date-popup')).toBeNull();
+      expect(el.querySelector('[data-field="duedate"] .ui-date-count')).toBeNull();
+      expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      trigger().click(); f.detectChanges();
+      (el.querySelector('[data-field="duedate"] [data-clear]') as HTMLButtonElement).click(); f.detectChanges();
+      expect(el.querySelector('[data-field="duedate"] .ui-select-value')?.textContent?.trim()).toBe('Pilih tanggal');
+      trigger().click(); f.detectChanges();
+      (el.querySelector(`[data-field="duedate"] [data-day="${date}"]`) as HTMLButtonElement).click(); f.detectChanges();
+      choose(f, '[data-cascade-parent]', 'Other');
+      setIn(el, '[data-summary]', 'Bug'); setIn(el, 'textarea[data-field="cf_mr"]', 'mr'); f.detectChanges();
+      (el.querySelector('[data-submit]') as HTMLButtonElement).click();
+      const req = http.expectOne((r) => r.url.endsWith('/create/issue'));
+      expect(req.request.body.fields.duedate).toBe(date);
+      req.flush({ key: 'OMS-10', url: 'u' });
+    });
+
+    it('labels: space or Enter commits a chip, x removes it, and a pending draft is sent', () => {
+      const f = renderKinds();
+      const el: HTMLElement = f.nativeElement;
+      const input = () => el.querySelector('[data-field="labels"] [data-label-input]') as HTMLInputElement;
+      setIn(el, '[data-field="labels"] [data-label-input]', 'backend '); f.detectChanges();
+      expect(input().value).toBe('');
+      setIn(el, '[data-field="labels"] [data-label-input]', 'hotfix');
+      input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); f.detectChanges();
+      (el.querySelector('[data-field="labels"] .scf-label button') as HTMLButtonElement).click(); f.detectChanges();
+      setIn(el, '[data-field="labels"] [data-label-input]', 'pending'); f.detectChanges();
+      choose(f, '[data-cascade-parent]', 'Other');
+      setIn(el, '[data-summary]', 'Bug'); setIn(el, 'textarea[data-field="cf_mr"]', 'mr'); f.detectChanges();
+      (el.querySelector('[data-submit]') as HTMLButtonElement).click();
+      const req = http.expectOne((r) => r.url.endsWith('/create/issue'));
+      expect(req.request.body.fields.labels).toEqual(['hotfix', 'pending']);
+      req.flush({ key: 'OMS-11', url: 'u' });
+    });
+
+    it('long multi-select lists get a search box and a scrollable wrap', () => {
+      const f = renderKinds();
+      const el: HTMLElement = f.nativeElement;
+      expect(el.querySelector('[data-field="versions"]')?.classList).toContain('scf-scroll');
+      expect(el.querySelectorAll('[data-field="versions"] .cc-opt').length).toBe(20);
+      (el.querySelector('[data-field="versions"] [data-option="v3"]') as HTMLButtonElement).click(); f.detectChanges();
+      setIn(el, '[data-filter="versions"]', '2.115'); f.detectChanges();
+      const visible = Array.from(el.querySelectorAll('[data-field="versions"] .cc-opt')).map((o) => o.getAttribute('data-option'));
+      expect(visible).withContext('the match plus what is already picked').toEqual(['v3', 'v15']);
+      expect(el.textContent).toContain('1 dipilih');
+      setIn(el, '[data-filter="versions"]', 'zzz'); f.detectChanges();
+      expect(el.querySelectorAll('[data-field="versions"] .cc-opt').length).toBe(1);
+    });
+  });
 });

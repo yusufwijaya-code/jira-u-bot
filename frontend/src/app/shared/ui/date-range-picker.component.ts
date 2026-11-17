@@ -65,6 +65,7 @@ interface DayCell {
  * One-field date range picker (replaces two <input type="date">, whose popup
  * can't be styled). First click picks the start, second click the end; a
  * single day is one click + "Selesai". Dates are "YYYY-MM-DD".
+ * [single]: one date — a click picks it and closes (to is always '').
  */
 @Component({
   selector: 'app-date-range-picker',
@@ -82,14 +83,14 @@ interface DayCell {
       (keydown.escape)="close()"
     >
       <app-icon name="calendar" [size]="15" />
-      <span class="ui-select-value" [class.placeholder]="!from()">{{ from() ? label(from(), to()) : placeholder() }}</span>
-      @if (from()) {
+      <span class="ui-select-value" [class.placeholder]="!from()">{{ from() ? label(from(), single() ? '' : to()) : placeholder() }}</span>
+      @if (from() && !single()) {
         <span class="ui-date-count">{{ count(from(), to()) }} hari</span>
       }
       <app-icon class="ui-select-chevron" name="chevron-down" [size]="16" />
     </button>
     @if (open()) {
-      <div class="ui-date-popup" role="dialog" [attr.aria-label]="ariaLabel() || 'Pilih rentang tanggal'" (keydown.escape)="close()">
+      <div class="ui-date-popup" role="dialog" [attr.aria-label]="ariaLabel() || (single() ? 'Pilih tanggal' : 'Pilih rentang tanggal')" (keydown.escape)="close()">
         <div class="ui-date-head">
           <button type="button" class="ui-date-nav" aria-label="Bulan sebelumnya" data-prev (click)="shift(-1)">
             <app-icon name="chevron-left" [size]="16" />
@@ -99,7 +100,9 @@ interface DayCell {
             <app-icon name="chevron-right" [size]="16" />
           </button>
         </div>
-        <p class="ui-date-step">{{ picking() ? 'Pilih tanggal selesai' : 'Pilih tanggal mulai' }}</p>
+        @if (!single()) {
+          <p class="ui-date-step">{{ picking() ? 'Pilih tanggal selesai' : 'Pilih tanggal mulai' }}</p>
+        }
         <div class="ui-date-grid" role="grid" (mouseleave)="hover.set('')">
           @for (h of weekHead; track h) {
             <span class="ui-date-weekday" [class.weekend]="h === 'Sab' || h === 'Min'">{{ h }}</span>
@@ -124,7 +127,11 @@ interface DayCell {
         </div>
         <div class="ui-date-footer">
           <button type="button" class="ui-date-link" data-today [disabled]="isDisabled(today)" (click)="pickToday()">Hari ini</button>
-          <button type="button" class="btn btn-primary btn-sm" data-done [disabled]="!draftFrom()" (click)="commit()">Selesai</button>
+          @if (!single()) {
+            <button type="button" class="btn btn-primary btn-sm" data-done [disabled]="!draftFrom()" (click)="commit()">Selesai</button>
+          } @else if (from()) {
+            <button type="button" class="ui-date-link" data-clear (click)="clear()">Hapus</button>
+          }
         </div>
       </div>
     }
@@ -138,6 +145,8 @@ export class DateRangePickerComponent {
   max = input<string>('');
   placeholder = input<string>('Pilih tanggal');
   ariaLabel = input<string>('');
+  /** One date instead of a range; "Hapus" clears it (emits from ''). */
+  single = input(false);
   rangeChange = output<DateRange>();
 
   protected readonly weekHead = WEEK_HEAD;
@@ -225,6 +234,12 @@ export class DateRangePickerComponent {
   }
 
   protected pick(date: string): void {
+    if (this.single()) {
+      this.draftFrom.set(date);
+      this.draftTo.set('');
+      this.commit();
+      return;
+    }
     if (!this.picking() || date < this.draftFrom()) {
       // New start (also when the second click lands before the start).
       this.draftFrom.set(date);
@@ -240,6 +255,11 @@ export class DateRangePickerComponent {
     this.draftFrom.set(this.today);
     this.draftTo.set('');
     this.commit();
+  }
+
+  protected clear(): void {
+    this.rangeChange.emit({ from: '', to: '' });
+    this.close();
   }
 
   protected commit(): void {
