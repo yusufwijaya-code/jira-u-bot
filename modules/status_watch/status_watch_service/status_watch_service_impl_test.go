@@ -341,6 +341,48 @@ func TestRunOnce_ReadsEverythingAgainEveryHour(t *testing.T) {
 	}
 }
 
+func TestRunOnce_ReactivatedProjectIsASilentBaseline(t *testing.T) {
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+	f := newFixture()
+	f.build()
+	f.jira.issues = []jira_client_dto.Issue{ticket("OMS-1", "To Do", "acc-dev"), ticket("CORE-1", "To Do", "acc-dev")}
+	if err := f.svc.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var coreOnly []jira_client_dto.TrackingRule
+	for _, r := range jira_client_dto.BuiltinRules() {
+		if r.ProjectKey == "CORE" {
+			coreOnly = append(coreOnly, r)
+		}
+	}
+	jira_client_dto.SetRules(coreOnly) // OMS deactivated
+	f.jira.issues = []jira_client_dto.Issue{ticket("CORE-1", "To Do", "acc-dev")}
+	if err := f.svc.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) // OMS back; OMS-1 moved meanwhile
+	f.jira.issues = []jira_client_dto.Issue{ticket("OMS-1", "Code Process", "acc-dev"), ticket("CORE-1", "Code Process", "acc-dev")}
+	if err := f.svc.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.dm.sent) != 1 || f.dm.sent[0].IssueKey != "CORE-1" {
+		t.Fatalf("sent %+v, want only CORE-1 (OMS-1 is a baseline after reactivation)", f.dm.sent)
+	}
+	if w := f.jira.windows[2]; w != 0 {
+		t.Errorf("window after reactivation = %v, want a full read", w)
+	}
+	if f.snaps.rows["OMS-1"].Status != "Code Process" {
+		t.Error("the baseline must refresh the snapshot")
+	}
+	f.jira.issues = []jira_client_dto.Issue{ticket("OMS-1", "Code Review", "acc-dev")}
+	if err := f.svc.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.dm.sent) != 2 || f.dm.sent[1].IssueKey != "OMS-1" {
+		t.Fatalf("sent %+v, want OMS-1 notified again after the baseline", f.dm.sent)
+	}
+}
+
 func TestRunOnce_SearchErrorKeepsTheCursor(t *testing.T) {
 	f := newFixture()
 	f.build()

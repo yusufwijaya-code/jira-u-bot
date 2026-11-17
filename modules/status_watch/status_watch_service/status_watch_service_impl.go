@@ -74,6 +74,10 @@ type statusWatchServiceImpl struct {
 	// the 30-day cleanup only drops tickets that left the sprints).
 	lastSuccess  *time.Time
 	lastFullSync time.Time
+	// activeProjects is the tracked-project set of the last successful
+	// cycle; a project re-entering it (Aturan Board reactivation) has stale
+	// snapshots, so its first cycle is a silent baseline.
+	activeProjects map[string]bool
 
 	users        map[string]registration_dto.User // by Jira accountId
 	emails       map[string]bool
@@ -118,10 +122,19 @@ func (s *statusWatchServiceImpl) RunOnce(ctx context.Context) error {
 	if len(s.accountIDs) == 0 {
 		return nil
 	}
-	// The first cycle and one an hour read every ticket; the others only
-	// the ones updated since the last success (+ overlap).
+	active := map[string]bool{}
+	rejoined := map[string]bool{}
+	for _, key := range jira_client_dto.ActiveProjectKeys() {
+		active[key] = true
+		if s.activeProjects != nil && !s.activeProjects[key] {
+			rejoined[key] = true
+		}
+	}
+	// The first cycle, one an hour and one after a project (re)joined read
+	// every ticket; the others only the ones updated since the last success
+	// (+ overlap).
 	var within time.Duration
-	full := s.lastSuccess == nil || started.Sub(s.lastFullSync) >= fullSyncInterval
+	full := s.lastSuccess == nil || started.Sub(s.lastFullSync) >= fullSyncInterval || len(rejoined) > 0
 	if !full {
 		within = started.Sub(*s.lastSuccess) + cursorOverlap
 	}
@@ -154,7 +167,7 @@ func (s *statusWatchServiceImpl) RunOnce(ctx context.Context) error {
 			log.Printf("status_watch: snapshot of %s failed: %v", issue.Key, err)
 			continue
 		}
-		if !seen || strings.EqualFold(prev.Status, status) {
+		if !seen || rejoined[jira_client_dto.ProjectKeyOf(issue.Key)] || strings.EqualFold(prev.Status, status) {
 			continue
 		}
 		// The current assignee, plus the previous one on a hand-off (e.g.
@@ -168,6 +181,7 @@ func (s *statusWatchServiceImpl) RunOnce(ctx context.Context) error {
 
 	at := started
 	s.lastSuccess = &at
+	s.activeProjects = active
 	if full {
 		s.lastFullSync = started
 	}
