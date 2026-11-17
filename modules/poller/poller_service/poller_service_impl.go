@@ -73,7 +73,7 @@ func NewPollerService(
 // returned for session tracking/DM routing — never the issue's own
 // (often blank) emailAddress field.
 func (p *pollerServiceImpl) resolveEligibility(ctx context.Context, issue jira_client_dto.Issue) (assigneeEmail string, eligible bool) {
-	sp := issue.Fields.EffectiveStoryPoints()
+	sp := issue.StoryPoints()
 	if sp == nil || *sp <= 0 {
 		return "", false
 	}
@@ -350,7 +350,7 @@ func (p *pollerServiceImpl) sessionStartTime(ctx context.Context, issueKey strin
 }
 
 func storyPointsOf(issue jira_client_dto.Issue) float64 {
-	sp := issue.Fields.EffectiveStoryPoints()
+	sp := issue.StoryPoints()
 	if sp == nil {
 		return 0
 	}

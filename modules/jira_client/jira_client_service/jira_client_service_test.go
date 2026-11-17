@@ -65,8 +65,8 @@ func TestSearchCodeProcessIssues_ParsesIssueList(t *testing.T) {
 	if issues[0].Fields.Assignee == nil || issues[0].Fields.Assignee.EmailAddress != "anwar@esb.co.id" {
 		t.Errorf("Assignee = %+v, want emailAddress anwar@esb.co.id", issues[0].Fields.Assignee)
 	}
-	if issues[0].Fields.StoryPoints == nil || *issues[0].Fields.StoryPoints != 3.0 {
-		t.Errorf("StoryPoints = %v, want 3.0", issues[0].Fields.StoryPoints)
+	if got := issues[0].StoryPoints(); got == nil || *got != 3.0 {
+		t.Errorf("StoryPoints() = %v, want 3.0", got)
 	}
 }
 
@@ -304,14 +304,11 @@ func TestSearchCodeProcessIssues_RequestsBothStoryPointFieldsAndParsesCoreVarian
 	if len(issues) != 1 {
 		t.Fatalf("len(issues) = %d, want 1", len(issues))
 	}
-	if issues[0].Fields.StoryPoints != nil {
-		t.Errorf("StoryPoints (customfield_10016) = %v, want nil for a CORE ticket", *issues[0].Fields.StoryPoints)
+	if issues[0].Fields.Numbers["customfield_10016"] != nil {
+		t.Errorf("customfield_10016 = %v, want nil for a CORE ticket", *issues[0].Fields.Numbers["customfield_10016"])
 	}
-	if issues[0].Fields.StoryPointsCore == nil || *issues[0].Fields.StoryPointsCore != 1.5 {
-		t.Errorf("StoryPointsCore (customfield_11053) = %v, want 1.5", issues[0].Fields.StoryPointsCore)
-	}
-	if got := issues[0].Fields.EffectiveStoryPoints(); got == nil || *got != 1.5 {
-		t.Errorf("EffectiveStoryPoints() = %v, want 1.5", got)
+	if got := issues[0].StoryPoints(); got == nil || *got != 1.5 {
+		t.Errorf("StoryPoints() = %v, want 1.5 (CORE's customfield_11053)", got)
 	}
 }
 
@@ -409,7 +406,7 @@ func TestTransitionIssue_PropagatesErrorOnFailure(t *testing.T) {
 func TestSearchCodeProcessIssues_ParsesCoreStoryPointEstimateField(t *testing.T) {
 	// Reproduces CORE-10832: a CORE ticket can have "Story Point Estimate"
 	// (customfield_10125) filled in while "Story Points" (customfield_11053)
-	// stays empty — EffectiveStoryPoints must still resolve a value instead
+	// stays empty — StoryPoints() must still resolve a value instead
 	// of silently treating the ticket as having no budget.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -438,8 +435,8 @@ func TestSearchCodeProcessIssues_ParsesCoreStoryPointEstimateField(t *testing.T)
 	if len(issues) != 1 {
 		t.Fatalf("len(issues) = %d, want 1", len(issues))
 	}
-	if got := issues[0].Fields.EffectiveStoryPoints(); got == nil || *got != 3 {
-		t.Errorf("EffectiveStoryPoints() = %v, want 3 — Story Point Estimate must be recognized even when Story Points is empty", got)
+	if got := issues[0].StoryPoints(); got == nil || *got != 3 {
+		t.Errorf("StoryPoints() = %v, want 3 — Story Point Estimate must be recognized even when Story Points is empty", got)
 	}
 }
 
@@ -552,4 +549,22 @@ func TestGetTransitionsAs_UsesCentralCredentialWhenNil(t *testing.T) {
 
 func basicAuthHeaderForTest(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+}
+
+func TestSearchCodeProcessIssues_FieldsFollowTheRegistry(t *testing.T) {
+	jira_client_dto.SetRules([]jira_client_dto.TrackingRule{{ProjectKey: "POS", TrackedStatuses: []string{"In Progress"}, DoneStatus: "Done", StoryPointFields: []string{"customfield_777"}}})
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+	var fields string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fields = r.URL.Query().Get("fields")
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{}})
+	}))
+	defer server.Close()
+
+	if _, err := NewJiraClientService(newTestConfig(server.URL)).SearchCodeProcessIssues(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if fields != "summary,status,assignee,issuetype,customfield_777,customfield_10020" {
+		t.Errorf("fields = %q, want the active rules' Story Point fields + Sprint", fields)
+	}
 }

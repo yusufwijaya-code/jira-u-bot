@@ -62,7 +62,7 @@ func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.C
 	jql := fmt.Sprintf(`project in (CORE, OMS) AND assignee = "%s" AND sprint in openSprints() ORDER BY updated DESC`, accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", dashboardIssueFields+",parent,subtasks,issuelinks")
+	params.Set("fields", issueFieldsParam(true)+",parent,subtasks,issuelinks")
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())
@@ -78,8 +78,16 @@ func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.C
 // MaxRelatedKeys caps the key list of one SearchIssuesByKeysForAssignee call.
 const MaxRelatedKeys = 100
 
-var dashboardIssueFields = "summary,status,assignee,issuetype," + jira_client_dto.StoryPointFieldID + "," +
-	jira_client_dto.StoryPointFieldIDCore + "," + jira_client_dto.StoryPointFieldIDCoreEstimate + "," + jira_client_dto.SprintFieldID
+// issueFieldsParam is the fields= of every issue search: the basics, the
+// Story Point fields of every active tracking rule and, withSprint, the
+// Sprint field.
+func issueFieldsParam(withSprint bool) string {
+	fields := append([]string{"summary", "status", "assignee", "issuetype"}, jira_client_dto.StoryPointFieldIDs()...)
+	if withSprint {
+		fields = append(fields, jira_client_dto.SprintFieldID)
+	}
+	return strings.Join(fields, ",")
+}
 
 func (s *jiraClientServiceImpl) SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error) {
 	valid := make([]string, 0, len(keys))
@@ -95,7 +103,7 @@ func (s *jiraClientServiceImpl) SearchIssuesByKeysForAssignee(ctx context.Contex
 	jql := fmt.Sprintf(`key in (%s) AND assignee = "%s" ORDER BY updated DESC`, strings.Join(valid, ", "), accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
-	params.Set("fields", dashboardIssueFields)
+	params.Set("fields", issueFieldsParam(true))
 	params.Set("maxResults", "100")
 
 	reqURL := fmt.Sprintf("%s/rest/api/3/search/jql?%s", s.cfg.JiraBaseURL, params.Encode())

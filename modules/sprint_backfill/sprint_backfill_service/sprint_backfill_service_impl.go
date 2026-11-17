@@ -244,7 +244,7 @@ func (s *sprintBackfillServiceImpl) backfillIssue(ctx context.Context, user regi
 	if a := issue.Fields.Assignee; a != nil && a.AccountID != "" && a.AccountID != user.JiraAccountID {
 		return false, nil
 	}
-	sp := issue.Fields.EffectiveStoryPoints()
+	sp := issue.StoryPoints()
 	if sp == nil || *sp <= 0 {
 		return false, nil
 	}

@@ -10,11 +10,10 @@ const StatusCodeProcess = "Code Process"
 const StoryPointFieldID = "customfield_10016"
 
 // StoryPointFieldIDCore is the Jira custom field ID the CORE project uses
-// for "Story Points" — confirmed live that OMS and CORE use two entirely
-// different custom fields for the same concept: a CORE ticket's
-// customfield_10016 is always nil, and an OMS ticket's customfield_11053
-// is always nil. Both must be requested and coalesced (IssueFields.
-// EffectiveStoryPoints) to support both projects.
+// for "Story Points" — OMS and CORE use different custom fields for the
+// same concept. Since Tech Spec "Aturan Board" the fields come from
+// ms_tracking_rule; these constants only feed BuiltinRules (= the seed)
+// and tests.
 const StoryPointFieldIDCore = "customfield_11053"
 
 // StoryPointFieldIDCoreEstimate is CORE's "Story Point Estimate" field —

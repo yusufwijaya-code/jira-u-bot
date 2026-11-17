@@ -243,6 +243,12 @@ func newTestPoller(jiraClient *fakeJiraClientService, issueSession *fakeIssueSes
 
 func storyPointsPtr(v float64) *float64 { return &v }
 
+// spNumbers puts sp on the first Story Point field of key's project
+// (OMS: customfield_10016, CORE: customfield_10125).
+func spNumbers(key string, sp float64) map[string]*float64 {
+	return map[string]*float64{jira_client_dto.RuleForIssue(key).StoryPointFields[0]: storyPointsPtr(sp)}
+}
+
 // activeSprintRaw puts a test ticket in an active sprint — only those are
 // tracked (Tech Spec "Active Sprint Tracking & Changelog Backfill").
 var activeSprintRaw = json.RawMessage(`[{"id": 8294, "name": "OMS Sprint 23 - 2026", "state": "active", "boardId": 28}]`)
@@ -251,8 +257,8 @@ func assignedIssue(key, email string, sp float64) jira_client_dto.Issue {
 	return jira_client_dto.Issue{
 		Key: key,
 		Fields: jira_client_dto.IssueFields{
-			SprintRaw:   activeSprintRaw,
-			StoryPoints: storyPointsPtr(sp),
+			SprintRaw: activeSprintRaw,
+			Numbers:   spNumbers(key, sp),
 			// AccountID reuses the email string as a stand-in identifier —
 			// see fakeRegistrationRepositoryForPoller.FindUserByJiraAccountID.
 			Assignee: &jira_client_dto.Assignee{AccountID: email, EmailAddress: email, DisplayName: email},
@@ -388,7 +394,7 @@ func TestPollOnce_SkipsIssueWithUnregisteredAssignee(t *testing.T) {
 func TestPollOnce_SkipsUnassignedIssue(t *testing.T) {
 	jiraClient := &fakeJiraClientService{
 		issues: []jira_client_dto.Issue{
-			{Key: "OMS-1", Fields: jira_client_dto.IssueFields{StoryPoints: storyPointsPtr(3)}}, // no Assignee
+			{Key: "OMS-1", Fields: jira_client_dto.IssueFields{Numbers: spNumbers("OMS-1", 3)}}, // no Assignee
 		},
 	}
 	issueSession := newFakeIssueSessionServiceForPoller()
@@ -585,10 +591,10 @@ func TestPollOnce_SteadyStateRefreshesAssigneeEmailAndIssueSummary(t *testing.T)
 	jiraClient := &fakeJiraClientService{
 		issues: []jira_client_dto.Issue{
 			{Key: "OMS-1", Fields: jira_client_dto.IssueFields{
-				SprintRaw:   activeSprintRaw,
-				StoryPoints: storyPointsPtr(3),
-				Assignee:    &jira_client_dto.Assignee{AccountID: "reassigned@esb.co.id", EmailAddress: "reassigned@esb.co.id", DisplayName: "Reassigned"},
-				Summary:     "Updated summary",
+				SprintRaw: activeSprintRaw,
+				Numbers:   spNumbers("OMS-1", 3),
+				Assignee:  &jira_client_dto.Assignee{AccountID: "reassigned@esb.co.id", EmailAddress: "reassigned@esb.co.id", DisplayName: "Reassigned"},
+				Summary:   "Updated summary",
 			}},
 		},
 	}
@@ -669,9 +675,9 @@ func assignedCoreIssue(key, email string, sp float64) jira_client_dto.Issue {
 	return jira_client_dto.Issue{
 		Key: key,
 		Fields: jira_client_dto.IssueFields{
-			SprintRaw:       activeSprintRaw,
-			StoryPointsCore: storyPointsPtr(sp), // CORE project's field, customfield_11053
-			Assignee:        &jira_client_dto.Assignee{AccountID: email, EmailAddress: email, DisplayName: email},
+			SprintRaw: activeSprintRaw,
+			Numbers:   map[string]*float64{"customfield_11053": storyPointsPtr(sp)}, // CORE's "Story Points" field
+			Assignee:  &jira_client_dto.Assignee{AccountID: email, EmailAddress: email, DisplayName: email},
 		},
 	}
 }
@@ -708,9 +714,9 @@ func TestPollOnce_TracksIssueWhenAssigneeEmailIsBlankButAccountIDMatchesRegister
 			{
 				Key: "CORE-10782",
 				Fields: jira_client_dto.IssueFields{
-					SprintRaw:       activeSprintRaw,
-					StoryPointsCore: storyPointsPtr(1.5),
-					Assignee:        &jira_client_dto.Assignee{AccountID: "acc-rio-123", EmailAddress: "", DisplayName: "Rio Adhi Pratama"},
+					SprintRaw: activeSprintRaw,
+					Numbers:   map[string]*float64{"customfield_11053": storyPointsPtr(1.5)},
+					Assignee:  &jira_client_dto.Assignee{AccountID: "acc-rio-123", EmailAddress: "", DisplayName: "Rio Adhi Pratama"},
 				},
 			},
 		},

@@ -7,46 +7,70 @@ import (
 
 func floatPtr(v float64) *float64 { return &v }
 
-func TestEffectiveStoryPoints_UsesOMSFieldWhenPresent(t *testing.T) {
-	f := IssueFields{StoryPoints: floatPtr(3)}
-
-	got := f.EffectiveStoryPoints()
-
-	if got == nil || *got != 3 {
-		t.Errorf("EffectiveStoryPoints() = %v, want 3", got)
+func TestIssueFields_UnmarshalKeepsNumericCustomFields(t *testing.T) {
+	raw := `{"key":"CORE-1","fields":{"summary":"x","customfield_10125":3,"customfield_11053":null,
+		"customfield_10020":[{"id":1,"state":"active","boardId":26}],"customfield_12001":"text"}}`
+	var issue Issue
+	if err := json.Unmarshal([]byte(raw), &issue); err != nil {
+		t.Fatal(err)
+	}
+	if issue.Fields.Summary != "x" || len(issue.Fields.SprintRaw) == 0 {
+		t.Errorf("regular fields lost: %+v", issue.Fields)
+	}
+	if v := issue.Fields.Numbers["customfield_10125"]; v == nil || *v != 3 {
+		t.Errorf("customfield_10125 = %v, want 3", v)
+	}
+	for _, id := range []string{"customfield_11053", "customfield_10020", "customfield_12001"} {
+		if _, ok := issue.Fields.Numbers[id]; ok {
+			t.Errorf("%s must not be kept (null / not a number)", id)
+		}
 	}
 }
 
-func TestEffectiveStoryPoints_PrefersCoreStoryPointEstimateOverStoryPoints(t *testing.T) {
-	// CORE issues can carry "Story Point Estimate" (customfield_10125) and
-	// "Story Points" (customfield_11053) as two separate fields — when both
-	// are populated, Story Point Estimate wins.
-	f := IssueFields{StoryPointsCoreEstimate: floatPtr(3), StoryPointsCore: floatPtr(5)}
+// legacyEffectiveStoryPoints is the old global coalesce (10016 → 10125 →
+// 11053), kept only to prove the per-project rules give the same result.
+func legacyEffectiveStoryPoints(n map[string]*float64) *float64 {
+	for _, id := range []string{"customfield_10016", "customfield_10125", "customfield_11053"} {
+		if v := n[id]; v != nil {
+			return v
+		}
+	}
+	return nil
+}
 
-	got := f.EffectiveStoryPoints()
-
-	if got == nil || *got != 3 {
-		t.Errorf("EffectiveStoryPoints() = %v, want 3 (Story Point Estimate takes priority)", got)
+func TestIssueStoryPoints_ParityWithTheLegacyCoalesce(t *testing.T) {
+	// Live data: OMS never fills CORE's fields and vice versa (constants.go).
+	cases := []struct {
+		key     string
+		numbers map[string]*float64
+	}{
+		{"OMS-1", map[string]*float64{"customfield_10016": floatPtr(3)}},
+		{"OMS-2", nil},
+		{"CORE-1", map[string]*float64{"customfield_10125": floatPtr(3), "customfield_11053": floatPtr(5)}},
+		{"CORE-2", map[string]*float64{"customfield_11053": floatPtr(5)}},
+		{"CORE-3", map[string]*float64{"customfield_10125": floatPtr(2)}},
+		{"CORE-4", nil},
+	}
+	for _, c := range cases {
+		got := Issue{Key: c.key, Fields: IssueFields{Numbers: c.numbers}}.StoryPoints()
+		want := legacyEffectiveStoryPoints(c.numbers)
+		if (got == nil) != (want == nil) || (got != nil && *got != *want) {
+			t.Errorf("%s: StoryPoints() = %v, legacy = %v", c.key, got, want)
+		}
 	}
 }
 
-func TestEffectiveStoryPoints_FallsBackToCoreStoryPointsWhenEstimateMissing(t *testing.T) {
-	f := IssueFields{StoryPointsCoreEstimate: nil, StoryPointsCore: floatPtr(5)}
-
-	got := f.EffectiveStoryPoints()
-
-	if got == nil || *got != 5 {
-		t.Errorf("EffectiveStoryPoints() = %v, want 5 (fallback to Story Points when Story Point Estimate is empty)", got)
+func TestIssueStoryPoints_FollowsTheProjectRuleOrder(t *testing.T) {
+	withRules(t, TrackingRule{ProjectKey: "POS", TrackedStatuses: []string{"In Progress"}, DoneStatus: "Done",
+		StoryPointFields: []string{"customfield_2", "customfield_1"}})
+	issue := Issue{Key: "POS-1", Fields: IssueFields{Numbers: map[string]*float64{"customfield_1": floatPtr(1), "customfield_2": floatPtr(2)}}}
+	if got := issue.StoryPoints(); got == nil || *got != 2 {
+		t.Errorf("POS-1 = %v, want 2 (customfield_2 has priority)", got)
 	}
-}
-
-func TestEffectiveStoryPoints_ReturnsNilWhenNoFieldIsPopulated(t *testing.T) {
-	f := IssueFields{}
-
-	got := f.EffectiveStoryPoints()
-
-	if got != nil {
-		t.Errorf("EffectiveStoryPoints() = %v, want nil", got)
+	// A project without a rule reads every active rule's fields.
+	unknown := Issue{Key: "HR-1", Fields: IssueFields{Numbers: map[string]*float64{"customfield_1": floatPtr(1)}}}
+	if got := unknown.StoryPoints(); got == nil || *got != 1 {
+		t.Errorf("HR-1 = %v, want 1", got)
 	}
 }
 

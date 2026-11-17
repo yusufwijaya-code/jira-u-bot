@@ -754,8 +754,8 @@ func TestTransition_ExecutesAndReturnsNewStatus(t *testing.T) {
 func TestGetMyBoard_StoppedTicketShowsSPAndRecordedTime(t *testing.T) {
 	three, two := 3.0, 2.0
 	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
-		{Key: "CORE-1", Fields: jira_client_dto.IssueFields{Summary: "Done", Status: jira_client_dto.Status{Name: "Code Completed"}, StoryPointsCoreEstimate: &three}},
-		{Key: "OMS-2", Fields: jira_client_dto.IssueFields{Summary: "Never tracked", Status: jira_client_dto.Status{Name: "To Do"}, StoryPoints: &two}},
+		{Key: "CORE-1", Fields: jira_client_dto.IssueFields{Summary: "Done", Status: jira_client_dto.Status{Name: "Code Completed"}, Numbers: map[string]*float64{"customfield_10125": &three}}},
+		{Key: "OMS-2", Fields: jira_client_dto.IssueFields{Summary: "Never tracked", Status: jira_client_dto.Status{Name: "To Do"}, Numbers: map[string]*float64{"customfield_10016": &two}}},
 	}}
 	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
 		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
