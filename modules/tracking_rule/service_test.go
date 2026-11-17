@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,8 +18,11 @@ import (
 var ctx = context.Background()
 
 type fakeStore struct {
-	rules   map[string]Rule
-	listErr error
+	rules     map[string]Rule
+	listErr   error
+	listCalls atomic.Int32
+	// afterList, when set, runs once after the first List read its rows.
+	afterList func()
 }
 
 func newFakeStore(rules ...Rule) *fakeStore {
@@ -28,7 +33,10 @@ func newFakeStore(rules ...Rule) *fakeStore {
 	return s
 }
 
-func (s *fakeStore) List(context.Context) ([]Rule, error) {
+func (s *fakeStore) List(ctx context.Context) ([]Rule, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
@@ -37,6 +45,9 @@ func (s *fakeStore) List(context.Context) ([]Rule, error) {
 		out = append(out, r)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ProjectKey < out[j].ProjectKey })
+	if s.listCalls.Add(1) == 1 && s.afterList != nil {
+		s.afterList()
+	}
 	return out, nil
 }
 
@@ -209,6 +220,43 @@ func TestReload_AppliesActiveRulesAndKeepsTheLastOnError(t *testing.T) {
 	}
 	if len(h.applied) != 1 {
 		t.Error("a failed reload must not touch the registry (AC5.6)")
+	}
+}
+
+func TestReload_SerializedSoAStaleReadCannotWinOverASave(t *testing.T) {
+	h := newHarness(seedRules()...)
+	read, release := make(chan struct{}), make(chan struct{})
+	h.store.afterList = func() { close(read); <-release }
+	var mu sync.Mutex
+	h.svc.d.Apply = func(r []jira_client_dto.TrackingRule) { mu.Lock(); h.applied = append(h.applied, r); mu.Unlock() }
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); h.svc.Reload(ctx) }() // the ticker: reads [CORE, OMS], then stalls
+	<-read
+	pos := seedRules()[0]
+	pos.ProjectKey = "POS"
+	h.store.rules["POS"] = pos // the save
+	go func() { defer wg.Done(); h.svc.Reload(ctx) }()
+	time.Sleep(50 * time.Millisecond)
+	if n := h.store.listCalls.Load(); n != 1 {
+		t.Errorf("list calls = %d while a reload runs, want 1 (serialized)", n)
+	}
+	close(release)
+	wg.Wait()
+	if keys := h.lastAppliedKeys(); !reflect.DeepEqual(keys, []string{"CORE", "OMS", "POS"}) {
+		t.Fatalf("registry = %v, want the save's ruleset last", keys)
+	}
+}
+
+func TestCreate_ReloadsEvenWhenTheClientDisconnected(t *testing.T) {
+	h := newHarness(seedRules()...)
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := h.svc.Create(cancelled, validPOS(), "admin@esb.co.id"); err != nil {
+		t.Fatal(err)
+	}
+	if keys := h.lastAppliedKeys(); !reflect.DeepEqual(keys, []string{"CORE", "OMS", "POS"}) {
+		t.Fatalf("registry = %v, want POS applied despite the cancelled request", keys)
 	}
 }
 

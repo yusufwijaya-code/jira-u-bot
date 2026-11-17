@@ -66,8 +66,11 @@ type cachedStatuses struct {
 }
 
 type Service struct {
-	d             Deps
-	mu            sync.Mutex
+	d  Deps
+	mu sync.Mutex
+	// reloadMu serializes Reload: a ticker List read before a save can't
+	// install its stale ruleset after the save's Reload.
+	reloadMu      sync.Mutex
 	lookups       map[string]cachedLookup
 	fields        *cachedFields
 	boardStatuses map[string]cachedStatuses
@@ -87,6 +90,8 @@ func NewService(d Deps) *Service {
 // Reload loads the table and installs the active rules. On error the
 // registry keeps its last rules (AC5.6).
 func (s *Service) Reload(ctx context.Context) error {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	rules, err := s.d.Store.List(ctx)
 	if err != nil {
 		return fmt.Errorf("tracking_rule: reload: %w", err)
@@ -316,7 +321,8 @@ func (s *Service) SetActive(ctx context.Context, projectKey string, active bool,
 // returns the stored rule. A failed reload is logged, not returned: the row
 // is saved and the 5-minute refresh retries.
 func (s *Service) afterSave(ctx context.Context, key string) (RuleView, error) {
-	if err := s.Reload(ctx); err != nil {
+	// The row is saved: a client disconnect must not skip the reload.
+	if err := s.Reload(context.WithoutCancel(ctx)); err != nil {
 		log.Printf("tracking_rule: ERROR reload after saving %s failed (the periodic refresh retries): %v", key, err)
 	}
 	saved, found, err := s.d.Store.Find(ctx, key)
