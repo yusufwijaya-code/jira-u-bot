@@ -274,3 +274,53 @@ func TestNormalize_DoesNotCacheEmptyResult(t *testing.T) {
 		t.Fatalf("cached=%v calls=%d, want uncached and 2 calls", again.Cached, ai.calls)
 	}
 }
+
+func coreJira() *fakeJira {
+	number := jira_client_dto.FieldSchema{Type: "number"}
+	return &fakeJira{
+		types: []jira_client_dto.CreateMetaIssueType{{ID: "10001", Name: "Story"}, {ID: "10003", Name: "Subtask", Subtask: true}, {ID: "10004", Name: "Bug"}},
+		fields: map[string][]jira_client_dto.CreateMetaField{
+			"10001": {
+				{FieldID: "customfield_10125", Name: "Story Point Estimate", Required: true, Schema: number},
+				{FieldID: "customfield_11053", Name: "Story Points", Schema: number},
+			},
+			"10003": {
+				{FieldID: "parent", Name: "Parent", Required: true, Schema: jira_client_dto.FieldSchema{Type: "issuelink"}},
+				{FieldID: "customfield_10125", Name: "Story Point Estimate", Schema: number},
+				{FieldID: "customfield_11053", Name: "Story Points", Schema: number},
+			},
+			"10004": {{FieldID: "customfield_11053", Name: "Story Points", Schema: number}},
+		},
+	}
+}
+
+func TestMeta_CoreWritesEstimateOnCardsAndStoryPointsOnSubtasks(t *testing.T) {
+	m, err := newSvc(coreJira(), &fakeAI{}).Meta(context.Background(), "dev@esb.co.id", 26)
+	if err != nil {
+		t.Fatal(err)
+	}
+	story, sub, bug := m.Types[0], m.Types[1], m.Types[2]
+	if story.StoryPointField != "customfield_10125" || len(story.Fields) != 0 {
+		t.Fatalf("story = %+v, want SP on customfield_10125 and no dynamic field (SP fields are handled)", story)
+	}
+	if sub.StoryPointField != "customfield_11053" {
+		t.Fatalf("subtask = %+v, want SP on customfield_11053 (AC5.3)", sub)
+	}
+	if bug.StoryPointField != "" {
+		t.Fatalf("bug = %+v, want SP hidden: customfield_10125 is not on its createmeta (AC5.3b)", bug)
+	}
+}
+
+func TestCreateSubtasks_CoreWritesTheSubtaskField(t *testing.T) {
+	j := coreJira()
+	j.brief.Key = "CORE-5"
+	j.brief.Fields.Project.Key = "CORE"
+	pts := 2.0
+	res, err := newSvc(j, &fakeAI{}).CreateSubtasks(context.Background(), "dev@esb.co.id", 26, "CORE-5", []BulkRow{{ClientID: "1", Title: "A", StoryPoints: &pts}})
+	if err != nil || res[0].Key == "" {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if j.created[0]["customfield_11053"] != 2.0 || j.created[0]["customfield_10125"] != nil {
+		t.Fatalf("subtask fields = %v, want SP on customfield_11053 only", j.created[0])
+	}
+}

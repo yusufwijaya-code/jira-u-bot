@@ -219,7 +219,7 @@ func (s *Service) metaFor(ctx context.Context, cred *jira_client_dto.Credential,
 		if err != nil {
 			return Meta{}, err
 		}
-		tm := mapType(t, fields)
+		tm := mapType(jira_client_dto.RuleFor(project), t, fields)
 		m.Types = append(m.Types, tm)
 		if t.Subtask && m.SubtaskTypeID == "" {
 			m.SubtaskTypeID = t.ID
