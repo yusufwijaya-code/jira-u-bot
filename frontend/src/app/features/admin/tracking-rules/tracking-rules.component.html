@@ -1,109 +1,138 @@
-<div class="page-stack">
-  <section class="card">
+<div class="page-stack tr-page">
+  <section class="card tr-hero">
     <header class="card-header with-actions">
-      <span class="card-icon"><app-icon name="layers" [size]="20" /></span>
+      <span class="card-icon"><app-icon name="layers" [size]="22" /></span>
       <div>
         <h2>Aturan Board</h2>
         <p>Status yang dihitung budget, status selesai, dan field Story Point tiap project Jira. Berlaku untuk semua user.</p>
       </div>
-      <a class="btn btn-primary btn-sm tr-add" routerLink="/admin/tracking-rules/new" data-add-rule>
-        <app-icon name="plus" [size]="14" /> Tambah aturan
+      <a class="btn btn-primary tr-add" routerLink="/admin/tracking-rules/new" data-add-rule>
+        <app-icon name="plus" [size]="16" /> Tambah aturan
       </a>
     </header>
-
-    @if (loading()) {
-      <div class="table-skeleton" aria-busy="true">
-        @for (i of [1, 2, 3]; track i) {
-          <div class="skeleton skeleton-row"></div>
+    @if (!loading() && !error() && rules().length) {
+      <div class="tr-summary">
+        <span><strong>{{ rules().length }}</strong> board</span>
+        <span class="dot" aria-hidden="true"></span>
+        <span><strong class="ok">{{ activeCount() }}</strong> aktif dipantau</span>
+        @if (rules().length - activeCount()) {
+          <span class="dot" aria-hidden="true"></span>
+          <span><strong class="off">{{ rules().length - activeCount() }}</strong> nonaktif</span>
         }
       </div>
-    } @else if (error()) {
+    }
+  </section>
+
+  @if (loading()) {
+    <div class="tr-grid" aria-busy="true">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="tr-card tr-card-skeleton">
+          <div class="skeleton sk-head"></div>
+          <div class="skeleton sk-line"></div>
+          <div class="skeleton sk-line short"></div>
+          <div class="skeleton sk-block"></div>
+        </div>
+      }
+    </div>
+  } @else if (error()) {
+    <section class="card">
       <div class="empty-state">
         <div class="empty-icon danger"><app-icon name="alert-circle" [size]="24" /></div>
         <p class="msg error">{{ error() }}</p>
         <button type="button" class="btn btn-ghost btn-sm" (click)="load()">Coba lagi</button>
       </div>
-    } @else if (rules().length === 0) {
-      <div class="empty-state"><p class="msg">Belum ada aturan board.</p></div>
-    } @else {
-      <div class="table-wrap">
-        <table class="admin-users tr-table">
-          <thead>
-            <tr>
-              <th>Board</th><th>Status dihitung</th><th>Selesai</th><th>Review</th><th>Field SP (urut prioritas)</th>
-              <th>Status</th><th>Diubah</th><th class="th-actions">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (rule of rules(); track rule.projectKey; let i = $index) {
-              <tr
-                [attr.data-rule]="rule.projectKey"
-                [class.inactive]="!rule.isActive"
-                [class.busy]="busyKey() === rule.projectKey"
-                [style.animation-delay.ms]="i * 40"
-              >
-                <td>
-                  <div class="tr-board">
-                    <span class="tr-key">{{ rule.projectKey }}</span>
-                    <span class="tr-name">{{ rule.projectName || '—' }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="tr-chips">
-                    @for (s of rule.trackedStatuses; track s) {
-                      <span class="tr-chip">{{ s }}</span>
-                    }
-                  </div>
-                </td>
-                <td><span class="tr-chip done">{{ rule.doneStatus }}</span></td>
-                <td>
-                  @if (rule.reviewStatus) {
-                    <span class="tr-chip review">{{ rule.reviewStatus }}</span>
-                  } @else {
-                    <span class="muted">—</span>
-                  }
-                </td>
-                <td>
-                  <ol class="tr-fields">
-                    @for (f of rule.storyPointFields; track f.id) {
-                      <li [attr.data-sp]="f.id">
-                        <strong>{{ f.name }}</strong><small>{{ f.id }}</small>
-                        @if (f.id === rule.storyPointWriteField) {
-                          <span class="tr-tag">tulis card</span>
-                        }
-                        @if (f.id === rule.storyPointWriteFieldSubtask) {
-                          <span class="tr-tag">tulis subtask</span>
-                        }
-                      </li>
-                    }
-                  </ol>
-                </td>
-                <td><span class="status-badge" [class.active]="rule.isActive">{{ rule.isActive ? 'Aktif' : 'Nonaktif' }}</span></td>
-                <td>
-                  <div class="tr-edited">
-                    <span>{{ rule.editedBy }}</span>
-                    <small>{{ formatEdited(rule.editedDate) }}</small>
-                  </div>
-                </td>
-                <td class="actions">
-                  <div class="tr-actions">
-                    <a class="btn btn-ghost btn-sm" [routerLink]="['/admin/tracking-rules', rule.projectKey]" [attr.data-edit]="rule.projectKey">Edit</a>
-                    @if (rule.isActive) {
-                      <button type="button" class="btn btn-danger-ghost btn-sm" [attr.data-deactivate]="rule.projectKey" [disabled]="busyKey() !== null" (click)="deactivate(rule)">
-                        Nonaktifkan
-                      </button>
-                    } @else {
-                      <button type="button" class="btn btn-primary btn-sm" [attr.data-activate]="rule.projectKey" [disabled]="busyKey() !== null" (click)="activate(rule)">
-                        Aktifkan
-                      </button>
-                    }
-                  </div>
-                </td>
-              </tr>
+    </section>
+  } @else if (rules().length === 0) {
+    <section class="card"><div class="empty-state"><p class="msg">Belum ada aturan board.</p></div></section>
+  } @else {
+    <div class="tr-grid">
+      @for (rule of rules(); track rule.projectKey; let i = $index) {
+        <article
+          class="tr-card"
+          [attr.data-rule]="rule.projectKey"
+          [class.inactive]="!rule.isActive"
+          [class.busy]="busyKey() === rule.projectKey"
+          [style.animation-delay.ms]="i * 60"
+        >
+          <header class="tr-card-head">
+            <span class="tr-key-badge" aria-hidden="true">{{ rule.projectKey.slice(0, 4) }}</span>
+            <div class="tr-title">
+              <h3>{{ rule.projectKey }}</h3>
+              <span class="tr-name">{{ rule.projectName || '—' }}</span>
+            </div>
+            <span class="status-badge tr-state" [class.active]="rule.isActive">
+              <span class="pulse" aria-hidden="true"></span>{{ rule.isActive ? 'Aktif' : 'Nonaktif' }}
+            </span>
+          </header>
+
+          <div class="tr-flow">
+            <div class="tr-step">
+              <span class="tr-label"><app-icon name="clock" [size]="14" /> Budget berjalan</span>
+              <div class="tr-chips">
+                @for (s of rule.trackedStatuses; track s) {
+                  <span class="tr-chip" [class.review]="s === rule.reviewStatus">{{ s }}</span>
+                }
+              </div>
+            </div>
+            <app-icon class="tr-arrow" name="chevron-right" [size]="18" />
+            <div class="tr-step">
+              <span class="tr-label"><app-icon name="check" [size]="14" /> Selesai</span>
+              <div class="tr-chips"><span class="tr-chip done">{{ rule.doneStatus }}</span></div>
+            </div>
+          </div>
+          <p class="tr-review-note">
+            @if (rule.reviewStatus) {
+              Waktu <strong>{{ rule.reviewStatus }}</strong> ikut dihitung ke budget.
+            } @else {
+              Waktu review tidak dihitung — masuk status selesai berarti tiket selesai.
             }
-          </tbody>
-        </table>
-      </div>
-    }
-  </section>
+          </p>
+
+          <div class="tr-sp">
+            <span class="tr-label"><app-icon name="layers" [size]="14" /> Field Story Point <small>(urut prioritas baca)</small></span>
+            <ol class="tr-fields">
+              @for (f of rule.storyPointFields; track f.id; let n = $index) {
+                <li [attr.data-sp]="f.id">
+                  <span class="tr-num">{{ n + 1 }}</span>
+                  <div class="tr-field">
+                    <strong>{{ f.name }}</strong>
+                    <code>{{ f.id }}</code>
+                  </div>
+                  <div class="tr-tags">
+                    @if (f.id === rule.storyPointWriteField) {
+                      <span class="tr-tag card">Tulis card</span>
+                    }
+                    @if (f.id === rule.storyPointWriteFieldSubtask) {
+                      <span class="tr-tag subtask">Tulis subtask</span>
+                    }
+                  </div>
+                </li>
+              }
+            </ol>
+          </div>
+
+          <footer class="tr-card-foot">
+            <span class="tr-edited">
+              <app-icon name="users" [size]="13" />
+              {{ rule.editedBy }} · {{ formatEdited(rule.editedDate) }}
+            </span>
+            <div class="tr-actions">
+              <a class="btn btn-ghost btn-sm" [routerLink]="['/admin/tracking-rules', rule.projectKey]" [attr.data-edit]="rule.projectKey">
+                <app-icon name="edit" [size]="14" /> Edit
+              </a>
+              @if (rule.isActive) {
+                <button type="button" class="btn btn-danger-ghost btn-sm" [attr.data-deactivate]="rule.projectKey" [disabled]="busyKey() !== null" (click)="deactivate(rule)">
+                  Nonaktifkan
+                </button>
+              } @else {
+                <button type="button" class="btn btn-primary btn-sm" [attr.data-activate]="rule.projectKey" [disabled]="busyKey() !== null" (click)="activate(rule)">
+                  Aktifkan
+                </button>
+              }
+            </div>
+          </footer>
+        </article>
+      }
+    </div>
+  }
 </div>
