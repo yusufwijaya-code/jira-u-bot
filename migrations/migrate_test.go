@@ -2,6 +2,8 @@ package migrations
 
 import (
 	"database/sql"
+	"encoding/json"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -220,5 +222,65 @@ func TestApply_PerBoardSettingsSchema(t *testing.T) {
 				t.Errorf("%s.%s missing", table, col)
 			}
 		}
+	}
+}
+
+func TestApply_SeedsTrackingRulesWithoutOverwritingEdits(t *testing.T) {
+	db := openTestConn(t)
+	if err := Apply(db); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+
+	type seeded struct {
+		tracked, fields       []string
+		done, write, writeSub string
+		review                sql.NullString
+	}
+	read := func(key string) seeded {
+		t.Helper()
+		var s seeded
+		var tracked, fields string
+		err := db.QueryRow(`SELECT trackedStatuses, doneStatus, reviewStatus, storyPointFields, storyPointWriteField, storyPointWriteFieldSubtask
+			FROM ms_tracking_rule WHERE projectKey = ?`, key).Scan(&tracked, &s.done, &s.review, &fields, &s.write, &s.writeSub)
+		if err != nil {
+			t.Fatalf("seed row %s: %v", key, err)
+		}
+		if err := json.Unmarshal([]byte(tracked), &s.tracked); err != nil {
+			t.Fatalf("trackedStatuses of %s: %v", key, err)
+		}
+		if err := json.Unmarshal([]byte(fields), &s.fields); err != nil {
+			t.Fatalf("storyPointFields of %s: %v", key, err)
+		}
+		return s
+	}
+
+	core := read("CORE")
+	if !reflect.DeepEqual(core.tracked, []string{"Code Process", "CODE REVIEW"}) || core.done != "Code Completed" ||
+		core.review.String != "CODE REVIEW" || !reflect.DeepEqual(core.fields, []string{"customfield_10125", "customfield_11053"}) ||
+		core.write != "customfield_10125" || core.writeSub != "customfield_11053" {
+		t.Errorf("CORE seed = %+v", core)
+	}
+	oms := read("OMS")
+	if !reflect.DeepEqual(oms.tracked, []string{"Code Process"}) || oms.done != "Code Review" || oms.review.Valid ||
+		!reflect.DeepEqual(oms.fields, []string{"customfield_10016"}) || oms.write != "customfield_10016" || oms.writeSub != "customfield_10016" {
+		t.Errorf("OMS seed = %+v", oms)
+	}
+
+	// AC1.3: a restart/deploy must not overwrite what an admin edited.
+	var original string
+	if err := db.QueryRow(`SELECT projectName FROM ms_tracking_rule WHERE projectKey = 'OMS'`).Scan(&original); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Exec(`UPDATE ms_tracking_rule SET projectName = ? WHERE projectKey = 'OMS'`, original) })
+	if _, err := db.Exec(`UPDATE ms_tracking_rule SET projectName = 'ESB OMS (edited)' WHERE projectKey = 'OMS'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db); err != nil {
+		t.Fatalf("second Apply returned error: %v", err)
+	}
+	var name string
+	db.QueryRow(`SELECT projectName FROM ms_tracking_rule WHERE projectKey = 'OMS'`).Scan(&name)
+	if name != "ESB OMS (edited)" {
+		t.Errorf("projectName after re-apply = %q, the seed must not overwrite an admin edit", name)
 	}
 }
