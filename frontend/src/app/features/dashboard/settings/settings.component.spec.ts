@@ -1,5 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ChatAppService } from '../../../core/services/chat-app.service';
 import { signal } from '@angular/core';
@@ -339,6 +339,24 @@ describe('SettingsComponent', () => {
     context.selectedId.set(28);
     fixture.detectChanges();
     expect(card('other-boards')).toBeNull();
+  });
+
+  it('offers the board workflow statuses from Jira and falls back to the static list (AC5.5)', () => {
+    const http = TestBed.inject(HttpTestingController);
+    context.boards.set([OMS, { ...OMS, boardId: 26, name: 'ESB Core Board', projectKey: 'CORE', reviewTracked: true }]);
+    context.selectedId.set(26);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/boards/26/statuses')).flush({ statuses: ['To Do', 'Doing', 'Done'] });
+    fixture.detectChanges();
+    expect(component().statusOptions()).toEqual(['To Do', 'Doing', 'Done']);
+
+    context.selectedId.set(28);
+    fixture.detectChanges();
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/boards/28/statuses')).flush({ error: 'jira_unavailable' }, { status: 502, statusText: 'Bad Gateway' });
+    fixture.detectChanges();
+    expect(component().statusOptions()).toContain('Testing & Review');
   });
 });
 
