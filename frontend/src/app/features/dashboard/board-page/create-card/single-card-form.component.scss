@@ -1,0 +1,29 @@
+// Two columns on wide screens (main | Detail panel), one column below 960px.
+// Shared .cc-field / .cc-reveal / .cc-err styles live in create-card.component.scss.
+:host { display: block; }
+.scf { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); grid-template-areas: 'main side' 'actions actions'; gap: 18px 22px; align-items: start; }
+.scf-main { grid-area: main; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.scf-side { grid-area: side; display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); }
+.scf-side-title { margin: 0; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+.scf-side-empty { margin: 0; font-size: .82rem; color: var(--text-faint); animation: fade-in 200ms var(--ease); }
+.scf-actions { grid-area: actions; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border); }
+.scf-actions .cc-actions { align-items: center; }
+.scf-why { margin-right: 4px; color: var(--text-faint); font-size: .8rem; animation: fade-in 200ms var(--ease); }
+
+// Tipe gets a prominent, taller trigger.
+.scf-type { padding: 14px; border-radius: var(--radius); background: linear-gradient(120deg, var(--primary-soft), var(--surface) 75%);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  ::ng-deep .ui-select-trigger { height: 46px; font-size: .95rem; font-weight: 600; } }
+.scf-main textarea { min-height: 180px; resize: vertical; }
+.scf-empty { display: flex; align-items: center; gap: 10px; padding: 26px 16px; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm);
+  color: var(--text-muted); font-size: .86rem; animation: fade-in 200ms var(--ease);
+  app-icon { color: var(--primary); } }
+.scf-side input { background: var(--surface); }
+
+@media (max-width: 960px) {
+  .scf { grid-template-columns: 1fr; grid-template-areas: 'main' 'side' 'actions'; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scf-side-empty, .scf-why, .scf-empty { animation: none; }
+}

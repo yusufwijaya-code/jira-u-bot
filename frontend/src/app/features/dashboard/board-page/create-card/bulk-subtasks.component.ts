@@ -1,8 +1,9 @@
-import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
-import { DashboardService, TicketCard } from '../../../../core/services/dashboard.service';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { BulkResult, CreateMeta, IssueCreateService, ParentInfo } from '../../../../core/services/issue-create.service';
 import { ConfirmService } from '../../../../core/ui/confirm.service';
+import { IconComponent } from '../../../../shared/ui/icon.component';
 import { UserPickerComponent } from './user-picker.component';
+import { ParentPickerComponent } from './parent-picker.component';
 
 export function titleKey(s: string): string {
   return s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -26,17 +27,18 @@ const MAX_CHARS = 30000;
 const MAX_ROWS = 50;
 let seq = 0;
 
-/** Bulk subtask (spec US-6/US-7): pick parent → paste → normalize → edit preview → create in order. */
+type StepState = 'done' | 'active' | 'locked';
+
+/** Bulk subtask (spec US-6/US-7): ① pick parent → ② paste & normalize → ③ review & create in order. */
 @Component({
   selector: 'app-bulk-subtasks',
   standalone: true,
-  imports: [UserPickerComponent],
+  imports: [UserPickerComponent, ParentPickerComponent, IconComponent],
   templateUrl: './bulk-subtasks.component.html',
   styleUrl: './bulk-subtasks.component.scss',
 })
-export class BulkSubtasksComponent implements OnInit {
+export class BulkSubtasksComponent {
   private api = inject(IssueCreateService);
-  private dashboard = inject(DashboardService);
   private confirm = inject(ConfirmService);
   boardId = input.required<number>();
   meta = input.required<CreateMeta>();
@@ -45,10 +47,8 @@ export class BulkSubtasksComponent implements OnInit {
   created = output<void>();
 
   protected readonly maxChars = MAX_CHARS;
-  protected candidates = signal<TicketCard[]>([]);
-  protected parentQuery = signal('');
+  protected readonly maxRows = MAX_ROWS;
   protected parent = signal<ParentInfo | null>(null);
-  protected parentError = signal<string | null>(null);
   protected text = signal('');
   protected normalizing = signal(false);
   protected confirming = signal(false);
@@ -61,9 +61,12 @@ export class BulkSubtasksComponent implements OnInit {
 
   protected checked = computed(() => this.rows().filter((r) => r.checked && r.state !== 'done'));
   protected totalSP = computed(() => Math.round(this.checked().reduce((n, r) => n + (r.storyPoints ?? 0), 0) * 100) / 100);
-  protected filteredCandidates = computed(() => {
-    const q = this.parentQuery().trim().toLowerCase();
-    return this.candidates().filter((c) => !q || c.issueKey.toLowerCase().includes(q) || c.summary.toLowerCase().includes(q)).slice(0, 8);
+  protected steps = computed<[StepState, StepState, StepState]>(() => {
+    if (!this.parent()) return ['active', 'locked', 'locked'];
+    const hasRows = this.rows().length > 0;
+    const f = this.finished();
+    const allDone = hasRows && this.rows().every((r) => r.state === 'done');
+    return ['done', hasRows ? 'done' : 'active', allDone && f && !f.failed ? 'done' : hasRows ? 'active' : 'locked'];
   });
   protected blocker = computed(() => {
     const c = this.checked();
@@ -76,24 +79,14 @@ export class BulkSubtasksComponent implements OnInit {
   });
   protected canCreate = computed(() => !this.sending() && !this.refreshing() && this.blocker() === null);
 
-  ngOnInit(): void {
-    this.dashboard.getBoard(this.boardId()).subscribe({ next: (b) => this.candidates.set((b.columns ?? []).flatMap((c) => c.cards).filter((c) => !c.parentKey)) });
-    const p = this.initialParent();
-    if (p) this.pickParent(p);
-  }
-
   hasUnsent(): boolean {
     return this.rows().some((r) => r.state !== 'done');
   }
 
-  protected pickParent(key: string): void {
-    const k = key.trim().toUpperCase();
-    if (!k) return;
-    this.parentError.set(null);
-    this.api.parent(this.boardId(), k).subscribe({
-      next: (p) => { this.parent.set(p); this.parentQuery.set(''); this.markDuplicates(); },
-      error: (err) => { this.parent.set(null); this.parentError.set(err?.status === 404 ? `${k} tidak ditemukan` : err?.error?.error ?? 'Parent tidak valid'); },
-    });
+  /** From the parent picker: a validated parent (with its subtasks) or null on "Ganti". */
+  protected onParent(p: ParentInfo | null): void {
+    this.parent.set(p);
+    this.markDuplicates();
   }
 
   protected async normalize(): Promise<void> {

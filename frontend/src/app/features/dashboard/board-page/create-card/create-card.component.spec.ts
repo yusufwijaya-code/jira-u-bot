@@ -88,4 +88,22 @@ describe('CreateCardComponent', () => {
       .flush({ projectKey: 'CORE', types: [], subtaskTypeId: '' });
     http.verify();
   });
+
+  it('switches modes with the segmented control', () => {
+    const f = render(26);
+    f.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/create/status')).flush({ tokenReady: true, aiReady: true });
+    http.expectOne((r) => r.url.endsWith('/create/meta')).flush({ projectKey: 'CORE', subtaskTypeId: '1', types: [{ id: '1', name: 'Subtask', subtask: true, supported: true, parentAllowed: true, fields: [] }] });
+    f.detectChanges();
+    const el: HTMLElement = f.nativeElement;
+    const seg = el.querySelector('.cc-seg') as HTMLElement;
+    expect(seg.getAttribute('data-active')).toBe('single');
+    expect(el.querySelector('[data-mode="bulk"]')?.textContent).toContain('Paste Task Breakdown');
+    expect(el.querySelector('app-single-card-form')).not.toBeNull();
+    (el.querySelector('[data-mode="bulk"]') as HTMLButtonElement).click();
+    f.detectChanges();
+    expect(seg.getAttribute('data-active')).toBe('bulk');
+    expect(el.querySelector('[data-mode="bulk"]')?.getAttribute('aria-selected')).toBe('true');
+    expect(el.querySelector('app-bulk-subtasks')).not.toBeNull();
+  });
 });

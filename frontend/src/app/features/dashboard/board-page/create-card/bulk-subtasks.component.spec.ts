@@ -9,16 +9,21 @@ const meta = { projectKey: 'CORE', subtaskTypeId: '10133', types: [{ id: '10133'
 describe('BulkSubtasksComponent', () => {
   let http: HttpTestingController;
 
-  function render(aiReady = true) {
+  function create(aiReady: boolean, initialParent: string | null) {
     TestBed.configureTestingModule({ imports: [BulkSubtasksComponent], providers: [provideHttpClient(), provideHttpClientTesting()] });
     http = TestBed.inject(HttpTestingController);
     const f = TestBed.createComponent(BulkSubtasksComponent);
     f.componentRef.setInput('boardId', 26);
     f.componentRef.setInput('meta', meta);
     f.componentRef.setInput('aiReady', aiReady);
-    f.componentRef.setInput('initialParent', 'CORE-10923');
+    f.componentRef.setInput('initialParent', initialParent);
     f.detectChanges();
-    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [], related: [] });
+    return f;
+  }
+
+  function render(aiReady = true) {
+    const f = create(aiReady, 'CORE-10923');
+    http.expectNone((r) => r.url.endsWith('/api/dashboard/board')); // candidates come from the parent picker now
     http.expectOne((r) => r.url.endsWith('/create/parent/CORE-10923')).flush({ key: 'CORE-10923', summary: 'Required Date', subtasks: [{ key: 'CORE-10961', summary: '[Docs] Release Document' }] });
     f.detectChanges();
     return f;
@@ -177,5 +182,44 @@ describe('BulkSubtasksComponent', () => {
     sp.value = '101'; sp.dispatchEvent(new Event('input')); f.detectChanges();
     expect((el.querySelector('[data-create]') as HTMLButtonElement).disabled).toBeTrue();
     expect(el.querySelector('[data-blocker]')?.textContent).toContain('SP harus 0–100');
+  });
+
+  it('locks steps 2 and 3 until a parent is picked, then unlocks them', () => {
+    const f = create(true, null);
+    const el: HTMLElement = f.nativeElement;
+    expect(el.querySelector('[data-step="1"]')?.classList).toContain('active');
+    expect(el.querySelector('[data-step="2"]')?.classList).toContain('locked');
+    expect(el.querySelector('[data-step="3"]')?.classList).toContain('locked');
+    expect(el.querySelector('[data-step="2"]')?.hasAttribute('inert')).toBeTrue();
+    expect(el.querySelector('[data-locked-hint]')).not.toBeNull();
+    expect(el.querySelector('[data-footer]')).toBeNull();
+    const input = el.querySelector('[data-parent-input]') as HTMLInputElement;
+    input.value = 'CORE-10923'; input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    http.expectOne((r) => r.url.endsWith('/create/parent/CORE-10923')).flush({ key: 'CORE-10923', summary: 'Required Date', type: 'Story', status: 'In Progress', statusCategory: 'indeterminate', subtasks: [] });
+    http.match((r) => r.url.endsWith('/create/parents'));
+    f.detectChanges();
+    expect(el.querySelector('[data-step="1"]')?.classList).toContain('done');
+    expect(el.querySelector('[data-step="2"]')?.classList).toContain('active');
+    expect(el.querySelector('[data-step="2"]')?.hasAttribute('inert')).toBeFalse();
+    expect(el.querySelector('[data-locked-hint]')).toBeNull();
+    expect(el.querySelector('[data-parent-selected]')?.textContent).toContain('CORE-10923');
+    expect(el.querySelector('[data-preview-empty]')?.textContent).toContain('Hasil normalize muncul di sini');
+  });
+
+  it('shows the sticky footer only once there are rows and updates the parent card after create', () => {
+    const f = render();
+    const el: HTMLElement = f.nativeElement;
+    expect(el.querySelector('[data-footer]')).toBeNull();
+    normalize(f);
+    expect(el.querySelector('[data-footer] [data-create]')?.textContent).toContain('Buat 2 subtask di Jira');
+    expect(el.querySelector('[data-step="3"]')?.classList).toContain('active');
+    (el.querySelector('[data-create]') as HTMLButtonElement).click();
+    const req = http.expectOne((r) => r.url.endsWith('/create/subtasks'));
+    const ids = req.request.body.rows.map((r: { clientId: string }) => r.clientId);
+    req.flush({ results: [{ clientId: ids[0], key: 'CORE-1' }, { clientId: ids[1], key: 'CORE-2' }] });
+    http.expectOne((r) => r.url.endsWith('/create/parent/CORE-10923')).flush({ key: 'CORE-10923', summary: 'Required Date', subtasks: [{ key: 'a', summary: 'a' }, { key: 'b', summary: 'b' }, { key: 'c', summary: 'c' }] });
+    f.detectChanges();
+    expect(el.querySelector('[data-parent-count]')?.textContent).toContain('3 subtask');
   });
 });

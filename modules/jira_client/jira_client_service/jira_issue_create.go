@@ -23,6 +23,7 @@ type IssueCreateClient interface {
 	CreateIssueAs(ctx context.Context, cred *jira_client_dto.Credential, fields map[string]any) (string, error)
 	AssignableUsersAs(ctx context.Context, cred *jira_client_dto.Credential, projectKey, query string) ([]jira_client_dto.AssignableUser, error)
 	IssueBriefAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) (jira_client_dto.IssueBrief, error)
+	SearchBriefsAs(ctx context.Context, cred *jira_client_dto.Credential, jql string, maxResults int) ([]jira_client_dto.IssueBrief, error)
 	MyselfAs(ctx context.Context, cred *jira_client_dto.Credential) (string, error)
 }
 
@@ -93,7 +94,7 @@ func (c *issueCreateClient) AssignableUsersAs(ctx context.Context, cred *jira_cl
 }
 
 func (c *issueCreateClient) IssueBriefAs(ctx context.Context, cred *jira_client_dto.Credential, issueKey string) (jira_client_dto.IssueBrief, error) {
-	u := c.url(fmt.Sprintf("/rest/api/3/issue/%s?fields=summary,project,issuetype,subtasks", url.PathEscape(issueKey)))
+	u := c.url(fmt.Sprintf("/rest/api/3/issue/%s?fields=%s", url.PathEscape(issueKey), jira_client_dto.IssueBriefFields))
 	res, err := curl_helper.CurlRequest[jira_client_dto.IssueBrief](ctx, u, c.base.authHeadersFor(cred), nil, http.MethodGet, 10000, true)
 	if err != nil {
 		var httpErr *curl_helper.HTTPError
@@ -103,6 +104,15 @@ func (c *issueCreateClient) IssueBriefAs(ctx context.Context, cred *jira_client_
 		return jira_client_dto.IssueBrief{}, fmt.Errorf("jira_client: IssueBriefAs(%s) failed: %w", issueKey, err)
 	}
 	return *res, nil
+}
+
+func (c *issueCreateClient) SearchBriefsAs(ctx context.Context, cred *jira_client_dto.Credential, jql string, maxResults int) ([]jira_client_dto.IssueBrief, error) {
+	q := url.Values{"jql": {jql}, "fields": {jira_client_dto.IssueBriefFields}, "maxResults": {fmt.Sprint(maxResults)}}
+	res, err := curl_helper.CurlRequest[jira_client_dto.IssueBriefPage](ctx, c.url("/rest/api/3/search/jql?"+q.Encode()), c.base.authHeadersFor(cred), nil, http.MethodGet, 10000, true)
+	if err != nil {
+		return nil, fmt.Errorf("jira_client: SearchBriefsAs failed: %w", err)
+	}
+	return res.Issues, nil
 }
 
 func (c *issueCreateClient) MyselfAs(ctx context.Context, cred *jira_client_dto.Credential) (string, error) {

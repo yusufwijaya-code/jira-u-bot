@@ -1,30 +1,76 @@
 :host { display: block; }
-.bs { display: flex; flex-direction: column; gap: 14px; }
-.bs-label { font-size: .82rem; font-weight: 600; color: var(--text-muted); }
-.bs-parent { display: flex; flex-direction: column; gap: 6px; }
-.bs-parent-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: .88rem; small { color: var(--text-muted); } button { margin-left: auto; } }
-.bs-parent-pick { position: relative; input { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); } }
-.bs-cands { position: absolute; z-index: 5; left: 0; right: 0; margin: 2px 0 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.08);
-  button { width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; font: inherit; font-size: .84rem; cursor: pointer; border-radius: 6px; &:hover { background: var(--surface-muted, rgba(0,0,0,.05)); } } }
-.bs-grid { display: grid; grid-template-columns: minmax(260px, 2fr) 3fr; gap: 16px; align-items: start; }
-.bs-paste textarea { font-family: ui-monospace, monospace; font-size: .78rem; }
-.bs-paste-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; small { color: var(--text-faint); } }
+.bs { display: flex; flex-direction: column; gap: 16px; }
+
+// --- Stepper: numbered steps with done ✓ / active / locked states ---
+.bs-step { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); animation: fade-up 260ms var(--ease) backwards;
+  transition: border-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease), opacity var(--normal) var(--ease), filter var(--normal) var(--ease);
+  &.active { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 7%, transparent); }
+  &.locked { opacity: .5; filter: saturate(.4); user-select: none; }
+  // A step whose popover is open sits above the next step.
+  &:has(.pp.open, .up.open) { position: relative; z-index: 3; } }
+.bs-step[data-step='2'] { animation-delay: 50ms; }
+.bs-step[data-step='3'] { animation-delay: 100ms; }
+.bs-step-head { display: flex; align-items: center; gap: 12px; }
+.bs-step-num { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; font-size: .82rem; font-weight: 700;
+  background: var(--surface-2); color: var(--text-muted); box-shadow: inset 0 0 0 1.5px var(--border-strong);
+  transition: background-color var(--normal) var(--ease), color var(--normal) var(--ease), box-shadow var(--normal) var(--ease), transform var(--normal) var(--ease-spring);
+  .active > .bs-step-head > & { background: var(--primary); color: #fff; box-shadow: 0 0 0 4px var(--primary-ring); }
+  .done > .bs-step-head > & { background: var(--success); color: #fff; box-shadow: none; transform: scale(1.04); } }
+.bs-step-title { display: flex; flex-direction: column; gap: 1px; min-width: 0;
+  strong { font-size: .95rem; color: var(--text); }
+  small { font-size: .78rem; color: var(--text-faint); } }
+
+.bs-grid { position: relative; display: grid; grid-template-columns: minmax(280px, 2fr) 3fr; gap: 16px; align-items: start; }
+.bs-lock-hint { position: absolute; top: 18px; left: 50%; z-index: 2; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  background: var(--ink); color: #fff; font-size: .8rem; font-weight: 600; white-space: nowrap; box-shadow: var(--shadow-md);
+  transform: translateX(-50%); animation: pop-in 220ms var(--ease) backwards; }
+
+// --- ② Paste ---
+.bs-paste { display: flex; flex-direction: column; gap: 8px;
+  textarea { width: 100%; min-height: 260px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2);
+    font-family: ui-monospace, monospace; font-size: .78rem; line-height: 1.5; color: var(--text);
+    transition: border-color .15s var(--ease), box-shadow .15s var(--ease), background-color .15s var(--ease), opacity .25s var(--ease), filter .25s var(--ease);
+    &:hover { border-color: #b9bcd0; }
+    &:focus { outline: 0; background: var(--surface); border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); } } }
+.bs-paste-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; small { color: var(--text-faint); } }
+.bs-paste.busy textarea { opacity: .55; filter: blur(.4px); pointer-events: none; }
+
+// --- ③ Preview ---
+.bs-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 36px 16px; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface-2); text-align: center; animation: fade-in 220ms var(--ease);
+  p { margin: 0; max-width: 300px; font-size: .86rem; color: var(--text-muted); } }
+.bs-empty-art { display: inline-grid; place-items: center; width: 54px; height: 54px; border-radius: 16px; background: var(--primary-soft); color: var(--primary);
+  box-shadow: 6px 6px 0 -1px color-mix(in srgb, var(--primary) 14%, transparent); animation: float 4s var(--ease) infinite; }
+
 .bs-table { width: 100%; border-collapse: collapse; font-size: .84rem;
-  th { text-align: left; font-size: .72rem; text-transform: uppercase; color: var(--text-faint); padding: 6px; }
-  td { padding: 6px; border-top: 1px solid var(--border); vertical-align: top; }
-  tr.done { opacity: .7; } tr.failed td { background: color-mix(in srgb, var(--error) 6%, transparent); } }
-.bs-title { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
-.bs-sp { width: 64px; font: inherit; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+  th { text-align: left; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); padding: 6px; }
+  td { padding: 8px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+  tr.done { opacity: .7; } tr.failed td { background: color-mix(in srgb, var(--error) 6%, transparent); }
+  textarea { width: 100%; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: .8rem; resize: vertical; } }
+.bs-table td:nth-child(4) { min-width: 150px; }
+.bs-title { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.bs-sp { width: 64px; font: inherit; padding: 6px; border: 1px solid var(--border); border-radius: 6px; text-align: right; }
 .bs-dup { display: block; color: var(--warning, #b45309); }
 .bs-state { display: block; &.ok { color: var(--success); } &.err { color: var(--error); } }
 .bs-more { border: 0; background: none; padding: 0; font: inherit; font-size: .74rem; color: var(--primary); cursor: pointer; }
-.bs-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; [data-create] { margin-left: auto; } }
+.bs-add { align-self: flex-start; }
+
+// --- Sticky footer: total + create, pinned to the viewport bottom while the card scrolls ---
+.bs-foot { position: sticky; bottom: 12px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px); box-shadow: var(--shadow-md); animation: fade-up 240ms var(--ease) backwards; }
+.bs-foot-info { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-right: auto; font-size: .86rem; color: var(--text-muted);
+  strong { color: var(--text); } }
+.bs-result { padding: 2px 10px; border-radius: 999px; background: var(--success-soft); color: var(--success); font-weight: 600; font-size: .78rem;
+  &.has-fail { background: var(--error-soft); color: var(--error-strong); } }
+.bs-blocker { color: var(--text-faint); }
 .tb-hint { color: var(--text-faint); }
 
 // Custom checkbox: rounded box that fills with the primary colour while the tick scales in.
 .bs-check {
   appearance: none; -webkit-appearance: none; position: relative; display: inline-grid; place-items: center;
-  width: 18px; height: 18px; margin: 10px 0 0; border: 1.5px solid var(--border-strong); border-radius: 5px;
+  width: 18px; height: 18px; margin: 8px 0 0; border: 1.5px solid var(--border-strong); border-radius: 5px;
   background: var(--surface); cursor: pointer;
   transition: background-color .18s var(--ease), border-color .18s var(--ease), box-shadow .18s var(--ease), transform .12s var(--ease);
   &::after {
@@ -39,11 +85,8 @@
 }
 // Unchecked rows fade back so it's obvious they won't be created.
 .bs-table tbody tr:has(.bs-check:not(:checked)) td:not(:first-child) { opacity: .5; }
-.bs-table td { transition: opacity .2s var(--ease), background-color .25s var(--ease); }
 
-// Normalizing: dim the source text, show an AI panel with shimmering rows (.skeleton shimmer is global).
-.bs-paste textarea { transition: opacity .25s var(--ease), filter .25s var(--ease); }
-.bs-paste.busy textarea { opacity: .55; filter: blur(.4px); pointer-events: none; }
+// Normalizing: an AI panel with shimmering rows (.skeleton shimmer is global).
 .bs-ai { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
   background: linear-gradient(120deg, color-mix(in srgb, var(--primary) 7%, var(--surface)), var(--surface) 60%);
@@ -62,11 +105,9 @@
 .bs-ai-sp { height: 28px !important; }
 .bs-ai-user { height: 28px !important; }
 
-// --- Motion (keyframes fade-up / pop-in / fade-in are global) ---
-.bs-parent-chip { animation: pop-in 220ms var(--ease) backwards; }
-.bs-parent-pick input, .bs-title, .bs-sp, .bs-table textarea { transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
-.bs-parent-pick input:focus, .bs-title:focus, .bs-sp:focus, .bs-table textarea:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
-.bs-cands { animation: pop-in 180ms var(--ease); transform-origin: top; button { transition: background .12s; } }
+// --- Motion (keyframes fade-up / pop-in / fade-in / float are global) ---
+.bs-title, .bs-sp, .bs-table textarea { transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+.bs-title:focus, .bs-sp:focus, .bs-table textarea:focus { outline: 0; border-color: var(--primary-light); box-shadow: 0 0 0 3px var(--primary-ring); }
 // Preview rows cascade in (capped stagger); rows added later slide in on their own.
 .bs-table tbody tr { animation: fade-up 260ms var(--ease) backwards; animation-delay: calc(min(var(--i, 0), 12) * 30ms); }
 .bs-table tbody tr, .bs-table td { transition: opacity .25s var(--ease), background-color .25s var(--ease); }
@@ -74,12 +115,15 @@
 .bs-state, .bs-dup, [data-summary-result], [data-blocker] { animation: fade-in 220ms var(--ease); }
 .bs-state.ok { animation: pop-in 260ms var(--ease); }
 .bs-more { transition: color .15s; &:hover { color: var(--primary-strong); } }
-.tb-act { transition: transform .15s, opacity .15s; &:hover:not(:disabled) { transform: scale(1.15); } &:disabled { opacity: .4; cursor: not-allowed; } }
-@media (prefers-reduced-motion: reduce) {
-  .bs-ai, .bs-ai-orb, .bs-ai-dots i, .bs-ai-row,
-  .bs-parent-chip, .bs-cands, .bs-table tbody tr, .bs-table textarea, .bs-state, .bs-dup, [data-summary-result], [data-blocker] { animation: none; }
-  .bs-table tbody tr, .bs-table td, .bs-parent-pick input, .bs-title, .bs-sp, .tb-act, .bs-more, .bs-check, .bs-check::after { transition: none; }
-}
 .tb-num { text-align: right; }
-.tb-act { border: 0; background: none; cursor: pointer; }
+.tb-act { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-top: 2px; border: 0; border-radius: 8px; background: none; color: var(--text-faint); cursor: pointer;
+  transition: background-color .15s, color .15s, transform .15s;
+  &:hover:not(:disabled) { background: var(--error-soft); color: var(--error); transform: scale(1.06); }
+  &:disabled { opacity: .4; cursor: not-allowed; } }
+
 @media (max-width: 960px) { .bs-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .bs-step, .bs-lock-hint, .bs-empty, .bs-empty-art, .bs-foot, .bs-ai, .bs-ai-orb, .bs-ai-dots i, .bs-ai-row,
+  .bs-table tbody tr, .bs-table textarea, .bs-state, .bs-dup, [data-summary-result], [data-blocker] { animation: none; }
+  .bs-step, .bs-step-num, .bs-paste textarea, .bs-table tbody tr, .bs-table td, .bs-title, .bs-sp, .tb-act, .bs-more, .bs-check, .bs-check::after { transition: none; }
+}

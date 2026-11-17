@@ -11,9 +11,16 @@
       </div>
     }
     @if (board()) {
-      <div class="tb-chips cc-modes" role="tablist">
-        <button type="button" class="tb-chip" data-mode="single" [class.active]="mode() === 'single'" (click)="setMode('single')">Satu card</button>
-        <button type="button" class="tb-chip" data-mode="bulk" [class.active]="mode() === 'bulk'" (click)="setMode('bulk')">Bulk subtask</button>
+      <div class="cc-seg" role="tablist" aria-label="Mode buat card" [attr.data-active]="mode()">
+        <span class="cc-seg-ind" aria-hidden="true"></span>
+        <button type="button" role="tab" class="cc-seg-opt" data-mode="single" [class.active]="mode() === 'single'" [attr.aria-selected]="mode() === 'single'" (click)="setMode('single')">
+          <span class="cc-seg-icon"><app-icon name="plus" [size]="18" /></span>
+          <span class="cc-seg-text"><strong>Satu card</strong><small>Buat satu tiket dengan tipe apa pun</small></span>
+        </button>
+        <button type="button" role="tab" class="cc-seg-opt" data-mode="bulk" [class.active]="mode() === 'bulk'" [attr.aria-selected]="mode() === 'bulk'" (click)="setMode('bulk')">
+          <span class="cc-seg-icon"><app-icon name="layers" [size]="18" /></span>
+          <span class="cc-seg-text"><strong>Bulk subtask</strong><small>Paste Task Breakdown, rapikan dengan AI, buat banyak subtask</small></span>
+        </button>
       </div>
       @if (metaError()) { <p class="cc-err">{{ metaError() }}</p> }
       @if (meta(); as m) {

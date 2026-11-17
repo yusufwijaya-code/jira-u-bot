@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,13 @@ var (
 	ErrParentInvalid   = errors.New("issue_create: parent invalid")
 	ErrAIUnavailable   = errors.New("issue_create: ai not configured")
 )
+
+// ParentInvalidError says why a ticket can't be a subtask parent; it
+// matches ErrParentInvalid under errors.Is.
+type ParentInvalidError struct{ Message string }
+
+func (e *ParentInvalidError) Error() string        { return "issue_create: parent invalid: " + e.Message }
+func (e *ParentInvalidError) Is(target error) bool { return target == ErrParentInvalid }
 
 type ValidationError struct{ Message string }
 
@@ -93,9 +101,24 @@ type Brief struct {
 	Summary string `json:"summary"`
 }
 type Parent struct {
-	Key      string  `json:"key"`
-	Summary  string  `json:"summary"`
-	Subtasks []Brief `json:"subtasks"`
+	Key            string  `json:"key"`
+	Summary        string  `json:"summary"`
+	Type           string  `json:"type"`
+	TypeIconURL    string  `json:"typeIconUrl"`
+	Status         string  `json:"status"`
+	StatusCategory string  `json:"statusCategory"`
+	Subtasks       []Brief `json:"subtasks"`
+}
+
+// Candidate is one pickable parent in the Buat Card parent picker.
+type Candidate struct {
+	Key            string `json:"key"`
+	Summary        string `json:"summary"`
+	Type           string `json:"type"`
+	TypeIconURL    string `json:"typeIconUrl"`
+	Status         string `json:"status"`
+	StatusCategory string `json:"statusCategory"`
+	SubtaskCount   int    `json:"subtaskCount"`
 }
 type CreateRequest struct {
 	BoardID           int64          `json:"boardId"`
@@ -137,6 +160,7 @@ type Status struct {
 const (
 	maxSummaryRunes = 255
 	maxBulkRows     = 50
+	maxCandidates   = 50
 )
 
 type Service struct {
@@ -282,14 +306,88 @@ func (s *Service) parentFor(ctx context.Context, cred *jira_client_dto.Credentia
 	if err != nil {
 		return Parent{}, err
 	}
-	if !strings.EqualFold(brief.Fields.Project.Key, project) || brief.Fields.IssueType.Subtask {
-		return Parent{}, ErrParentInvalid
+	if err := parentProblem(brief, project); err != nil {
+		return Parent{}, err
 	}
-	p := Parent{Key: brief.Key, Summary: brief.Fields.Summary, Subtasks: []Brief{}}
+	f := brief.Fields
+	p := Parent{Key: brief.Key, Summary: f.Summary, Type: f.IssueType.Name, TypeIconURL: f.IssueType.IconURL,
+		Status: f.Status.Name, StatusCategory: f.Status.StatusCategory.Key, Subtasks: []Brief{}}
 	for _, st := range brief.Fields.Subtasks {
 		p.Subtasks = append(p.Subtasks, Brief{Key: st.Key, Summary: st.Fields.Summary})
 	}
 	return p, nil
+}
+
+// parentProblem: only standard tickets (hierarchyLevel 0) of the board's own
+// project can hold subtasks — not subtasks (-1), not epics (1).
+func parentProblem(b jira_client_dto.IssueBrief, project string) error {
+	t := b.Fields.IssueType
+	name := t.Name
+	if name == "" {
+		name = "Tiket ini"
+	}
+	switch {
+	case !strings.EqualFold(b.Fields.Project.Key, project):
+		return &ParentInvalidError{Message: "Tiket dari project lain tidak bisa jadi parent"}
+	case t.Subtask || t.HierarchyLevel < 0:
+		return &ParentInvalidError{Message: name + " adalah subtask, tidak bisa punya subtask"}
+	case t.HierarchyLevel != 0:
+		return &ParentInvalidError{Message: name + " tidak bisa punya subtask"}
+	}
+	return nil
+}
+
+// Parents lists parent candidates: the board project's tickets in open
+// sprints (non-subtask, non-epic), optionally narrowed by q (a key or a
+// summary prefix), newest update first.
+func (s *Service) Parents(ctx context.Context, email string, boardID int64, q string) ([]Candidate, error) {
+	cred, err := s.cred(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.projectOf(ctx, email, boardID)
+	if err != nil {
+		return nil, err
+	}
+	found, err := s.d.Jira.SearchBriefsAs(ctx, cred, parentsJQL(project, q), maxCandidates)
+	if err != nil {
+		return nil, err
+	}
+	out := []Candidate{}
+	for _, b := range found {
+		f := b.Fields
+		if f.IssueType.Subtask || f.IssueType.HierarchyLevel != 0 {
+			continue
+		}
+		out = append(out, Candidate{Key: b.Key, Summary: f.Summary, Type: f.IssueType.Name, TypeIconURL: f.IssueType.IconURL,
+			Status: f.Status.Name, StatusCategory: f.Status.StatusCategory.Key, SubtaskCount: len(f.Subtasks)})
+	}
+	return out, nil
+}
+
+var issueKeyRe = regexp.MustCompile(`^[A-Z][A-Z0-9_]*-[0-9]+$`)
+
+// luceneSpecial are the characters Jira text search treats as operators;
+// they're dropped from a summary query rather than escaped.
+var luceneSpecial = strings.NewReplacer(
+	`"`, " ", `\`, " ", "'", " ", "+", " ", "-", " ", "&", " ", "|", " ", "!", " ", "(", " ", ")", " ",
+	"{", " ", "}", " ", "[", " ", "]", " ", "^", " ", "~", " ", "*", " ", "?", " ", ":", " ", "/", " ",
+)
+
+func parentsJQL(project, q string) string {
+	jql := fmt.Sprintf(`project = "%s" AND sprint in openSprints() AND issuetype not in subTaskIssueTypes()`, jqlQuote(project))
+	q = strings.TrimSpace(q)
+	if key := strings.ToUpper(q); issueKeyRe.MatchString(key) {
+		jql += fmt.Sprintf(` AND key = "%s"`, key)
+	} else if text := strings.Join(strings.Fields(luceneSpecial.Replace(q)), " "); text != "" {
+		jql += fmt.Sprintf(` AND summary ~ "%s*"`, jqlQuote(text))
+	}
+	return jql + " ORDER BY updated DESC"
+}
+
+// jqlQuote escapes a value for a double-quoted JQL string.
+func jqlQuote(v string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v)
 }
 
 func (s *Service) CreateOne(ctx context.Context, email string, req CreateRequest) (string, error) {

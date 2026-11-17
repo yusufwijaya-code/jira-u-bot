@@ -1,78 +1,103 @@
 @if ((meta().types ?? []).length === 0) {
   <p class="tb-hint" data-no-types>Tidak ada tipe card yang bisa kamu buat di project ini.</p>
 } @else {
-<form class="cc-form" (submit)="$event.preventDefault(); submit()">
-  <!-- div, not label, around app-select: a label would re-forward option clicks to the trigger. -->
-  <div class="cc-field"><span>Tipe</span>
-    <app-select data-type [options]="typeOptions()" [ngModel]="typeId()" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setType($event)" ariaLabel="Tipe card" />
+<form class="cc-form scf" (submit)="$event.preventDefault(); submit()">
+  <div class="scf-main">
+    <!-- div, not label, around app-select: a label would re-forward option clicks to the trigger. -->
+    <div class="cc-field scf-type"><span>Tipe card *</span>
+      <app-select data-type [options]="typeOptions()" [ngModel]="typeId()" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setType($event)" ariaLabel="Tipe card" />
+    </div>
+    @if (type(); as t) {
+      <!-- Keyed on the type id so the fields re-enter (and re-animate) on every type switch. -->
+      @for (key of [t.id]; track key) {
+      <div class="cc-reveal">
+        @if (!t.supported) { <p class="cc-warn">Tidak didukung: tipe ini punya field wajib yang belum bisa diisi dari Nudge. Buat di Jira.</p> }
+        <label class="cc-field"><span>Judul *</span>
+          <input data-summary maxlength="255" placeholder="Ringkas dan jelas, mis. [BE] Endpoint list parent" [value]="summary()" (input)="summary.set($any($event.target).value)" />
+          @if (errors()['summary']) { <small class="cc-err">{{ errors()['summary'] }}</small> }
+        </label>
+        <label class="cc-field"><span>Deskripsi</span>
+          <textarea rows="9" placeholder="Konteks, acceptance criteria, link tech spec…" [value]="description()" (input)="description.set($any($event.target).value)"></textarea>
+        </label>
+      </div>
+      }
+    } @else {
+      <div class="scf-empty" data-type-empty>
+        <app-icon name="edit" [size]="20" />
+        <span>Pilih tipe card dulu — field yang dibutuhkan Jira muncul otomatis.</span>
+      </div>
+    }
   </div>
-  @if (type(); as t) {
-    <!-- Keyed on the type id so the fields re-enter (and re-animate) on every type switch. -->
-    @for (key of [t.id]; track key) {
-    <div class="cc-reveal">
-      @if (!t.supported) { <p class="cc-warn">Tidak didukung: tipe ini punya field wajib yang belum bisa diisi dari Nudge. Buat di Jira.</p> }
-      <label class="cc-field"><span>Judul *</span>
-        <input data-summary maxlength="255" [value]="summary()" (input)="summary.set($any($event.target).value)" />
-        @if (errors()['summary']) { <small class="cc-err">{{ errors()['summary'] }}</small> }
-      </label>
-      <label class="cc-field"><span>Deskripsi</span>
-        <textarea rows="4" [value]="description()" (input)="description.set($any($event.target).value)"></textarea>
-      </label>
-      <div class="cc-row">
+
+  <aside class="scf-side" aria-label="Detail">
+    <h3 class="scf-side-title">Detail</h3>
+    @if (type(); as t) {
+      @for (key of [t.id]; track key) {
+      <div class="cc-reveal">
         @if (t.storyPointField) {
           <label class="cc-field"><span>SP</span>
-            <input type="number" min="0" max="100" step="0.5" [value]="sp() ?? ''" (input)="sp.set($any($event.target).value === '' ? null : +$any($event.target).value)" />
+            <input type="number" min="0" max="100" step="0.5" placeholder="0–100" [value]="sp() ?? ''" (input)="sp.set($any($event.target).value === '' ? null : +$any($event.target).value)" />
           </label>
         }
         <div class="cc-field"><span>Assignee</span><app-user-picker [boardId]="boardId()" (picked)="assignee.set($event)" /></div>
-        @if (t.subtask || t.parentAllowed) {
-          <label class="cc-field"><span>Parent{{ t.subtask ? ' *' : '' }}</span>
-            <input placeholder="mis. CORE-10923" [value]="parentKey()" (input)="parentKey.set($any($event.target).value.toUpperCase())" />
+        @if (t.subtask) {
+          <div class="cc-field" data-parent-field><span>Parent *</span>
+            <app-parent-picker [boardId]="boardId()" placeholder="Cari tiket sprint atau ketik key" (picked)="parentKey.set($event?.key ?? '')" />
+          </div>
+        } @else if (t.parentAllowed) {
+          <label class="cc-field" data-parent-field><span>Parent (Epic)</span>
+            <input data-parent-key placeholder="mis. CORE-10923" [value]="parentKey()" (input)="parentKey.set($any($event.target).value.toUpperCase())" />
           </label>
         }
-      </div>
-      @for (f of t.fields; track f.id) {
-        @switch (f.kind) {
-          @case ('select') {
-            <div class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-              @if (f.multi) {
-                <div class="cc-multi" role="group" [attr.aria-label]="f.name" [attr.data-field]="f.id">
-                  @for (o of f.options ?? []; track o.id) {
-                    <button type="button" class="cc-opt" [class.on]="isSelected(f.id, o.id)" [attr.aria-pressed]="isSelected(f.id, o.id)" [attr.data-option]="o.id" (click)="toggleMulti(f.id, o.id)">{{ o.label }}</button>
-                  }
-                </div>
-              } @else {
-                <app-select [attr.data-field]="f.id" [options]="fieldOptions(f)" [ngModel]="values()[f.id] ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setValue(f.id, $event)" [ariaLabel]="f.name" />
-              }
-              @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-            </div>
-          }
-          @case ('number') {
-            <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-              <input type="number" [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value === '' ? null : +$any($event.target).value)" />
-              @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-            </label>
-          }
-          @default {
-            <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
-              <input [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value)" />
-              @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
-            </label>
+        @for (f of t.fields; track f.id) {
+          @switch (f.kind) {
+            @case ('select') {
+              <div class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
+                @if (f.multi) {
+                  <div class="cc-multi" role="group" [attr.aria-label]="f.name" [attr.data-field]="f.id">
+                    @for (o of f.options ?? []; track o.id) {
+                      <button type="button" class="cc-opt" [class.on]="isSelected(f.id, o.id)" [attr.aria-pressed]="isSelected(f.id, o.id)" [attr.data-option]="o.id" (click)="toggleMulti(f.id, o.id)">{{ o.label }}</button>
+                    }
+                  </div>
+                } @else {
+                  <app-select [attr.data-field]="f.id" [options]="fieldOptions(f)" [ngModel]="values()[f.id] ?? ''" [ngModelOptions]="{ standalone: true }" (ngModelChange)="setValue(f.id, $event)" [ariaLabel]="f.name" />
+                }
+                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
+              </div>
+            }
+            @case ('number') {
+              <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
+                <input type="number" [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value === '' ? null : +$any($event.target).value)" />
+                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
+              </label>
+            }
+            @default {
+              <label class="cc-field"><span>{{ f.name }}{{ f.required ? ' *' : '' }}</span>
+                <input [attr.data-field]="f.id" [value]="values()[f.id] ?? ''" (input)="setValue(f.id, $any($event.target).value)" />
+                @if (errors()[f.id]) { <small class="cc-err">{{ errors()[f.id] }}</small> }
+              </label>
+            }
           }
         }
-      }
-      @if (formError()) { <p class="cc-err cc-pop" role="alert">{{ formError() }}</p> }
-      <div class="cc-actions">
-        <button type="submit" class="btn btn-primary" data-submit [disabled]="!canSubmit()">
-          @if (saving()) { <span class="tb-spin" aria-hidden="true"></span> Membuat… } @else { Buat card }
-        </button>
       </div>
-    </div>
+      }
+    } @else {
+      <p class="scf-side-empty">SP, assignee, parent dan field wajib lain muncul di sini.</p>
     }
-  }
-  @if (lastCreated(); as c) {
-    <div class="cc-done cc-pop" data-created>✅ <a [href]="c.url" target="_blank" rel="noopener">{{ c.key }}</a> dibuat
-      <button type="button" class="btn btn-soft btn-sm" (click)="again()">Buat lagi</button></div>
-  }
+  </aside>
+
+  <div class="scf-actions">
+    @if (formError()) { <p class="cc-err cc-pop" role="alert">{{ formError() }}</p> }
+    @if (lastCreated(); as c) {
+      <div class="cc-done cc-pop" data-created><app-icon name="check-circle" [size]="18" /> <a [href]="c.url" target="_blank" rel="noopener">{{ c.key }}</a> dibuat
+        <button type="button" class="btn btn-soft btn-sm" (click)="again()">Buat lagi</button></div>
+    }
+    <div class="cc-actions">
+      @if (type() && !canSubmit() && !lastCreated() && !saving()) { <small class="scf-why" data-submit-hint>{{ submitHint() }}</small> }
+      <button type="submit" class="btn btn-primary" data-submit [disabled]="!canSubmit()">
+        @if (saving()) { <span class="tb-spin" aria-hidden="true"></span> Membuat… } @else { Buat card }
+      </button>
+    </div>
+  </div>
 </form>
 }

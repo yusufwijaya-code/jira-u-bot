@@ -111,3 +111,29 @@ func TestAssignableUsersAndMyself(t *testing.T) {
 		t.Fatalf("me = %q, err = %v", me, err)
 	}
 }
+
+func TestSearchBriefsAs_DecodesTypeAndStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/search/jql" || r.URL.Query().Get("jql") != `project = "CORE"` || r.URL.Query().Get("maxResults") != "50" {
+			t.Errorf("request = %s ? %v", r.URL.Path, r.URL.Query())
+		}
+		if !strings.Contains(r.URL.Query().Get("fields"), "status") {
+			t.Errorf("fields = %q, want status", r.URL.Query().Get("fields"))
+		}
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{{"key": "CORE-1", "fields": map[string]any{
+			"summary":   "S",
+			"issuetype": map[string]any{"name": "Epic", "hierarchyLevel": 1, "iconUrl": "https://i/e.svg"},
+			"status":    map[string]any{"name": "In Progress", "statusCategory": map[string]any{"key": "indeterminate"}},
+			"subtasks":  []map[string]any{{"key": "CORE-2"}},
+		}}}})
+	}))
+	defer srv.Close()
+	got, err := NewIssueCreateClient(newTestConfig(srv.URL)).SearchBriefsAs(context.Background(), userCred, `project = "CORE"`, 50)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got = %+v, err = %v", got, err)
+	}
+	f := got[0].Fields
+	if f.IssueType.HierarchyLevel != 1 || f.IssueType.Name != "Epic" || f.IssueType.IconURL == "" || f.Status.StatusCategory.Key != "indeterminate" || len(f.Subtasks) != 1 {
+		t.Fatalf("fields = %+v", f)
+	}
+}
