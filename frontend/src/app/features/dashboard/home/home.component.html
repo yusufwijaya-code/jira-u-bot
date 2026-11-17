@@ -77,15 +77,12 @@
   <!-- Active tickets with budget -->
   @if (!boardError()) {
     <section class="card" data-card="active">
-      <header class="card-header with-actions">
+      <header class="card-header">
         <span class="card-icon"><app-icon name="clock" [size]="20" /></span>
         <div>
           <h2>Sedang dikerjakan</h2>
           <p>Tiket Code Process kamu di sprint aktif dan pemakaian budget waktunya.</p>
         </div>
-        <button type="button" class="icon-btn" title="Muat ulang" aria-label="Muat ulang" (click)="loadBoard()" [disabled]="boardLoading()">
-          <app-icon name="refresh" [size]="16" />
-        </button>
       </header>
 
       @if (boardLoading()) {

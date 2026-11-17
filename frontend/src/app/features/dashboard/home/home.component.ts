@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, NgZone, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -22,6 +22,8 @@ const CODE_PROCESS = 'code process';
 const CODE_REVIEW = 'code review';
 const STATUS_ORDER = ['to do', 'code process', 'code review'];
 const GROUP_PREVIEW = 5;
+/** The poller updates sessions every 10s; 30s keeps the page current cheaply. */
+const LIVE_REFRESH_MS = 30_000;
 
 export type BudgetLevel = 'ok' | 'warn' | 'over';
 
@@ -304,6 +306,29 @@ export class HomeComponent {
       const loaded = this.boardContext.loaded();
       untracked(() => this.loadReport(board, loaded));
     });
+
+    // Live: elapsed/remaining time and statuses are computed server-side per
+    // request, so re-fetching keeps the page current without a reload button.
+    // A hidden tab skips the cycle and catches up as soon as it is shown.
+    // Outside the zone so the endless timer never keeps the app "unstable";
+    // each tick re-enters it so the view updates.
+    const zone = inject(NgZone);
+    const timer = zone.runOutsideAngular(() => setInterval(() => zone.run(() => this.refresh()), LIVE_REFRESH_MS));
+    const onVisible = () => {
+      if (!document.hidden) this.refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    });
+  }
+
+  /** Background reload: no skeleton, and a failed cycle keeps what's shown. */
+  private refresh(): void {
+    if (document.hidden || this.movingKey() !== null || this.backfilling()) return;
+    this.loadBoard(this.boardContext.selectedId(), true);
+    this.loadReport(this.reportBoard(), this.boardContext.loaded(), true);
   }
 
   protected boardOf(card: TicketCard): BoardSummary | null {
@@ -329,16 +354,22 @@ export class HomeComponent {
     return sprintRange(start, end);
   }
 
-  protected loadBoard(boardId: number | null = this.boardContext.selectedId()): void {
-    this.boardLoading.set(true);
-    this.boardError.set(null);
+  protected loadBoard(boardId: number | null = this.boardContext.selectedId(), silent = false): void {
+    if (!silent) {
+      this.boardLoading.set(true);
+      this.boardError.set(null);
+    }
     this.dashboard.getBoard(boardId).subscribe({
       next: (res) => {
+        // A background reply for a board the user has since left is stale.
+        if (silent && boardId !== this.boardContext.selectedId()) return;
         this.cards.set((res.columns ?? []).flatMap((col) => col.cards ?? []));
         this.related.set(res.related ?? []);
         this.boardLoading.set(false);
+        this.boardError.set(null);
       },
       error: () => {
+        if (silent) return;
         this.boardError.set('Gagal memuat tiket dari Jira, coba lagi');
         this.boardLoading.set(false);
       },
@@ -374,19 +405,23 @@ export class HomeComponent {
     });
   }
 
-  protected loadReport(board: BoardSummary | null = this.reportBoard(), loaded = this.boardContext.loaded()): void {
+  protected loadReport(board: BoardSummary | null = this.reportBoard(), loaded = this.boardContext.loaded(), silent = false): void {
     if (!board) {
+      if (silent) return;
       this.report.set(null);
       this.reportLoading.set(!loaded);
       return;
     }
-    this.reportLoading.set(true);
-    this.dashboard.getSprintReport([board.activeSprint.name]).subscribe({
+    if (!silent) this.reportLoading.set(true);
+    const sprint = board.activeSprint.name;
+    this.dashboard.getSprintReport([sprint]).subscribe({
       next: (res) => {
+        if (silent && sprint !== this.reportBoard()?.activeSprint.name) return;
         this.report.set(res.report);
         this.reportLoading.set(false);
       },
       error: () => {
+        if (silent) return;
         this.report.set(null);
         this.reportLoading.set(false);
       },

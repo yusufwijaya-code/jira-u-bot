@@ -176,6 +176,53 @@ describe('HomeComponent', () => {
     fixture.detectChanges();
   });
 
+  describe('live refresh', () => {
+    beforeEach(() => {
+      jasmine.clock().install();
+      fixture.destroy();
+      dashboard.getBoard.calls.reset();
+      dashboard.getSprintReport.calls.reset();
+      fixture = TestBed.createComponent(HomeComponent);
+      fixture.detectChanges();
+    });
+
+    afterEach(() => {
+      fixture.destroy();
+      jasmine.clock().uninstall();
+    });
+
+    it('reloads tickets and the sprint summary every 30 seconds without a skeleton', () => {
+      expect(dashboard.getBoard).toHaveBeenCalledTimes(1);
+      expect(dashboard.getSprintReport).toHaveBeenCalledTimes(1);
+
+      jasmine.clock().tick(30_000);
+      fixture.detectChanges();
+
+      expect(dashboard.getBoard).toHaveBeenCalledTimes(2);
+      expect(dashboard.getSprintReport).toHaveBeenCalledTimes(2);
+      expect(el().querySelector('.table-skeleton')).toBeNull();
+    });
+
+    it('keeps the last tickets when a background reload fails', () => {
+      dashboard.getBoard.and.returnValue(throwError(() => ({ status: 502 })));
+      jasmine.clock().tick(30_000);
+      fixture.detectChanges();
+
+      expect(stat('active')).toBe('3');
+      expect(el().textContent).not.toContain('Gagal memuat tiket');
+    });
+
+    it('stops reloading once the page is left', () => {
+      fixture.destroy();
+      jasmine.clock().tick(60_000);
+      expect(dashboard.getBoard).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('has no manual reload button on "Sedang dikerjakan" (it refreshes itself)', () => {
+    expect(el().querySelector('[aria-label="Muat ulang"]')).toBeNull();
+  });
+
   it('greets the user and describes all active sprints when no board is selected', () => {
     expect(el().querySelector('.hero-strip h2')?.textContent).toContain('Halo, Yusuf');
     expect(el().querySelector('.hero-strip p')?.textContent).toContain('semua sprint aktif (2 board)');
