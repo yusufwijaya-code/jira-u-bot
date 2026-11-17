@@ -941,3 +941,49 @@ func TestPollOnce_ExitClosesSessionWithoutNotice(t *testing.T) {
 		t.Errorf("reminder engine called %v, want nothing", reminderEngine.evaluateCalls)
 	}
 }
+
+// --- Aturan Board (Tech Spec "Aturan Board (Admin CRUD)") ---
+
+func TestPollOnce_DeactivatedProjectClosesSessionWithoutTime(t *testing.T) {
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+	jira_client_dto.SetRules([]jira_client_dto.TrackingRule{jira_client_dto.RuleFor("CORE")}) // OMS deactivated
+	issueSession := newFakeIssueSessionServiceForPoller()
+	// 72h back always spans business hours, so the old exit path would add time.
+	start := time.Now().Add(-72 * time.Hour)
+	issueSession.sessions["OMS-1"] = &issue_session_dto.IssueSession{
+		IssueKey: "OMS-1", ProjectKey: "OMS", StoryPoints: 3, FlagActive: true, CurrentSessionStartedDate: &start, AssigneeEmail: "dev@esb.co.id",
+	}
+	reminderEngine := &fakeReminderEngineService{}
+	poller := newTestPoller(&fakeJiraClientService{}, issueSession, reminderEngine, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	added, closed := issueSession.closeCalls["OMS-1"]
+	if !closed || added != 0 {
+		t.Errorf("CloseSession(OMS-1) closed=%v added=%d, want closed with 0 seconds (AC4.5)", closed, added)
+	}
+	if len(reminderEngine.evaluateCalls) != 0 {
+		t.Errorf("evaluated = %v, want none", reminderEngine.evaluateCalls)
+	}
+}
+
+func TestPollOnce_NoActiveRuleSkipsTheCycle(t *testing.T) {
+	issue := assignedIssue("OMS-1", "dev@esb.co.id", 3) // built before the registry is emptied
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+	jira_client_dto.SetRules(nil)
+	issueSession := newFakeIssueSessionServiceForPoller()
+	start := time.Now().Add(-72 * time.Hour)
+	issueSession.sessions["OMS-2"] = &issue_session_dto.IssueSession{IssueKey: "OMS-2", StoryPoints: 3, FlagActive: true, CurrentSessionStartedDate: &start}
+	poller := newTestPoller(&fakeJiraClientService{issues: []jira_client_dto.Issue{issue}}, issueSession, &fakeReminderEngineService{}, newFakeRegistrationRepositoryForPoller("dev@esb.co.id"))
+
+	if err := poller.pollOnce(context.Background()); err != nil {
+		t.Fatalf("pollOnce: %v", err)
+	}
+	if err := poller.backfillActiveSessions(context.Background()); err != nil {
+		t.Fatalf("backfillActiveSessions: %v", err)
+	}
+	if len(issueSession.openAtCalls) != 0 || len(issueSession.closeCalls) != 0 {
+		t.Errorf("opened %v / closed %v, want nothing touched when no rule is active (AC1.4)", issueSession.openAtCalls, issueSession.closeCalls)
+	}
+}

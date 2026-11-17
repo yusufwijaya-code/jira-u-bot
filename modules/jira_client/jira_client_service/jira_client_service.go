@@ -34,7 +34,7 @@ type JiraClientService interface {
 	// TransitionIssue executes transitionID (one of the IDs returned by
 	// GetTransitions) against issueKey.
 	TransitionIssue(ctx context.Context, issueKey, transitionID string) error
-	// SearchAllIssuesByAssignee returns EVERY OMS/CORE issue assigned to
+	// SearchAllIssuesByAssignee returns EVERY issue of a project with an active tracking rule assigned to
 	// accountID, regardless of status — unlike SearchCodeProcessIssues,
 	// this is not limited to "Code Process" (Tech Spec "Dashboard Jira
 	// Manage", Chapter 9b, My Board). cred == nil uses the central

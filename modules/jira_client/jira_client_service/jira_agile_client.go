@@ -22,17 +22,19 @@ import (
 // & Active Sprint Dashboard"). Kept separate from JiraClientService so the
 // existing interface — and its many test fakes — stay unchanged.
 type JiraAgileClient interface {
-	// SearchActiveSprintIssuesByAssignee returns every CORE/OMS ticket
+	// SearchActiveSprintIssuesByAssignee returns every ticket of every
+	// project with an active tracking rule
 	// assigned to accountID that is in an open sprint, including the Sprint
 	// field (for the board mapping) and budget fields.
 	SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error)
 	// SearchIssuesByKeysForAssignee returns those of keys that are assigned
 	// to accountID, in any status — the subtasks/linked items shown as
-	// dashboard branches. Keys that are malformed or outside CORE/OMS are
+	// dashboard branches. Keys that are malformed or outside every project
+	// with an active tracking rule are
 	// dropped; at most MaxRelatedKeys are queried.
 	SearchIssuesByKeysForAssignee(ctx context.Context, cred *jira_client_dto.Credential, keys []string, accountID string) ([]jira_client_dto.Issue, error)
-	// SearchSprintIssuesUpdatedWithin returns the active-sprint CORE/OMS
-	// tickets of any of accountIDs (bot credential); within > 0 keeps only
+	// SearchSprintIssuesUpdatedWithin returns the active-sprint tickets of
+	// every project with an active tracking rule of any of accountIDs (bot credential); within > 0 keeps only
 	// those updated in that last stretch (relative JQL, so the bot
 	// profile's timezone doesn't matter) — the status watcher's query (Tech
 	// Spec "Notifikasi Perubahan Status Tiket"). POST, every page read.
@@ -59,7 +61,11 @@ func NewJiraAgileClient(cfg *config.AppConfig) JiraAgileClient {
 const maxAvatarBytes = 512 * 1024
 
 func (s *jiraClientServiceImpl) SearchActiveSprintIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
-	jql := fmt.Sprintf(`project in (CORE, OMS) AND assignee = "%s" AND sprint in openSprints() ORDER BY updated DESC`, accountID)
+	projects := jira_client_dto.ProjectsJQLIn()
+	if projects == "" {
+		return nil, nil
+	}
+	jql := fmt.Sprintf(`%s AND assignee = "%s" AND sprint in openSprints() ORDER BY updated DESC`, projects, accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
 	params.Set("fields", issueFieldsParam(true)+",parent,subtasks,issuelinks")
@@ -204,7 +210,11 @@ func (s *jiraClientServiceImpl) SearchSprintIssuesUpdatedWithin(ctx context.Cont
 	for i, id := range accountIDs {
 		quoted[i] = strconv.Quote(id)
 	}
-	jql := fmt.Sprintf(`project in (CORE, OMS) AND sprint in openSprints() AND assignee in (%s)`, strings.Join(quoted, ","))
+	projects := jira_client_dto.ProjectsJQLIn()
+	if projects == "" {
+		return nil, nil
+	}
+	jql := fmt.Sprintf(`%s AND sprint in openSprints() AND assignee in (%s)`, projects, strings.Join(quoted, ","))
 	if within > 0 {
 		minutes := int(math.Ceil(within.Minutes()))
 		jql += fmt.Sprintf(` AND updated >= "-%dm"`, minutes)

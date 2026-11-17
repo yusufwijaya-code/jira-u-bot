@@ -42,6 +42,9 @@ func (s *jiraClientServiceImpl) authHeadersFor(cred *jira_client_dto.Credential)
 func (s *jiraClientServiceImpl) SearchCodeProcessIssues(ctx context.Context) ([]jira_client_dto.Issue, error) {
 	// Each project's tracked statuses (CORE also counts CODE REVIEW).
 	jql := jira_client_dto.TrackedIssuesJQL()
+	if jql == "" {
+		return nil, nil // no active tracking rule (AC1.4)
+	}
 	params := url.Values{}
 	params.Set("jql", jql)
 	params.Set("fields", issueFieldsParam(true))
@@ -140,7 +143,11 @@ func (s *jiraClientServiceImpl) TransitionIssue(ctx context.Context, issueKey, t
 // needs every status), and this method is intentionally separate from the
 // poller's query so changing one never risks the other's behavior.
 func (s *jiraClientServiceImpl) SearchAllIssuesByAssignee(ctx context.Context, cred *jira_client_dto.Credential, accountID string) ([]jira_client_dto.Issue, error) {
-	jql := fmt.Sprintf(`project in (CORE, OMS) AND assignee = "%s" ORDER BY updated DESC`, accountID)
+	projects := jira_client_dto.ProjectsJQLIn()
+	if projects == "" {
+		return nil, nil
+	}
+	jql := fmt.Sprintf(`%s AND assignee = "%s" ORDER BY updated DESC`, projects, accountID)
 	params := url.Values{}
 	params.Set("jql", jql)
 	params.Set("fields", issueFieldsParam(false))

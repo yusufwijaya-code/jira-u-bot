@@ -183,3 +183,56 @@ func TestGetRecentChangelog_ReadsTheLastPage(t *testing.T) {
 		t.Errorf("startAt = %v, want 0 then 50", starts)
 	}
 }
+
+func TestProjectScopedSearches_FollowTheRegistry(t *testing.T) {
+	var jqls []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jql := r.URL.Query().Get("jql")
+		if r.Method == http.MethodPost {
+			var body searchJQLRequest
+			json.NewDecoder(r.Body).Decode(&body)
+			jql = body.JQL
+		}
+		jqls = append(jqls, jql)
+		json.NewEncoder(w).Encode(map[string]any{"issues": []map[string]any{}})
+	}))
+	defer server.Close()
+	cfg := newTestConfig(server.URL)
+	ctx := context.Background()
+	t.Cleanup(func() { jira_client_dto.SetRules(jira_client_dto.BuiltinRules()) })
+
+	jira_client_dto.SetRules([]jira_client_dto.TrackingRule{
+		{ProjectKey: "POS", TrackedStatuses: []string{"In Progress"}, DoneStatus: "Done"},
+		{ProjectKey: "OMS", TrackedStatuses: []string{"Code Process"}, DoneStatus: "Code Review"},
+	})
+	NewJiraClientService(cfg).SearchAllIssuesByAssignee(ctx, nil, "acc-1")
+	NewJiraAgileClient(cfg).SearchActiveSprintIssuesByAssignee(ctx, nil, "acc-1")
+	NewJiraAgileClient(cfg).SearchSprintIssuesUpdatedWithin(ctx, []string{"acc-1"}, 0)
+	if len(jqls) != 3 {
+		t.Fatalf("requests = %d, want 3", len(jqls))
+	}
+	for _, jql := range jqls {
+		if !strings.HasPrefix(jql, "project in (OMS, POS) AND ") {
+			t.Errorf("jql = %q, want the active projects of the registry", jql)
+		}
+	}
+
+	// No active project: no request and no error (AC1.4).
+	jira_client_dto.SetRules(nil)
+	jqls = nil
+	if issues, err := NewJiraClientService(cfg).SearchCodeProcessIssues(ctx); issues != nil || err != nil {
+		t.Errorf("SearchCodeProcessIssues = %v, %v", issues, err)
+	}
+	if issues, err := NewJiraClientService(cfg).SearchAllIssuesByAssignee(ctx, nil, "acc-1"); issues != nil || err != nil {
+		t.Errorf("SearchAllIssuesByAssignee = %v, %v", issues, err)
+	}
+	if issues, err := NewJiraAgileClient(cfg).SearchActiveSprintIssuesByAssignee(ctx, nil, "acc-1"); issues != nil || err != nil {
+		t.Errorf("SearchActiveSprintIssuesByAssignee = %v, %v", issues, err)
+	}
+	if issues, err := NewJiraAgileClient(cfg).SearchSprintIssuesUpdatedWithin(ctx, []string{"acc-1"}, 0); issues != nil || err != nil {
+		t.Errorf("SearchSprintIssuesUpdatedWithin = %v, %v", issues, err)
+	}
+	if len(jqls) != 0 {
+		t.Errorf("requests sent with no active project: %v", jqls)
+	}
+}
