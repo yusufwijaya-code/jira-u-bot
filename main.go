@@ -377,7 +377,10 @@ func main() {
 		}()
 	}
 
-	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc)
+	// The user's own changes on the web get a confirmation DM; chat commands
+	// reply in chat instead.
+	userDashboardHandler := user_dashboard_handler.NewUserDashboardHandler(userDashboardSvc, chatInteractiveSvc, jiraCredentialSvc, userSettingSvc, boardSvc,
+		user_dashboard_handler.WithSelfChangeListener(user_dashboard_handler.SelfChangeListener(deliveryRouter, userDashboardSvc)))
 
 	sprintReportSvc := sprint_report_service.NewSprintReportService(issueSessionRepo, businessHoursSvc, userLeaveSvc)
 	sprintReportHandler := sprint_report_handler.NewSprintReportHandler(sprintReportSvc, sprint_report_handler.WithBackfiller(sprintBackfillSvc))
