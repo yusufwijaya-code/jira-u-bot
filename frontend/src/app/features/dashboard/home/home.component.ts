@@ -380,6 +380,23 @@ export class HomeComponent {
   protected hasTrackedTickets = computed(() => (this.report()?.totalCount ?? 0) > 0);
   protected backfilling = signal(false);
 
+  /** Header "Sinkron Jira": say what it does first — the icon alone didn't. */
+  protected async askBackfill(): Promise<void> {
+    if (this.backfilling()) return;
+    const confirmed = await this.confirm.ask({
+      title: 'Sinkron waktu dari Jira?',
+      message: 'Nudge akan membaca ulang riwayat status tiket sprint aktif kamu di Jira untuk:',
+      points: [
+        'Menambahkan tiket yang terlewat — misalnya saat bot sempat mati ketika tiket dikerjakan.',
+        'Menghitung ulang waktu tiket yang sudah tercatat dengan aturan terbaru (CODE REVIEW di CORE ikut dihitung, hari libur & cuti dipotong).',
+      ],
+      note: 'Otomatis juga dijalankan tiap hari pukul 07:00 WIB.',
+      confirmText: 'Sinkron sekarang',
+      icon: 'refresh',
+    });
+    if (confirmed) this.backfillSprint();
+  }
+
   /** "Hitung ulang dari Jira": fill in time the bot missed, then reload the summary. */
   protected backfillSprint(): void {
     if (this.backfilling()) return;

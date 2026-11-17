@@ -1298,6 +1298,38 @@ table.admin-users {
   .btn-block { width: 100%; margin-top: 18px; justify-content: center; }
 }
 
+/* Optional "what this does" list in the confirm dialog. */
+.modal-points {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 14px 16px;
+  list-style: none;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+
+  li {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: 10px;
+    align-items: start;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  app-icon { margin-top: 2px; color: var(--success); }
+}
+.modal-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .modal-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
