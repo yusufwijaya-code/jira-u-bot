@@ -291,9 +291,18 @@ export class HomeComponent {
    * all of them — not just a top 5. `over` = actual above the estimate (the
    * API's deviation is unsigned).
    */
+  /** Issue type per key from the board cards + branches already loaded (sprint report rows come from DB sessions without a type). */
+  private typeByKey = computed(() => {
+    const m = new Map<string, { issueType?: string; issueTypeIconUrl?: string }>();
+    for (const c of [...this.cards(), ...this.related()]) {
+      if (c.issueTypeIconUrl || c.issueType) m.set(c.issueKey, { issueType: c.issueType, issueTypeIconUrl: c.issueTypeIconUrl });
+    }
+    return m;
+  });
+
   protected sprintRows = computed(() =>
     [...(this.report()?.rows ?? [])]
-      .map((r) => ({ ...r, over: r.actualHours > r.estimatedHours }))
+      .map((r) => ({ ...r, ...this.typeByKey().get(r.issueKey), over: r.actualHours > r.estimatedHours }))
       .sort((a, b) => Math.abs(b.deviationPercent) - Math.abs(a.deviationPercent)),
   );
 
