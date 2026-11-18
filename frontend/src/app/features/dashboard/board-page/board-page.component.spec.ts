@@ -5,7 +5,7 @@ import { Router, provideRouter } from '@angular/router';
 import { MoveDone, MoveFieldsService } from '../../../core/ui/move-fields.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
-import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
+import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, VIEW_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
 
 describe('BoardPageComponent', () => {
   let http: HttpTestingController;
@@ -261,8 +261,14 @@ describe('BoardPageComponent', () => {
     const fixture = TestBed.createComponent(BoardPageComponent);
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
-    expect(el.querySelector('[data-skeleton]')).not.toBeNull();
-    expect(el.querySelectorAll('.tb-sk-row').length).toBe(6);
+    const sk = el.querySelector('[data-skeleton]') as HTMLElement;
+    expect(sk).not.toBeNull();
+    // Shaped like the page: note, 4 KPI tiles, the filter row, then a status group with rows.
+    expect(sk.querySelector('.sk-note')?.textContent).toContain('Mengambil tiket dari Jira');
+    expect(sk.querySelectorAll('[data-sk-stat]').length).toBe(4);
+    expect(sk.querySelector('.tb-toolbar .tb-actions')).not.toBeNull();
+    expect(sk.querySelectorAll('.tb-section .tb-sk-row').length).toBe(5);
+    expect(sk.querySelector('.tb-spin')).toBeNull();
     http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [{ status: 'To Do', cards: [] }] });
     fixture.detectChanges();
     expect(el.querySelector('[data-skeleton]')).toBeNull();
@@ -628,6 +634,18 @@ describe('BoardPageComponent', () => {
     expect(fixture.nativeElement.querySelector('app-board-columns')).not.toBeNull();
     expect(localStorage.getItem('nudge.board.view')).toBe('columns');
     localStorage.removeItem('nudge.board.view');
+  });
+
+  it('shows kanban column skeletons on first load in the column view', () => {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'columns');
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
+    const sk = fixture.nativeElement.querySelector('[data-skeleton]') as HTMLElement;
+    expect(sk.getAttribute('data-view')).toBe('columns');
+    expect(sk.querySelectorAll('[data-sk-col]').length).toBe(3);
+    expect(sk.querySelector('.tb-sk-row')).toBeNull();
+    localStorage.removeItem(VIEW_STORAGE_KEY);
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
   });
 
   it('shows the issue-type icon before the key', () => {

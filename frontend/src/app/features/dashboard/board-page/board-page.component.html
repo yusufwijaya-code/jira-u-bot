@@ -7,28 +7,54 @@
 }
 @if (tab() === 'board') {
 @if (initialLoading()) {
-  <!-- First load: the page's shape, shimmering, instead of a lone "Memuat…" line. -->
-  <div class="tb-skeleton" aria-busy="true" aria-label="Memuat tiket" data-skeleton>
-    <div class="tb-toolbar">
-      <div class="tb-summary">
-        <span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill"></span>
-      </div>
-      <span class="skeleton tb-sk-search"></span>
+  <!-- First load: the page's own layout (KPI tiles, filter row, then a status group or
+       kanban columns), shimmering and cascading in, so the data lands without a jump. -->
+  <div class="tb-skeleton" aria-busy="true" aria-label="Memuat tiket" data-skeleton [attr.data-view]="view()">
+    <span class="sk-note tb-sk-block" role="status"><span class="sk-dot" aria-hidden="true"></span>Mengambil tiket dari Jira…</span>
+    <div class="tb-stats tb-sk-block" style="--i: 1" aria-hidden="true">
+      @for (t of [0, 1, 2, 3]; track t) {
+        <div class="tb-stat tb-sk-stat" data-sk-stat>
+          <span class="skeleton tb-sk-num"></span><span class="skeleton tb-sk-label"></span>
+          @if (t === 3) { <span class="skeleton tb-sk-bar"></span> }
+        </div>
+      }
     </div>
-    @for (rows of [[1, 2, 3, 4], [1, 2]]; track $index) {
-      <section class="tb-section">
-        <div class="tb-head"><span class="skeleton tb-sk-title"></span></div>
-        @for (r of rows; track $index) {
-          <div class="tb-sk-row" [style.--i]="$index">
-            <span class="skeleton tb-sk-key"></span>
-            <span class="skeleton tb-sk-text"></span>
-            <span class="skeleton tb-sk-time"></span>
+    <div class="tb-toolbar tb-sk-block" style="--i: 2" aria-hidden="true">
+      <div class="tb-summary"><span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill short"></span></div>
+      <div class="tb-actions">
+        <span class="skeleton tb-sk-seg"></span><span class="skeleton tb-sk-seg short"></span><span class="skeleton tb-sk-search"></span>
+      </div>
+    </div>
+    <span class="skeleton tb-sk-hint tb-sk-block" style="--i: 3" aria-hidden="true"></span>
+    @if (view() === 'list') {
+      <section class="tb-section tb-sk-block" style="--i: 4" aria-hidden="true">
+        <div class="tb-head tb-sk-head"><span class="skeleton tb-sk-dot"></span><span class="skeleton tb-sk-title"></span><span class="skeleton tb-sk-count"></span></div>
+        @for (r of [0, 1, 2, 3, 4]; track r) {
+          <div class="tb-sk-row" [style.--i]="r + 5">
+            <span class="tb-sk-keycell"><span class="skeleton tb-sk-icon"></span><span class="skeleton tb-sk-key"></span></span>
+            <span class="skeleton tb-sk-text" [style.width.%]="[72, 58, 80, 64, 50][r]"></span>
+            <span class="skeleton tb-sk-sp"></span>
+            <span class="tb-sk-time"><span class="skeleton"></span><span class="skeleton tb-sk-timebar"></span></span>
             <span class="skeleton tb-sk-chip"></span>
           </div>
         }
       </section>
+    } @else {
+      <div class="tb-sk-cols" aria-hidden="true">
+        @for (cards of [[0, 1, 2], [0, 1], [0, 1]]; track $index; let c = $index) {
+          <div class="tb-sk-col tb-sk-block" [style.--i]="c + 4" data-sk-col>
+            <div class="tb-sk-colhead"><span class="skeleton tb-sk-dot"></span><span class="skeleton tb-sk-title"></span></div>
+            @for (k of cards; track k) {
+              <div class="tb-sk-card">
+                <span class="tb-sk-keycell"><span class="skeleton tb-sk-icon"></span><span class="skeleton tb-sk-key"></span></span>
+                <span class="skeleton tb-sk-line"></span><span class="skeleton tb-sk-line short"></span>
+                <span class="skeleton tb-sk-timebar"></span>
+              </div>
+            }
+          </div>
+        }
+      </div>
     }
-    <p class="tb-hint tb-sk-note"><span class="tb-spin" aria-hidden="true"></span> Mengambil tiket dari Jira…</p>
   </div>
 } @else if (error()) {
   <div class="empty-inline">

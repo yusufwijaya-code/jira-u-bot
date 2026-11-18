@@ -3633,3 +3633,49 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   rect { fill: var(--surface-2); stroke: var(--border-strong); stroke-width: 1.2; }
   path { fill: none; stroke: var(--text-faint); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 }
+
+/* "Mengambil … dari Jira…" note with a pulsing dot (skeletons). */
+.sk-note { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-faint); }
+.sk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary-light); animation: glow-pulse 1.2s var(--ease) infinite; }
+@media (prefers-reduced-motion: reduce) { .sk-dot { animation: none; } }
+
+/* ==========================================================================
+   Papan Tiket: first-load skeleton. Global
+   (tb-* names) to keep board-page.component.scss under its style budget.
+   ========================================================================== */
+// First-load skeleton: the page's own blocks (.tb-stats/.tb-toolbar/.tb-section reused), cascading in.
+.tb-skeleton { display: flex; flex-direction: column; gap: 14px; }
+.tb-sk-block { animation: fade-up 280ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
+.tb-skeleton .tb-sk-stat { gap: 6px; min-height: 76px; }
+.tb-sk-num { width: 38px; height: 20px; }
+.tb-sk-label { width: 64px; height: 11px; }
+.tb-sk-bar { height: 4px; margin-top: 4px; border-radius: 999px; }
+.tb-sk-pill { width: 130px; height: 28px; border-radius: 999px; &.short { width: 96px; } }
+.tb-sk-seg { width: 230px; height: 32px; border-radius: 999px; &.short { width: 140px; } }
+.tb-sk-search { width: 240px; height: 36px; }
+.tb-sk-hint { width: min(420px, 70%); height: 11px; margin-top: -4px; }
+.tb-skeleton .tb-sk-head { cursor: default; background: var(--surface-2); }
+.tb-sk-dot { width: 8px; height: 8px; border-radius: 50%; }
+.tb-sk-title { width: 120px; height: 12px; }
+.tb-sk-count { width: 26px; height: 16px; border-radius: 999px; }
+.tb-sk-row {
+  display: grid; grid-template-columns: 112px 1fr 40px 130px 104px; gap: 20px; align-items: center;
+  padding: 15px 16px; border-top: 1px solid var(--border);
+  animation: fade-in 300ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 60ms);
+  .skeleton { height: 12px; }
+}
+.tb-sk-keycell { display: flex; align-items: center; gap: 6px; .tb-sk-icon { width: 16px; height: 16px; border-radius: 4px; } .tb-sk-key { width: 72px; height: 18px; } }
+.tb-sk-sp { width: 18px; justify-self: end; }
+.tb-sk-time { display: flex; flex-direction: column; gap: 6px; .tb-sk-timebar { height: 4px; } }
+.tb-sk-chip { height: 24px !important; border-radius: 999px; }
+.tb-sk-cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 12px; overflow: hidden; }
+.tb-sk-col { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-height: 160px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.tb-sk-colhead { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
+.tb-sk-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  .tb-sk-line { height: 11px; &.short { width: 60%; } } .tb-sk-timebar { height: 4px; margin-top: 2px; }
+}
+@media (max-width: 720px) {
+  .tb-sk-row { grid-template-columns: 1fr auto; .tb-sk-text, .tb-sk-time, .tb-sk-sp { display: none; } }
+  .tb-sk-seg, .tb-sk-search { display: none; }
+}

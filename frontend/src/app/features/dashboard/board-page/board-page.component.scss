@@ -138,24 +138,10 @@
 .tb-table tr.busy > td { background: var(--surface-2); }
 .tb-table tr.just-moved > td { animation: tb-flash 2.4s var(--ease); }
 
-.tb-skeleton { display: flex; flex-direction: column; gap: 14px; }
-.tb-sk-pill { width: 120px; height: 28px; border-radius: 999px; }
-.tb-sk-search { width: 240px; height: 38px; }
-.tb-sk-title { width: 160px; height: 14px; }
-.tb-sk-row {
-  display: grid; grid-template-columns: 90px 1fr 120px 110px; gap: 24px; align-items: center;
-  padding: 16px; border-top: 1px solid var(--border);
-  animation: fade-in 300ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 60ms);
-  .skeleton { height: 12px; }
-}
-.tb-sk-text { width: 70%; }
-.tb-sk-chip { height: 22px !important; border-radius: 999px; }
-.tb-sk-note { display: flex; align-items: center; gap: 8px; }
 .tb-menu-loading { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
 .tb-sk-option { height: 30px; margin: 0 6px; }
 
 @media (max-width: 720px) {
-  .tb-sk-row { grid-template-columns: 1fr auto; .tb-sk-text, .tb-sk-time { display: none; } }
   .tb-actions { width: 100%; }
   .tb-search { min-width: 0; flex: 1; }
   .tb-table {
