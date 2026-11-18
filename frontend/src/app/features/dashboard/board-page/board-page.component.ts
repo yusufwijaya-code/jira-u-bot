@@ -12,6 +12,8 @@ import { BoardColumnsComponent } from './board-columns.component';
 import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
 import { CreateCardComponent } from './create-card/create-card.component';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { IssueTypeIconComponent } from '../../../shared/ui/issue-type-icon.component';
+import { SegIndicatorDirective } from '../../../shared/ui/seg-indicator.directive';
 
 interface Column {
   status: string;
@@ -43,7 +45,7 @@ export const VIEW_STORAGE_KEY = 'nudge.board.view';
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [IconComponent, NgTemplateOutlet, BoardColumnsComponent, CreateCardComponent],
+  imports: [IconComponent, IssueTypeIconComponent, SegIndicatorDirective, NgTemplateOutlet, BoardColumnsComponent, CreateCardComponent],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
 })
@@ -64,6 +66,19 @@ export class BoardPageComponent {
   protected createMode = signal<'single' | 'bulk'>(this.route.snapshot.queryParamMap.get('mode') === 'bulk' ? 'bulk' : 'single');
   protected createParent = signal<string | null>(this.route.snapshot.queryParamMap.get('parent'));
   protected filter = signal<BoardFilter>('all');
+  /** Bumped on every filter change: alternates the list's settle animation so it replays. */
+  protected filterRun = signal(0);
+  /** Tab whose content is on screen: lags `tab` (indicator, URL) by the outgoing fade. */
+  protected shownTab = signal<'board' | 'create'>(this.tab());
+  /** The outgoing tab / view is fading out before the swap. */
+  protected tabOut = signal(false);
+  protected viewOut = signal(false);
+  /** Entrance just played by the incoming content ('tab' | 'view'), with its slide direction. */
+  protected enter = signal<'tab' | 'view' | null>(null);
+  protected slideFrom = signal<string | null>(null);
+  private swapTimer?: ReturnType<typeof setTimeout>;
+  private viewTimer?: ReturnType<typeof setTimeout>;
+  private enterTimer?: ReturnType<typeof setTimeout>;
 
   protected columns = signal<Column[]>([]);
   /**
@@ -88,10 +103,25 @@ export class BoardPageComponent {
   private highlightTimer?: ReturnType<typeof setTimeout>;
   protected menu = signal<MenuState | null>(null);
   protected moving = signal<string | null>(null);
+  /** View on screen; `viewChoice` (the toggle) leads it by the outgoing fade. */
   protected view = signal<'list' | 'columns'>(readView());
+  protected viewChoice = signal<'list' | 'columns'>(this.view());
   protected setView(v: 'list' | 'columns'): void {
-    this.view.set(v);
+    if (v === this.viewChoice()) return;
+    this.viewChoice.set(v);
     try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch { /* visit only */ }
+    clearTimeout(this.viewTimer);
+    if (prefersReducedMotion()) {
+      this.view.set(v);
+      return;
+    }
+    // Old view fades out, then the new one cascades in.
+    this.viewOut.set(true);
+    this.viewTimer = setTimeout(() => {
+      this.viewOut.set(false);
+      this.view.set(v);
+      this.playEnter('view', v === 'columns' ? 1 : -1);
+    }, SWAP_OUT_MS);
   }
   protected branchCount = (key: string): number => (this.branchMap().get(key) ?? []).length;
   /** Moves sent to Jira and not answered yet; the board only reloads once none is left. */
@@ -155,7 +185,7 @@ export class BoardPageComponent {
 
   protected async setTab(tab: 'board' | 'create', extra: Record<string, string | null> = {}): Promise<void> {
     if (tab === 'board' && !(await this.canLeave())) return;
-    this.tab.set(tab);
+    if (tab !== this.tab()) this.swapTab(tab);
     this.router.navigate([], { queryParams: { tab: tab === 'create' ? 'create' : null, ...extra }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
@@ -171,12 +201,45 @@ export class BoardPageComponent {
   });
 
   protected setFilter(f: BoardFilter): void {
-    this.filter.set(this.filter() === f ? 'all' : f);
+    this.changeFilter(this.filter() === f ? 'all' : f);
   }
 
   protected resetFilters(): void {
-    this.filter.set('all');
+    this.changeFilter('all');
     this.query.set('');
+  }
+
+  private changeFilter(next: BoardFilter): void {
+    if (next === this.filter()) return;
+    this.filter.set(next);
+    this.filterRun.update((n) => n + 1);
+  }
+
+  /**
+   * Papan ↔ Buat Card: the indicator moves at once, the outgoing content
+   * fades, then the incoming one slides in from the side of travel.
+   */
+  private swapTab(next: 'board' | 'create'): void {
+    this.tab.set(next);
+    clearTimeout(this.swapTimer);
+    if (prefersReducedMotion()) {
+      this.shownTab.set(next);
+      return;
+    }
+    this.tabOut.set(true);
+    this.swapTimer = setTimeout(() => {
+      this.tabOut.set(false);
+      this.shownTab.set(next);
+      this.playEnter('tab', next === 'create' ? 1 : -1);
+    }, SWAP_OUT_MS);
+  }
+
+  /** Marks the freshly mounted content for its entrance (CSS), then clears it. */
+  private playEnter(kind: 'tab' | 'view', direction: 1 | -1): void {
+    clearTimeout(this.enterTimer);
+    this.slideFrom.set(`${direction * 16}px`);
+    this.enter.set(kind);
+    this.enterTimer = setTimeout(() => this.enter.set(null), 600);
   }
 
   private passesFilter(card: TicketCard): boolean {
@@ -214,7 +277,12 @@ export class BoardPageComponent {
   }
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.highlightTimer));
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.highlightTimer);
+      clearTimeout(this.swapTimer);
+      clearTimeout(this.viewTimer);
+      clearTimeout(this.enterTimer);
+    });
     // Tickets follow the navbar board, like the dashboard.
     effect(() => {
       const boardId = this.boardContext.selectedId();
@@ -416,7 +484,7 @@ export class BoardPageComponent {
         const req = fieldsRequired(err);
         if (req) {
           // Jira needs fields first: the card waits at its target while the dialog is open.
-          this.askFields({ ...req, issueKey: req.issueKey || card.issueKey }, card.issueKey, option.toStatus, from);
+          this.askFields({ ...req, issueKey: req.issueKey || card.issueKey, issueType: card.issueType, issueTypeIconUrl: card.issueTypeIconUrl }, card.issueKey, option.toStatus, from);
           return;
         }
         this.pendingMoves--;
@@ -550,6 +618,13 @@ export class BoardPageComponent {
     setTimeout(() => document.querySelector(`[data-card="${issueKey}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }));
     this.highlightTimer = setTimeout(() => this.justMoved.set(null), 2400);
   }
+}
+
+/** How long the outgoing tab / view fades before the swap. */
+export const SWAP_OUT_MS = 120;
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function readView(): 'list' | 'columns' {

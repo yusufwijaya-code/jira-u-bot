@@ -3,6 +3,8 @@
 [data-tone='todo'] { --tone: var(--text-faint); } [data-tone='process'] { --tone: var(--primary); }
 [data-tone='review'] { --tone: var(--info); } [data-tone='done'] { --tone: var(--success); } [data-tone='other'] { --tone: var(--accent); }
 .tb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
+// Columns cascade in when the view opens (and a new column fades in).
+.kb-col { animation: fade-up 260ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 50ms); }
 .kb-col { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-height: 160px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted, var(--surface)); transition: border-color .15s, opacity .15s, box-shadow .15s; }
 .kb-col.drop-ok { border-color: var(--tone); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 22%, transparent); }
 .kb-col.drop-no { opacity: .45; }
@@ -20,4 +22,4 @@
   &.over > span { background: var(--error); } }
 .kb-empty { margin: 0; font-size: .78rem; color: var(--text-faint); text-align: center; padding: 16px 0; }
 .kb-hint { margin: 8px 0 0; font-size: .78rem; color: var(--text-muted); }
-@media (prefers-reduced-motion: reduce) { .kb-card, .kb-col { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .kb-card, .kb-col { transition: none; animation: none; } }

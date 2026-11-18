@@ -104,6 +104,29 @@ describe('SelectComponent', () => {
     fixture.detectChanges();
     expect(el().querySelector('.ui-select-list')).toBeNull();
   });
+
+  it('renders no icon when options have none', () => {
+    trigger().click();
+    fixture.detectChanges();
+    expect(el().querySelector('.ui-select-icon')).toBeNull();
+  });
+
+  it('shows an option icon in the list and on the trigger for the selected one', () => {
+    fixture.componentInstance.options = [
+      { value: 5, label: 'Bug', icon: 'https://jira.example/bug.svg' },
+      { value: 30, label: 'Story' },
+    ];
+    fixture.detectChanges();
+    const triggerIcon = trigger().querySelector('img.ui-select-icon') as HTMLImageElement;
+    expect(triggerIcon.getAttribute('src')).toBe('https://jira.example/bug.svg');
+    trigger().click();
+    fixture.detectChanges();
+    expect(options()[0].querySelector('img.ui-select-icon')).not.toBeNull();
+    expect(options()[1].querySelector('img.ui-select-icon')).toBeNull();
+    options()[1].click();
+    fixture.detectChanges();
+    expect(trigger().querySelector('img.ui-select-icon')).toBeNull();
+  });
 });
 
 describe('TimePickerComponent', () => {

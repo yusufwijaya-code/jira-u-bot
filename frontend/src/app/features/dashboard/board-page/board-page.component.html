@@ -1,34 +1,61 @@
-<div class="page-stack tb-page">
+<div class="page-stack tb-page" [class.tab-out]="tabOut()" [class.view-out]="viewOut()" [attr.data-enter]="enter()"
+  [class.filter-a]="filterRun() % 2 === 1" [class.filter-b]="filterRun() > 0 && filterRun() % 2 === 0" [style.--slide-from]="slideFrom()">
 @if (createCardEnabled) {
-  <div class="settings-tabs tb-tabs" role="tablist" aria-label="Papan Tiket">
+  <div class="settings-tabs tb-tabs" role="tablist" aria-label="Papan Tiket" [appSegIndicator]="tab()">
     <button type="button" role="tab" class="settings-tab" data-tab="board" [attr.aria-selected]="tab() === 'board'" [class.active]="tab() === 'board'" (click)="setTab('board')">Papan</button>
     <button type="button" role="tab" class="settings-tab" data-tab="create" [attr.aria-selected]="tab() === 'create'" [class.active]="tab() === 'create'" (click)="openCreate()">＋ Buat Card</button>
   </div>
 }
-@if (tab() === 'board') {
+@if (shownTab() === 'board') {
 @if (initialLoading()) {
-  <!-- First load: the page's shape, shimmering, instead of a lone "Memuat…" line. -->
-  <div class="tb-skeleton" aria-busy="true" aria-label="Memuat tiket" data-skeleton>
-    <div class="tb-toolbar">
-      <div class="tb-summary">
-        <span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill"></span>
-      </div>
-      <span class="skeleton tb-sk-search"></span>
+  <!-- First load: the page's own layout (KPI tiles, filter row, then a status group or
+       kanban columns), shimmering and cascading in, so the data lands without a jump. -->
+  <div class="tb-skeleton" aria-busy="true" aria-label="Memuat tiket" data-skeleton [attr.data-view]="view()">
+    <span class="sk-note tb-sk-block" role="status"><span class="sk-dot" aria-hidden="true"></span>Mengambil tiket dari Jira…</span>
+    <div class="tb-stats tb-sk-block" style="--i: 1" aria-hidden="true">
+      @for (t of [0, 1, 2, 3]; track t) {
+        <div class="tb-stat tb-sk-stat" data-sk-stat>
+          <span class="skeleton tb-sk-num"></span><span class="skeleton tb-sk-label"></span>
+          @if (t === 3) { <span class="skeleton tb-sk-bar"></span> }
+        </div>
+      }
     </div>
-    @for (rows of [[1, 2, 3, 4], [1, 2]]; track $index) {
-      <section class="tb-section">
-        <div class="tb-head"><span class="skeleton tb-sk-title"></span></div>
-        @for (r of rows; track $index) {
-          <div class="tb-sk-row" [style.--i]="$index">
-            <span class="skeleton tb-sk-key"></span>
-            <span class="skeleton tb-sk-text"></span>
-            <span class="skeleton tb-sk-time"></span>
+    <div class="tb-toolbar tb-sk-block" style="--i: 2" aria-hidden="true">
+      <div class="tb-summary"><span class="skeleton tb-sk-pill"></span><span class="skeleton tb-sk-pill short"></span></div>
+      <div class="tb-actions">
+        <span class="skeleton tb-sk-seg"></span><span class="skeleton tb-sk-seg short"></span><span class="skeleton tb-sk-search"></span>
+      </div>
+    </div>
+    <span class="skeleton tb-sk-hint tb-sk-block" style="--i: 3" aria-hidden="true"></span>
+    @if (view() === 'list') {
+      <section class="tb-section tb-sk-block" style="--i: 4" aria-hidden="true">
+        <div class="tb-head tb-sk-head"><span class="skeleton tb-sk-dot"></span><span class="skeleton tb-sk-title"></span><span class="skeleton tb-sk-count"></span></div>
+        @for (r of [0, 1, 2, 3, 4]; track r) {
+          <div class="tb-sk-row" [style.--i]="r + 5">
+            <span class="tb-sk-keycell"><span class="skeleton tb-sk-icon"></span><span class="skeleton tb-sk-key"></span></span>
+            <span class="skeleton tb-sk-text" [style.width.%]="[72, 58, 80, 64, 50][r]"></span>
+            <span class="skeleton tb-sk-sp"></span>
+            <span class="tb-sk-time"><span class="skeleton"></span><span class="skeleton tb-sk-timebar"></span></span>
             <span class="skeleton tb-sk-chip"></span>
           </div>
         }
       </section>
+    } @else {
+      <div class="tb-sk-cols" aria-hidden="true">
+        @for (cards of [[0, 1, 2], [0, 1], [0, 1]]; track $index; let c = $index) {
+          <div class="tb-sk-col tb-sk-block" [style.--i]="c + 4" data-sk-col>
+            <div class="tb-sk-colhead"><span class="skeleton tb-sk-dot"></span><span class="skeleton tb-sk-title"></span></div>
+            @for (k of cards; track k) {
+              <div class="tb-sk-card">
+                <span class="tb-sk-keycell"><span class="skeleton tb-sk-icon"></span><span class="skeleton tb-sk-key"></span></span>
+                <span class="skeleton tb-sk-line"></span><span class="skeleton tb-sk-line short"></span>
+                <span class="skeleton tb-sk-timebar"></span>
+              </div>
+            }
+          </div>
+        }
+      </div>
     }
-    <p class="tb-hint tb-sk-note"><span class="tb-spin" aria-hidden="true"></span> Mengambil tiket dari Jira…</p>
   </div>
 } @else if (error()) {
   <div class="empty-inline">
@@ -63,14 +90,14 @@
       }
     </nav>
     <div class="tb-actions">
-      <div class="tb-chips" role="group" aria-label="Filter">
-        <button type="button" class="tb-chip" data-filter="all" [class.active]="filter() === 'all'" (click)="filter.set('all')">Semua</button>
+      <div class="tb-chips" role="group" aria-label="Filter" [appSegIndicator]="filter()">
+        <button type="button" class="tb-chip" data-filter="all" [class.active]="filter() === 'all'" (click)="setFilter('all')">Semua</button>
         <button type="button" class="tb-chip" data-filter="over" [class.active]="filter() === 'over'" (click)="setFilter('over')">Lewat budget</button>
         <button type="button" class="tb-chip" data-filter="nosp" [class.active]="filter() === 'nosp'" (click)="setFilter('nosp')">Belum SP</button>
       </div>
-      <div class="tb-chips" role="group" aria-label="Tampilan">
-        <button type="button" class="tb-chip" data-view="list" [class.active]="view() === 'list'" (click)="setView('list')">☰ Daftar</button>
-        <button type="button" class="tb-chip" data-view="columns" [class.active]="view() === 'columns'" (click)="setView('columns')">▦ Kolom</button>
+      <div class="tb-chips" role="group" aria-label="Tampilan" [appSegIndicator]="viewChoice()">
+        <button type="button" class="tb-chip" data-view="list" [class.active]="viewChoice() === 'list'" [attr.aria-pressed]="viewChoice() === 'list'" (click)="setView('list')">☰ Daftar</button>
+        <button type="button" class="tb-chip" data-view="columns" [class.active]="viewChoice() === 'columns'" [attr.aria-pressed]="viewChoice() === 'columns'" (click)="setView('columns')">▦ Kolom</button>
       </div>
       @if (view() === 'list') {
       <button type="button" class="tb-toggle-all" data-toggle-all [disabled]="!!query().trim() || filter() !== 'all'" (click)="toggleAll()">
@@ -102,8 +129,8 @@
   </p>
 
   @if (view() === 'list') {
-  @for (col of visible(); track col.status) {
-    <section class="tb-section" [class.tb-dim]="refreshing() && !moving()" data-column [attr.data-status]="col.status" [attr.data-tone]="statusTone(col.status)" [id]="sectionId(col.status)">
+  @for (col of visible(); track col.status; let ci = $index) {
+    <section class="tb-section" [style.--i]="ci" [class.tb-dim]="refreshing() && !moving()" data-column [attr.data-status]="col.status" [attr.data-tone]="statusTone(col.status)" [id]="sectionId(col.status)">
       <button
         type="button"
         class="tb-head"
@@ -137,7 +164,7 @@
               @for (card of col.cards; track card.issueKey) {
                 <tr [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey" [class.just-moved]="justMoved() === card.issueKey">
                   <td data-label="Tiket">
-                    <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
+                    <span class="ticket-id"><app-issue-type-icon [name]="card.issueType" [iconUrl]="card.issueTypeIconUrl" /><a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a></span>
                     <span class="tb-row-actions">
                       <a class="tb-act" [href]="card.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
                       <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(card)"><app-icon name="copy" [size]="13" /></button>
@@ -175,7 +202,7 @@
                     <td data-label="Tiket"><div class="tb-fold"><div>
                       <span class="tb-branch-key">
                         <span class="tb-elbow" aria-hidden="true"></span>
-                        <a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a>
+                        <span class="ticket-id"><app-issue-type-icon [name]="b.issueType" [iconUrl]="b.issueTypeIconUrl" /><a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a></span>
                         <span class="tb-row-actions">
                           <a class="tb-act" [href]="b.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
                           <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(b)"><app-icon name="copy" [size]="13" /></button>
@@ -213,7 +240,7 @@
   }
 }
 }
-@if (tab() === 'create') {
+@if (shownTab() === 'create') {
   <app-create-card [boardId]="boardContext.selectedId()" [initialMode]="createMode()" [initialParent]="createParent()" (created)="load()" />
 }
 </div>

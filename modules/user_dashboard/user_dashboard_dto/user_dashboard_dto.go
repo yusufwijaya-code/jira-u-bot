@@ -5,20 +5,24 @@ package user_dashboard_dto
 // tr_issuesession row (Tech Spec "Dashboard Jira Manage", AC3.2); every
 // other status shows just IssueKey/Summary/Status.
 type Card struct {
-	IssueKey        string  `json:"issueKey"`
-	Summary         string  `json:"summary"`
-	Status          string  `json:"status"`
-	HasBudgetDetail bool    `json:"hasBudgetDetail"`
+	IssueKey string `json:"issueKey"`
+	Summary  string `json:"summary"`
+	Status   string `json:"status"`
+	// IssueType / IssueTypeIconURL: the Jira issue type and its icon, shown
+	// before the key on the web board (live Jira cards only).
+	IssueType        string `json:"issueType,omitempty"`
+	IssueTypeIconURL string `json:"issueTypeIconUrl,omitempty"`
+	HasBudgetDetail  bool   `json:"hasBudgetDetail"`
 	// TimeRecorded: the ticket's clock is stopped (finished / back to To Do)
 	// but its closed session recorded time — ElapsedSeconds/BudgetSeconds
 	// then hold that final tally (Papan Tiket). Never set together with
 	// HasBudgetDetail, which stays reserved for running clocks.
 	TimeRecorded bool `json:"timeRecorded"`
 	// StoryPoints: from the tracked session, else straight from Jira.
-	StoryPoints float64 `json:"storyPoints"`
-	ElapsedLabel    string  `json:"elapsedLabel"`
-	RemainingLabel  string  `json:"remainingLabel"`
-	DeadlineLabel   string  `json:"deadlineLabel"`
+	StoryPoints    float64 `json:"storyPoints"`
+	ElapsedLabel   string  `json:"elapsedLabel"`
+	RemainingLabel string  `json:"remainingLabel"`
+	DeadlineLabel  string  `json:"deadlineLabel"`
 	// ElapsedSeconds / BudgetSeconds back the dashboard's budget progress
 	// bar; only set when HasBudgetDetail.
 	ElapsedSeconds int64 `json:"elapsedSeconds"`

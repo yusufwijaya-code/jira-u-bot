@@ -138,24 +138,10 @@
 .tb-table tr.busy > td { background: var(--surface-2); }
 .tb-table tr.just-moved > td { animation: tb-flash 2.4s var(--ease); }
 
-.tb-skeleton { display: flex; flex-direction: column; gap: 14px; }
-.tb-sk-pill { width: 120px; height: 28px; border-radius: 999px; }
-.tb-sk-search { width: 240px; height: 38px; }
-.tb-sk-title { width: 160px; height: 14px; }
-.tb-sk-row {
-  display: grid; grid-template-columns: 90px 1fr 120px 110px; gap: 24px; align-items: center;
-  padding: 16px; border-top: 1px solid var(--border);
-  animation: fade-in 300ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 60ms);
-  .skeleton { height: 12px; }
-}
-.tb-sk-text { width: 70%; }
-.tb-sk-chip { height: 22px !important; border-radius: 999px; }
-.tb-sk-note { display: flex; align-items: center; gap: 8px; }
 .tb-menu-loading { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
 .tb-sk-option { height: 30px; margin: 0 6px; }
 
 @media (max-width: 720px) {
-  .tb-sk-row { grid-template-columns: 1fr auto; .tb-sk-text, .tb-sk-time { display: none; } }
   .tb-actions { width: 100%; }
   .tb-search { min-width: 0; flex: 1; }
   .tb-table {
@@ -185,8 +171,13 @@ button.tb-stat { cursor: pointer; transition: border-color .15s, box-shadow .15s
 .tb-stat-bar { display: block; height: 4px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 6px;
   span { display: block; height: 100%; background: var(--success); transition: width .3s; } }
 .tb-chips { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.tb-chips { position: relative; }
 .tb-chip { border: 0; background: none; font: inherit; font-size: 0.78rem; padding: 4px 10px; border-radius: 999px; color: var(--text-muted); cursor: pointer;
+  transition: color var(--normal) var(--ease), background-color var(--fast) var(--ease);
+  &:hover:not(.active) { color: var(--text); }
   &.active { background: var(--primary); color: #fff; } }
+
+
 @media (max-width: 720px) { .tb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .tb-stat, .tb-stat-bar span { transition: none; } }
 

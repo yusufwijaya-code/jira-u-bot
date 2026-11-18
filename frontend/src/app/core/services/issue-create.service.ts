@@ -9,7 +9,7 @@ export type CreateFieldKind = Exclude<JiraFieldKind, 'unsupported'>;
 export type CreateOption = JiraFieldOption;
 /** A createmeta field the form fills (value shapes: see JiraField). */
 export type CreateField = JiraField;
-export interface CreateType { id: string; name: string; subtask: boolean; supported: boolean; parentAllowed: boolean; storyPointField?: string; fields: CreateField[] }
+export interface CreateType { id: string; name: string; iconUrl?: string; subtask: boolean; supported: boolean; parentAllowed: boolean; storyPointField?: string; fields: CreateField[] }
 export interface CreateMeta { projectKey: string; types: CreateType[]; subtaskTypeId: string }
 export interface JiraUser { accountId: string; displayName: string; avatarUrl: string }
 /** Jira status category key: new (To Do), indeterminate (In Progress), done. */

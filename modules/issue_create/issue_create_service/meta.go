@@ -44,7 +44,7 @@ func storyPointFieldFor(preferred string, readOrder []string, onType map[string]
 // CreateFields picks for this type. A required field Nudge can't fill makes
 // the type unsupported; an optional one is never offered.
 func mapType(rule jira_client_dto.TrackingRule, t jira_client_dto.CreateMetaIssueType, fields []jira_client_dto.CreateMetaField) TypeMeta {
-	tm := TypeMeta{ID: t.ID, Name: t.Name, Subtask: t.Subtask, Supported: true, Fields: []Field{}}
+	tm := TypeMeta{ID: t.ID, Name: t.Name, IconURL: t.IconURL, Subtask: t.Subtask, Supported: true, Fields: []Field{}}
 	ids := map[string]bool{}
 	for _, f := range fields {
 		ids[f.ID()] = true

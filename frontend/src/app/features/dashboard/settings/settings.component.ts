@@ -21,6 +21,7 @@ import { BoardAvatarComponent } from '../../../shared/ui/board-avatar.component'
 import { SelectComponent } from '../../../shared/ui/select.component';
 import { TimePickerComponent } from '../../../shared/ui/time-picker.component';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { SegIndicatorDirective } from '../../../shared/ui/seg-indicator.directive';
 import { JiraCredentialComponent } from './jira-credential.component';
 import { MutePanelComponent, activeUntil, formatWib } from './mute-panel.component';
 import { TierPickerComponent } from './tier-picker.component';
@@ -62,6 +63,7 @@ const CARD_FIELDS: Record<SettingsCard, (keyof NotificationSettings)[]> = {
     JiraCredentialComponent,
     MutePanelComponent,
     TierPickerComponent,
+    SegIndicatorDirective,
   ],
   templateUrl: './settings.component.html',
 })
@@ -116,6 +118,18 @@ export class SettingsComponent {
   protected visited = signal<Record<SettingsTab, boolean>>({ umum: this.tab() === 'umum', board: this.tab() === 'board' });
   /** The user switched tabs at least once: only then does the incoming panel cross-fade (not on arrival). */
   protected tabSwitched = signal(false);
+  /** Side the incoming tab panel slides in from (Per board is on the right). */
+  protected tabSlide = signal<string | null>(null);
+  /**
+   * After a board switch lands: the board panel's content cross-fades in from
+   * the side of the newly picked board ('a'/'b' alternate so it replays).
+   */
+  protected boardIn = signal<'a' | 'b' | null>(null);
+  protected boardSlide = signal<string | null>(null);
+  private boardRuns = 0;
+  /** Direction of the board switch in flight (+1 = a board to the right), null = same board. */
+  private pendingBoardDir: number | null = null;
+  private boardInTimer?: ReturnType<typeof setTimeout>;
   private tabBar = viewChild<ElementRef<HTMLElement>>('tabBar');
   private injector = inject(Injector);
   protected useDefault = signal(false);
@@ -236,7 +250,10 @@ export class SettingsComponent {
   }
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.releaseHoldTimer));
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.releaseHoldTimer);
+      clearTimeout(this.boardInTimer);
+    });
     // Reload whenever the navbar board changes — but not again for a
     // selection re-emitted while that same board is still loading (arrival).
     effect(() => {
@@ -322,6 +339,7 @@ export class SettingsComponent {
 
     this.visited.update((v) => ({ ...v, [next]: true }));
     this.tabSwitched.set(true);
+    this.tabSlide.set(next === 'board' ? '16px' : '-16px');
     this.tab.set(next);
     if (!bar || !stack) return;
 
@@ -355,6 +373,7 @@ export class SettingsComponent {
       const height = this.host.nativeElement.firstElementChild?.getBoundingClientRect().height ?? 0;
       this.holdHeight.set(height > 0 ? Math.round(height) : null);
       this.switching.set(true);
+      this.pendingBoardDir = this.boardDirection(this.scopeBoardId(), boardId);
     } else {
       this.loading = true;
     }
@@ -392,15 +411,36 @@ export class SettingsComponent {
         this.hasCredential = res.credential.hasCredential;
         this.credentialMasked = res.credential.maskedPreview;
         this.loading = false;
+        this.playBoardIn();
         this.endSwitch();
       },
       error: () => {
         this.loadingBoard = undefined;
+        this.pendingBoardDir = null;
         this.error = 'Gagal memuat pengaturan, coba lagi';
         this.loading = false;
         this.endSwitch();
       },
     });
+  }
+
+  /** +1 / -1 by the boards' order in the picker (Default first), null when the board doesn't change. */
+  private boardDirection(from: number | null, to: number | null): number | null {
+    if (from === to) return null;
+    const order: (number | null)[] = [null, ...this.boardContext.boards().map((b) => b.boardId)];
+    return order.indexOf(to) >= order.indexOf(from) ? 1 : -1;
+  }
+
+  /** The new board's settings are in: its content slides in from the picked board's side. */
+  private playBoardIn(): void {
+    const dir = this.pendingBoardDir;
+    this.pendingBoardDir = null;
+    if (dir === null || prefersReducedMotion()) return;
+    this.boardRuns++;
+    this.boardSlide.set(`${dir * 14}px`);
+    this.boardIn.set(this.boardRuns % 2 ? 'a' : 'b');
+    clearTimeout(this.boardInTimer);
+    this.boardInTimer = setTimeout(() => this.boardIn.set(null), 400);
   }
 
   /** New content is in: fade it back in, then let the page take its natural height. */

@@ -12,6 +12,9 @@ export interface MoveTransition { id: string; name: string; to: string }
 export interface MoveRequirement {
   issueKey: string;
   issueUrl?: string;
+  /** The ticket's Jira issue type and icon, shown before the key in the dialog (set by the caller). */
+  issueType?: string;
+  issueTypeIconUrl?: string;
   message: string;
   transition: MoveTransition;
   fields: JiraField[];

@@ -6,6 +6,8 @@ import { shouldDropUp } from './popover-position';
 export interface SelectOption<T = unknown> {
   value: T;
   label: string;
+  /** Optional image url (e.g. a Jira issue-type icon) shown before the label, in the list and the trigger. */
+  icon?: string;
 }
 
 /**
@@ -31,6 +33,9 @@ export interface SelectOption<T = unknown> {
       (click)="toggle()"
       (keydown)="onKeydown($event)"
     >
+      @if (selectedIcon(); as icon) {
+        <img class="ui-select-icon" [src]="icon" alt="" width="16" height="16" decoding="async" />
+      }
       <span class="ui-select-value">{{ selectedLabel() }}</span>
       <app-icon class="ui-select-chevron" name="chevron-down" [size]="16" />
     </button>
@@ -47,7 +52,10 @@ export interface SelectOption<T = unknown> {
             (mousedown)="$event.preventDefault()"
             (click)="pick(opt)"
           >
-            <span>{{ opt.label }}</span>
+            @if (opt.icon) {
+              <img class="ui-select-icon" [src]="opt.icon" alt="" width="16" height="16" loading="lazy" decoding="async" />
+            }
+            <span class="ui-select-label">{{ opt.label }}</span>
             @if (isSelected(opt)) {
               <app-icon name="check" [size]="14" />
             }
@@ -72,7 +80,9 @@ export class SelectComponent<T = unknown> implements ControlValueAccessor {
   private onChange: (value: T) => void = () => undefined;
   private onTouched: () => void = () => undefined;
 
-  protected selectedLabel = computed(() => this.options().find((o) => o.value === this.value())?.label ?? '');
+  protected selectedLabel = computed(() => this.selected()?.label ?? '');
+  protected selectedIcon = computed(() => this.selected()?.icon ?? null);
+  private selected = computed(() => this.options().find((o) => o.value === this.value()));
 
   protected isSelected(opt: SelectOption<T>): boolean {
     return opt.value === this.value();

@@ -196,6 +196,8 @@ type Assignee struct {
 
 type IssueType struct {
 	Name string `json:"name"`
+	// IconURL is the type's icon (the web board shows it before the key).
+	IconURL string `json:"iconUrl"`
 }
 
 type SearchResponse struct {

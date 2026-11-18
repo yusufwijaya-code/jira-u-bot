@@ -213,6 +213,34 @@ describe('SettingsComponent', () => {
     expect(el().querySelector('[data-scope-chip="28"]')!.classList).toContain('active');
   });
 
+  it('slides the new board in from the side of the picked board once it lands', () => {
+    const pending = new Subject<SettingsResponse>();
+    boardService.getSettings.and.returnValue(pending);
+    (el().querySelector('[data-scope-chip="28"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const panel = el().querySelector('[data-panel="board"]') as HTMLElement;
+    expect(panel.className).not.toContain('board-in');
+
+    pending.next(sample({ scope: 'board', boardId: 28, useDefault: true, mute: { global: OFF, board: OFF } }));
+    fixture.detectChanges();
+    expect(panel.classList).toContain('board-in-a');
+    // Default → a board on its right: content comes from the right.
+    expect(panel.style.getPropertyValue('--board-from')).toBe('14px');
+  });
+
+  it('moves the tab indicator to the active tab and slides the panel from the side of travel', () => {
+    const bar = el().querySelector('.settings-tabs') as HTMLElement;
+    expect(bar.classList).toContain('seg');
+    expect(bar.classList).toContain('seg-on');
+    const active = el().querySelector('[data-tab="board"]') as HTMLElement;
+    expect(bar.style.getPropertyValue('--seg-x')).toBe(`${active.offsetLeft}px`);
+
+    openTab('umum');
+    const umum = el().querySelector('[data-tab="umum"]') as HTMLElement;
+    expect(bar.style.getPropertyValue('--seg-x')).toBe(`${umum.offsetLeft}px`);
+    expect((el().querySelector('.settings-stack') as HTMLElement).style.getPropertyValue('--slide-from')).toBe('-16px');
+  });
+
   it('checks the saved pre-budget tiers and shows a custom tier tile', () => {
     const tiles = Array.from(card('reminder').querySelectorAll('.tier-tile'));
     const checked = tiles

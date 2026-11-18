@@ -257,6 +257,26 @@ func TestGetMyBoard_GroupsCardsByStatus(t *testing.T) {
 	}
 }
 
+func TestGetMyBoard_CarriesIssueTypeAndIcon(t *testing.T) {
+	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
+		{Key: "OMS-1", Fields: jira_client_dto.IssueFields{Summary: "A", Status: jira_client_dto.Status{Name: "To Do"},
+			IssueType: jira_client_dto.IssueType{Name: "Bug", IconURL: "https://jira.example/bug.svg"}}},
+	}}
+	regRepo := &fakeRegistrationRepoForDashboard{usersByEmail: map[string]registration_dto.User{
+		"dev@esb.co.id": {UserID: 1, Email: "dev@esb.co.id", JiraAccountID: "acc-1"},
+	}}
+	svc := newTestService(jiraClient, &fakeJiraCredentialForDashboard{}, regRepo, &fakeIssueSessionRepoForDashboard{})
+
+	board, err := svc.GetMyBoard(context.Background(), "dev@esb.co.id", 0)
+	if err != nil {
+		t.Fatalf("GetMyBoard returned error: %v", err)
+	}
+	card := board.Columns[0].Cards[0]
+	if card.IssueType != "Bug" || card.IssueTypeIconURL != "https://jira.example/bug.svg" {
+		t.Errorf("card type = %q / %q, want Bug with its icon", card.IssueType, card.IssueTypeIconURL)
+	}
+}
+
 func TestGetMyBoard_ExposesSessionStartAndDeadline(t *testing.T) {
 	started := time.Date(2026, 11, 14, 9, 10, 0, 0, time.FixedZone("WIB", 7*3600))
 	jiraClient := &fakeJiraClientForDashboard{issues: []jira_client_dto.Issue{
