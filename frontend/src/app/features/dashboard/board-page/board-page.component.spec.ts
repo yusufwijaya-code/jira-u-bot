@@ -1,11 +1,11 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router, provideRouter } from '@angular/router';
 import { MoveDone, MoveFieldsService } from '../../../core/ui/move-fields.service';
 import { ConfirmService } from '../../../core/ui/confirm.service';
 import { ToastService } from '../../../core/ui/toast.service';
-import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, VIEW_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
+import { BoardPageComponent, BRANCHES_STORAGE_KEY, COLLAPSED_STORAGE_KEY, SWAP_OUT_MS, VIEW_STORAGE_KEY, shortDuration, statusTone } from './board-page.component';
 
 describe('BoardPageComponent', () => {
   let http: HttpTestingController;
@@ -626,15 +626,23 @@ describe('BoardPageComponent', () => {
     expect(time.getAttribute('title')).toContain('Budget 1j');
     expect(time.getAttribute('title')).toContain('Lewat 15m');
   });
-  it('switches to the column view and remembers it', () => {
+  it('switches to the column view and remembers it', fakeAsync(() => {
     localStorage.removeItem('nudge.board.view');
     const fixture = render();
-    (fixture.nativeElement.querySelector('[data-view="columns"]') as HTMLButtonElement).click();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('[data-view="columns"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('app-board-columns')).not.toBeNull();
+    // The toggle moves at once; the list fades out before the columns come in.
+    expect(el.querySelector('[data-view="columns"]')!.classList).toContain('active');
+    expect(el.querySelector('.tb-page')!.classList).toContain('view-out');
+    tick(SWAP_OUT_MS);
+    fixture.detectChanges();
+    expect(el.querySelector('app-board-columns')).not.toBeNull();
+    expect(el.querySelector('.tb-page')!.getAttribute('data-enter')).toBe('view');
     expect(localStorage.getItem('nudge.board.view')).toBe('columns');
     localStorage.removeItem('nudge.board.view');
-  });
+    tick(1000);
+  }));
 
   it('shows kanban column skeletons on first load in the column view', () => {
     localStorage.setItem(VIEW_STORAGE_KEY, 'columns');
@@ -646,6 +654,21 @@ describe('BoardPageComponent', () => {
     expect(sk.querySelector('.tb-sk-row')).toBeNull();
     localStorage.removeItem(VIEW_STORAGE_KEY);
     http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({ columns: [] });
+  });
+
+  it('slides the filter indicator to the active filter and replays the list settle', () => {
+    const fixture = render();
+    const el: HTMLElement = fixture.nativeElement;
+    const group = el.querySelector('[aria-label="Filter"]') as HTMLElement;
+    expect(group.classList).toContain('seg');
+    expect(group.querySelector(':scope > .seg-ind')).not.toBeNull();
+    (el.querySelector('[data-filter="nosp"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const nosp = el.querySelector('[data-filter="nosp"]') as HTMLElement;
+    expect(nosp.classList).toContain('active');
+    expect(group.style.getPropertyValue('--seg-x')).toBe(`${nosp.offsetLeft}px`);
+    expect(group.style.getPropertyValue('--seg-w')).toBe(`${nosp.offsetWidth}px`);
+    expect(el.querySelector('.tb-page')!.classList).toContain('filter-a');
   });
 
   it('shows the issue-type icon before the key', () => {

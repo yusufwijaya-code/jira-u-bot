@@ -1,6 +1,6 @@
 <div class="kb" role="list">
-  @for (col of shown(); track col.status) {
-    <section class="kb-col" role="listitem" [attr.data-kcol]="col.status" [attr.data-tone]="statusTone(col.status)"
+  @for (col of shown(); track col.status; let ci = $index) {
+    <section class="kb-col" role="listitem" [style.--i]="ci" [attr.data-kcol]="col.status" [attr.data-tone]="statusTone(col.status)"
       [class.drop-ok]="state(col.status) === 'ok'" [class.drop-no]="state(col.status) === 'no'" [class.drop-loading]="state(col.status) === 'loading'"
       (dragover)="onDragOver($event, col.status)" (drop)="onDrop($event, col.status)">
       <header class="kb-head"><span class="tb-dot"></span><span>{{ col.status }}</span><span class="kb-count">{{ col.cards.length }}</span></header>

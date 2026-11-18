@@ -1,6 +1,6 @@
-<div class="page-stack settings-stack" [class.switching]="switching()" [class.tab-switched]="tabSwitched()" [attr.aria-busy]="switching() || null" [style.min-height.px]="holdHeight()">
+<div class="page-stack settings-stack" [class.switching]="switching()" [class.tab-switched]="tabSwitched()" [attr.aria-busy]="switching() || null" [style.min-height.px]="holdHeight()" [style.--slide-from]="tabSlide()">
   <!-- Umum = applies to every board; Per board = notification settings of one board / the default -->
-  <nav class="settings-tabs" role="tablist" aria-label="Bagian pengaturan" #tabBar>
+  <nav class="settings-tabs" role="tablist" aria-label="Bagian pengaturan" #tabBar [appSegIndicator]="tab()">
     <button type="button" role="tab" id="settings-tab-umum" aria-controls="settings-panel-umum" class="settings-tab" data-tab="umum" [class.active]="tab() === 'umum'" [attr.aria-selected]="tab() === 'umum'" (click)="selectTab('umum')">
       <app-icon name="settings" [size]="16" />
       <span><strong>Umum</strong><small>Berlaku untuk semua board</small></span>
@@ -127,7 +127,8 @@
     }
 
     @if (visited().board) {
-    <div class="settings-panel" role="tabpanel" id="settings-panel-board" aria-labelledby="settings-tab-board" data-panel="board" [hidden]="tab() !== 'board'">
+    <div class="settings-panel" role="tabpanel" id="settings-panel-board" aria-labelledby="settings-tab-board" data-panel="board" [hidden]="tab() !== 'board'"
+      [class.board-in-a]="boardIn() === 'a'" [class.board-in-b]="boardIn() === 'b'" [style.--board-from]="boardSlide()">
 
     <!-- Which board this tab configures (shares the navbar choice) -->
     <div class="settings-boards" role="tablist" aria-label="Pilih board">

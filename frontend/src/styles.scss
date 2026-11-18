@@ -2432,7 +2432,6 @@ table.admin-users {
 // Optional per-option image (e.g. a Jira issue-type icon), in the list and the trigger.
 .ui-select-icon { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
 
-
 .ui-time-popup {
   position: absolute;
   top: calc(100% + 6px);
@@ -3511,15 +3510,12 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   min-height: calc(100dvh - var(--topbar-actual, var(--topbar-h)) - 120px);
 }
 // Only a tab switch cross-fades; on arrival the page's own entrance is enough.
-.settings-stack.tab-switched > .settings-panel { animation: settings-in 0.22s var(--ease); }
+// The incoming panel slides in from the side of travel (--slide-from, set by selectTab).
+.settings-stack.tab-switched > .settings-panel { animation: slide-in-a 0.24s var(--ease) backwards; }
 .settings-stack > .settings-panel[hidden] { display: none; }
 // First-load skeleton, shaped like the panel that replaces it.
 .skeleton-chip { height: 58px; border-radius: var(--radius-lg); }
 .skeleton-scope { height: 76px; border-radius: var(--radius-lg); }
-@keyframes settings-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
 
 .settings-boards {
   display: grid;
@@ -3538,9 +3534,10 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   text-align: left;
   cursor: pointer;
   box-shadow: var(--shadow-xs);
-  transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease), transform var(--fast) var(--ease);
+  transition: border-color var(--normal) var(--ease), background-color var(--normal) var(--ease), box-shadow var(--normal) var(--ease), transform var(--fast) var(--ease);
 
   &:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+  &:active { transform: scale(0.98); transition-duration: 80ms; }
   &.active {
     border-color: var(--primary);
     background: var(--primary-soft);
@@ -3567,6 +3564,11 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   filter: saturate(0.6);
   pointer-events: none;
 }
+// …and once the new board's settings land, they slide in from that board's side
+// (--board-from), starting at the dimmed opacity so it reads as one cross-fade.
+.settings-panel.board-in-a > :not(.settings-boards),
+.settings-panel.board-in-b > :not(.settings-boards) { --slide-from: var(--board-from, 0); --slide-o: 0.45; animation: slide-in-a 0.26s var(--ease) backwards; }
+.settings-panel.board-in-b > :not(.settings-boards) { animation-name: slide-in-b; }
 .settings-board-icon {
   display: grid;
   place-items: center;
@@ -3634,13 +3636,54 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   path { fill: none; stroke: var(--text-faint); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 }
 
+/* ==========================================================================
+   Sliding active indicator (SegIndicatorDirective): one pill behind a tab
+   bar / segmented control that slides and resizes to the .active item.
+   The host keeps its own positioning (sticky tab bars stay sticky).
+   ========================================================================== */
+.seg > :not(.seg-ind) { position: relative; z-index: 1; }
+.seg-ind {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: var(--seg-w, 0);
+  height: var(--seg-h, 0);
+  transform: translate(var(--seg-x, 0), var(--seg-y, 0));
+  opacity: 0;
+  pointer-events: none;
+}
+.seg-on > .seg-ind { opacity: 1; }
+.seg-ready > .seg-ind {
+  transition: transform var(--normal) var(--ease), width var(--normal) var(--ease), height var(--normal) var(--ease), opacity var(--fast) var(--ease);
+}
+// The pill carries the active background; the item itself only changes colour.
+.seg.seg-on > .active { background: transparent; box-shadow: none; }
+.settings-tabs > .seg-ind {
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px var(--primary-ring);
+}
+.tb-chips > .seg-ind { border-radius: 999px; background: var(--primary); box-shadow: 0 2px 6px rgba(91, 76, 240, 0.28); }
+
+/* Directional entrance for swapped content (tabs, views, boards): set
+   --slide-from (±px) and optionally --slide-o (start opacity) on the element
+   or an ancestor. Two identical keyframes let a class swap restart it. */
+@keyframes slide-in-a { from { opacity: var(--slide-o, 0); transform: translateX(var(--slide-from, 0)); } to { opacity: 1; transform: none; } }
+@keyframes slide-in-b { from { opacity: var(--slide-o, 0); transform: translateX(var(--slide-from, 0)); } to { opacity: 1; transform: none; } }
+@keyframes fade-out-soft { from { opacity: 1; } to { opacity: 0; transform: translateY(2px); } }
+
 /* "Mengambil … dari Jira…" note with a pulsing dot (skeletons). */
 .sk-note { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-faint); }
 .sk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary-light); animation: glow-pulse 1.2s var(--ease) infinite; }
-@media (prefers-reduced-motion: reduce) { .sk-dot { animation: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-ready > .seg-ind { transition: none; }
+  .sk-dot { animation: none; }
+}
 
 /* ==========================================================================
-   Papan Tiket: first-load skeleton. Global
+   Papan Tiket: first-load skeleton and view/tab/filter switching. Global
    (tb-* names) to keep board-page.component.scss under its style budget.
    ========================================================================== */
 // First-load skeleton: the page's own blocks (.tb-stats/.tb-toolbar/.tb-section reused), cascading in.
@@ -3678,4 +3721,20 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 @media (max-width: 720px) {
   .tb-sk-row { grid-template-columns: 1fr auto; .tb-sk-text, .tb-sk-time, .tb-sk-sp { display: none; } }
   .tb-sk-seg, .tb-sk-search { display: none; }
+}
+// --- Switching (indicator: SegIndicatorDirective + styles.scss) ---
+// Outgoing tab / view fades, then the incoming one enters from the side of
+// travel (--slide-from) or cascades (--i). A filter change replays a short
+// settle on the list (filter-a/-b alternate so the animation restarts).
+.tb-page.tab-out > :not(.tb-tabs),
+.tb-page.view-out > :is(.tb-section, app-board-columns, .tb-hint, .empty-inline) { animation: fade-out-soft 120ms var(--ease) forwards; pointer-events: none; }
+.tb-page[data-enter='tab'] > :not(.tb-tabs) { animation: slide-in-a 260ms var(--ease) backwards; }
+.tb-page[data-enter='view'] > :is(.tb-section, app-board-columns) { animation: fade-up 260ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 45ms); }
+.tb-page.filter-a > .tb-section { animation: tb-settle-a 220ms var(--ease) backwards; }
+.tb-page.filter-b > .tb-section { animation: tb-settle-b 220ms var(--ease) backwards; }
+@keyframes tb-settle-a { from { opacity: 0.35; transform: translateY(4px); } }
+@keyframes tb-settle-b { from { opacity: 0.35; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .tb-chip { transition: none; }
+  .tb-page > * { animation: none !important; }
 }
