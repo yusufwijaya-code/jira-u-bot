@@ -10,6 +10,7 @@ import {
 } from '../../../core/services/dashboard.service';
 import { BoardContextService, BoardSummary } from '../../../core/services/board-context.service';
 import { BoardAvatarComponent } from '../../../shared/ui/board-avatar.component';
+import { IssueTypeIconComponent } from '../../../shared/ui/issue-type-icon.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { MuteStateService } from '../../../core/services/mute-state.service';
 import { NotificationSwitchService } from '../../../core/services/notification-switch.service';
@@ -173,7 +174,7 @@ export function sprintRange(start: string, end: string): string {
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [DecimalPipe, NgTemplateOutlet, RouterLink, IconComponent, BoardAvatarComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, RouterLink, IconComponent, BoardAvatarComponent, IssueTypeIconComponent],
   templateUrl: './home.component.html',
 })
 export class HomeComponent {
@@ -481,7 +482,7 @@ export class HomeComponent {
           return;
         }
         // Jira needs fields first: fill them, then the move runs.
-        const done = await this.moveFields.open({ ...req, issueKey: req.issueKey || ticket.issueKey });
+        const done = await this.moveFields.open({ ...req, issueKey: req.issueKey || ticket.issueKey, issueType: ticket.issueType, issueTypeIconUrl: ticket.issueTypeIconUrl });
         this.movingKey.set(null);
         if (!done) return;
         this.toast.success(`${ticket.issueKey} digeser ke ${done.status || req.transition.to}`, done.message);

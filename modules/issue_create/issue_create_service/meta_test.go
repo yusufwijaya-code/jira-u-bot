@@ -79,6 +79,13 @@ func TestMapType_RequiredOnlyWithoutCreateFields(t *testing.T) {
 	}
 }
 
+func TestMapType_CarriesTheTypeIcon(t *testing.T) {
+	tm := mapType(omsRule(), jira_client_dto.CreateMetaIssueType{ID: "10206", Name: "Bug", IconURL: "https://jira.example/bug.svg"}, omsBugFields())
+	if tm.IconURL != "https://jira.example/bug.svg" {
+		t.Fatalf("IconURL = %q, want the createmeta icon", tm.IconURL)
+	}
+}
+
 func TestMapType_PerKindWithCreateFields(t *testing.T) {
 	extra := []string{"customfield_10112", "customfield_10110", "customfield_10289", "customfield_10282", "priority", "versions",
 		"duedate", "labels", "customfield_10284", "customfield_10019", "customfield_10075", "customfield_10999", "customfield_10016"}

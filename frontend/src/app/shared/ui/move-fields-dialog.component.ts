@@ -1,6 +1,7 @@
 import { Component, HostListener, computed, effect, inject, signal, untracked, viewChildren } from '@angular/core';
 import { DashboardService } from '../../core/services/dashboard.service';
 import { MoveFieldsService, MoveRequirement, fieldsRequired } from '../../core/ui/move-fields.service';
+import { IssueTypeIconComponent } from './issue-type-icon.component';
 import { IconComponent } from './icon.component';
 import { JiraFieldInputComponent, fieldFilled } from './jira-field-input.component';
 
@@ -13,7 +14,7 @@ import { JiraFieldInputComponent, fieldFilled } from './jira-field-input.compone
 @Component({
   selector: 'app-move-fields-dialog',
   standalone: true,
-  imports: [IconComponent, JiraFieldInputComponent],
+  imports: [IconComponent, JiraFieldInputComponent, IssueTypeIconComponent],
   template: `
     @if (req(); as r) {
       <div class="modal-backdrop" (click)="cancel()">
@@ -22,7 +23,7 @@ import { JiraFieldInputComponent, fieldFilled } from './jira-field-input.compone
             <div class="modal-icon mf-icon"><app-icon name="edit" [size]="20" /></div>
             <div class="mf-titles">
               <h3 id="mf-title">Lengkapi dulu sebelum pindah ke {{ r.transition.to }}</h3>
-              <p class="mf-key">{{ r.issueKey }}</p>
+              <p class="mf-key"><span class="ticket-id"><app-issue-type-icon [name]="r.issueType" [iconUrl]="r.issueTypeIconUrl" /><span data-move-key>{{ r.issueKey }}</span></span></p>
             </div>
           </div>
           @if (r.message) { <p class="mf-message" data-move-message>{{ r.message }}</p> }
@@ -134,7 +135,7 @@ export class MoveFieldsDialogComponent {
         const more = fieldsRequired(err);
         if (more) {
           // Jira wants something else too: show what is still missing.
-          this.req.set({ ...more, issueKey: more.issueKey || r.issueKey, issueUrl: more.issueUrl || r.issueUrl });
+          this.req.set({ ...more, issueKey: more.issueKey || r.issueKey, issueUrl: more.issueUrl || r.issueUrl, issueType: r.issueType, issueTypeIconUrl: r.issueTypeIconUrl });
           this.formError.set(more.fields.length ? null : more.message || 'Jira menolak perpindahan ini.');
           return;
         }

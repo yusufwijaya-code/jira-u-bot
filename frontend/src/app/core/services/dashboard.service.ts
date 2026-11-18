@@ -11,6 +11,9 @@ export interface TicketCard {
   summary: string;
   status: string;
   issueURL: string;
+  /** Jira issue type and its icon (shown before the key); absent on older API answers. */
+  issueType?: string;
+  issueTypeIconUrl?: string;
   /** Board of the ticket's active sprint (0 = none). */
   boardId: number;
   hasBudgetDetail: boolean;

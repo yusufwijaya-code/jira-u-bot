@@ -2428,6 +2428,10 @@ table.admin-users {
   &.selected { color: var(--primary-strong); font-weight: 600; }
   .icon { color: var(--primary); }
 }
+.ui-select-label { flex: 1; min-width: 0; }
+// Optional per-option image (e.g. a Jira issue-type icon), in the list and the trigger.
+.ui-select-icon { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
+
 
 .ui-time-popup {
   position: absolute;
@@ -3600,4 +3604,32 @@ app-chat-logs { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .settings-tabs { top: calc(var(--topbar-actual, var(--topbar-h)) + 8px); }
   .settings-tab { padding: 8px 10px; gap: 8px; small { display: none; } > .icon { width: 30px; height: 30px; } }
   .settings-boards { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   Issue-type icon (app-issue-type-icon): the Jira type icon before a key
+   ========================================================================== */
+.issue-type-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  vertical-align: -3px;
+  > img { width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
+}
+// Icon + key kept together; the key carries the baseline so rows still align on text.
+.ticket-id {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 0;
+  > .issue-type-icon { align-self: center; }
+}
+.issue-type-fallback {
+  width: 16px;
+  height: 16px;
+  rect { fill: var(--surface-2); stroke: var(--border-strong); stroke-width: 1.2; }
+  path { fill: none; stroke: var(--text-faint); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 }

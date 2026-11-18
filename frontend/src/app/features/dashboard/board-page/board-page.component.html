@@ -137,7 +137,7 @@
               @for (card of col.cards; track card.issueKey) {
                 <tr [attr.data-card]="card.issueKey" [class.busy]="moving() === card.issueKey" [class.just-moved]="justMoved() === card.issueKey">
                   <td data-label="Tiket">
-                    <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a>
+                    <span class="ticket-id"><app-issue-type-icon [name]="card.issueType" [iconUrl]="card.issueTypeIconUrl" /><a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener">{{ card.issueKey }}</a></span>
                     <span class="tb-row-actions">
                       <a class="tb-act" [href]="card.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
                       <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(card)"><app-icon name="copy" [size]="13" /></button>
@@ -175,7 +175,7 @@
                     <td data-label="Tiket"><div class="tb-fold"><div>
                       <span class="tb-branch-key">
                         <span class="tb-elbow" aria-hidden="true"></span>
-                        <a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a>
+                        <span class="ticket-id"><app-issue-type-icon [name]="b.issueType" [iconUrl]="b.issueTypeIconUrl" /><a class="ticket-key" [href]="b.issueURL" target="_blank" rel="noopener">{{ b.issueKey }}</a></span>
                         <span class="tb-row-actions">
                           <a class="tb-act" [href]="b.issueURL" target="_blank" rel="noopener" title="Buka di Jira" aria-label="Buka di Jira"><app-icon name="external" [size]="13" /></a>
                           <button type="button" class="tb-act" data-copy title="Salin key" aria-label="Salin key" (click)="copyKey(b)"><app-icon name="copy" [size]="13" /></button>

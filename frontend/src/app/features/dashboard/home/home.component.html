@@ -168,7 +168,7 @@
               <ul class="mini-list">
                 @for (c of isExpanded(g.status) ? g.cards : g.cards.slice(0, preview); track c.issueKey) {
                   <li>
-                    <a [href]="c.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ c.issueKey }}</a>
+                    <span class="ticket-id"><app-issue-type-icon [name]="c.issueType" [iconUrl]="c.issueTypeIconUrl" /><a [href]="c.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ c.issueKey }}</a></span>
                     <span class="ticket-summary">{{ c.summary }}</span>
                   </li>
                   @if (branchesOf().get(c.issueKey); as branches) {
@@ -177,7 +177,7 @@
                         @for (b of branches; track b.issueKey) {
                           <li class="mini-branch">
                             <span class="relation-chip" data-relation>{{ b.relation }}</span>
-                            <a [href]="b.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ b.issueKey }}</a>
+                            <span class="ticket-id"><app-issue-type-icon [name]="b.issueType" [iconUrl]="b.issueTypeIconUrl" /><a [href]="b.issueURL" target="_blank" rel="noopener" class="ticket-key">{{ b.issueKey }}</a></span>
                             <span class="ticket-summary">{{ b.summary }}</span>
                             <span class="status-chip">{{ b.status }}</span>
                           </li>
@@ -325,7 +325,7 @@
                   @if (branch && t.relation) {
                     <span class="relation-chip" data-relation>{{ t.relation }}</span>
                   }
-                  <a class="ticket-key" [href]="t.issueURL" target="_blank" rel="noopener">{{ t.issueKey }}</a>
+                  <span class="ticket-id"><app-issue-type-icon [name]="t.issueType" [iconUrl]="t.issueTypeIconUrl" /><a class="ticket-key" [href]="t.issueURL" target="_blank" rel="noopener">{{ t.issueKey }}</a></span>
                   <span class="ticket-summary">{{ t.summary }}</span>
                 </div>
                 @if (t.hasBudgetDetail) {

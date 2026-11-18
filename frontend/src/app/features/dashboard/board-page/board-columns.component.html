@@ -9,7 +9,7 @@
           <article class="kb-card" [attr.data-kcard]="card.issueKey" [attr.draggable]="!touch && moving() !== card.issueKey"
             [class.busy]="moving() === card.issueKey" [class.dragging]="dragging()?.issueKey === card.issueKey"
             (dragstart)="onDragStart($event, card)" (dragend)="onDragEnd()">
-            <a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener" draggable="false">{{ card.issueKey }}</a>
+            <span class="ticket-id"><app-issue-type-icon [name]="card.issueType" [iconUrl]="card.issueTypeIconUrl" /><a class="ticket-key" [href]="card.issueURL" target="_blank" rel="noopener" draggable="false">{{ card.issueKey }}</a></span>
             <p class="kb-title">{{ card.summary }}</p>
             <footer class="kb-meta">
               <span>{{ card.storyPoints ? card.storyPoints + ' SP' : '— SP' }}</span>

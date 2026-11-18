@@ -629,6 +629,20 @@ describe('BoardPageComponent', () => {
     expect(localStorage.getItem('nudge.board.view')).toBe('columns');
     localStorage.removeItem('nudge.board.view');
   });
+
+  it('shows the issue-type icon before the key', () => {
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url.endsWith('/api/dashboard/board')).flush({
+      columns: [{ status: 'To Do', cards: [
+        { issueKey: 'CORE-7', summary: 'Bug', status: 'To Do', issueURL: 'https://x/browse/CORE-7', boardId: 26, storyPoints: 1, issueType: 'Bug', issueTypeIconUrl: 'https://x/bug.svg' },
+      ] }],
+    });
+    fixture.detectChanges();
+    const icon = fixture.nativeElement.querySelector('[data-card="CORE-7"] app-issue-type-icon') as HTMLElement;
+    expect(icon.getAttribute('title')).toBe('Bug');
+    expect(icon.querySelector('img')?.getAttribute('src')).toBe('https://x/bug.svg');
+  });
 });
 
 describe('board-page helpers', () => {

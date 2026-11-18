@@ -10,6 +10,8 @@ type CreateMetaIssueType struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Subtask bool   `json:"subtask"`
+	// IconURL is the type's Jira icon (shown in Buat Card's "Tipe card").
+	IconURL string `json:"iconUrl"`
 }
 
 type CreateMetaIssueTypesPage struct {

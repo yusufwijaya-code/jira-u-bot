@@ -1,6 +1,7 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { DashboardService, TicketCard, TransitionOption } from '../../../core/services/dashboard.service';
 import { budgetPercent, shortDuration, statusTone } from './board-format';
+import { IssueTypeIconComponent } from '../../../shared/ui/issue-type-icon.component';
 
 export interface ColumnView { status: string; cards: TicketCard[]; }
 export interface MoveRequest { card: TicketCard; option: TransitionOption; }
@@ -9,6 +10,7 @@ export interface MoveRequest { card: TicketCard; option: TransitionOption; }
 @Component({
   selector: 'app-board-columns',
   standalone: true,
+  imports: [IssueTypeIconComponent],
   templateUrl: './board-columns.component.html',
   styleUrl: './board-columns.component.scss',
 })

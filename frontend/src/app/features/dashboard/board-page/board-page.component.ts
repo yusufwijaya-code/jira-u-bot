@@ -12,6 +12,7 @@ import { BoardColumnsComponent } from './board-columns.component';
 import { statusTone, shortDuration, budgetPercent, StatusTone } from './board-format';
 import { CreateCardComponent } from './create-card/create-card.component';
 import { IconComponent } from '../../../shared/ui/icon.component';
+import { IssueTypeIconComponent } from '../../../shared/ui/issue-type-icon.component';
 
 interface Column {
   status: string;
@@ -43,7 +44,7 @@ export const VIEW_STORAGE_KEY = 'nudge.board.view';
 @Component({
   selector: 'app-board-page',
   standalone: true,
-  imports: [IconComponent, NgTemplateOutlet, BoardColumnsComponent, CreateCardComponent],
+  imports: [IconComponent, IssueTypeIconComponent, NgTemplateOutlet, BoardColumnsComponent, CreateCardComponent],
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
 })
@@ -416,7 +417,7 @@ export class BoardPageComponent {
         const req = fieldsRequired(err);
         if (req) {
           // Jira needs fields first: the card waits at its target while the dialog is open.
-          this.askFields({ ...req, issueKey: req.issueKey || card.issueKey }, card.issueKey, option.toStatus, from);
+          this.askFields({ ...req, issueKey: req.issueKey || card.issueKey, issueType: card.issueType, issueTypeIconUrl: card.issueTypeIconUrl }, card.issueKey, option.toStatus, from);
           return;
         }
         this.pendingMoves--;

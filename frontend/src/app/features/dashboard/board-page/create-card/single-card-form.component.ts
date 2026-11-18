@@ -72,6 +72,7 @@ export class SingleCardFormComponent {
     ...(this.meta().types ?? []).map((t) => ({
       value: t.id,
       label: `${t.name}${t.subtask ? ' (subtask)' : ''}${t.supported ? '' : ' — tidak didukung'}`,
+      icon: t.iconUrl || undefined,
     })),
   ]);
 

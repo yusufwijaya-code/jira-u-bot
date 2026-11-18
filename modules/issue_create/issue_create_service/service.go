@@ -77,6 +77,7 @@ type TypeMeta struct {
 	ID              string  `json:"id"`
 	Name            string  `json:"name"`
 	Subtask         bool    `json:"subtask"`
+	IconURL         string  `json:"iconUrl,omitempty"`
 	Supported       bool    `json:"supported"`
 	ParentAllowed   bool    `json:"parentAllowed"`
 	StoryPointField string  `json:"storyPointField,omitempty"`
