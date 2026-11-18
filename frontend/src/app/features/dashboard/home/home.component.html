@@ -271,11 +271,12 @@
           <ul class="mini-list deviation-list" data-sprint-rows>
             @for (r of sprintRows(); track r.issueKey) {
               <li [class.within]="r.within">
+                <span class="ticket-id"><app-issue-type-icon [name]="r.issueType" [iconUrl]="r.issueTypeIconUrl" />
                 @if (jiraUrl(r.issueKey); as url) {
                   <a class="ticket-key" [href]="url" target="_blank" rel="noopener">{{ r.issueKey }}</a>
                 } @else {
                   <span class="ticket-key">{{ r.issueKey }}</span>
-                }
+                }</span>
                 <span class="dev-text">
                   <span class="ticket-summary">{{ r.task }}</span>
                   <small>{{ r.actualHours | number: '1.0-1' }} dari {{ r.estimatedHours | number: '1.0-1' }} jam</small>
